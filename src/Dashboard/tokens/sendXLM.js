@@ -32,7 +32,7 @@ import darkBlue from "../../../assets/darkBlue.png"
 import { delay, isInteger } from "lodash";
 import { ShowErrotoast, Showsuccesstoast, alert } from "../reusables/Toasts";
 import { isFloat } from "validator";
-import { RNCamera } from 'react-native-camera';
+import { Camera, useCameraDevice, useCodeScanner } from "react-native-vision-camera";
 import { REACT_APP_LOCAL_TOKEN } from "../exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import { useToast } from "native-base";
 import { STELLAR_URL } from "../constants";
@@ -64,6 +64,7 @@ const SendXLM = (props) => {
     const [Message, setMessage] = useState("");
     const [Payment_loading,setPayment_loading]=useState(false);
     const cameraRef = useRef(null);
+    const device = useCameraDevice('back');
     const [qrData, setQrData] = useState('');
     const state = useSelector((state) => state);
     const navigation = useNavigation();
@@ -76,23 +77,33 @@ const SendXLM = (props) => {
         checkPermission();
     };
 
-    const onBarCodeRead = (e) => {
-      if (e?.data && e?.data !== lastScannedData) {
-        setLastScannedData(e?.data); // Update the last scanned data
-        setErroVisible(false)
-        alert("success", "QR Code Decoded successfully..");
-        setAddress("");
-        setAddress(e?.data);
-        setModalVisible(false);
-    
-        if (!validateStellarAddress(e?.data)) {
-        setModalVisible(false);
+    useEffect(() => {
+      const requestPermission = async () => {
+        const status = await Camera.requestCameraPermission();
+        handleCameraStatus(status);
+      };
+      requestPermission();
+    }, []);
+
+     const onBarCodeRead = useCodeScanner({
+      codeTypes: ['qr'],
+      onCodeScanned: (codes) => {
+        for (const code of codes) {
+          setLastScannedData(code.value);
           setErroVisible(false)
+          alert("success", "QR Code Decoded successfully..");
           setAddress("");
-          setErroVisible(true)
+          setAddress(code.value);
+          setModalVisible(false);
+          if (!validateStellarAddress(code.value)) {
+            setModalVisible(false);
+            setErroVisible(false)
+            setAddress("");
+            setErroVisible(true)
+          }
         }
-      }
-    };
+      },
+    });
     
     const handleCameraStatus = (status) => {
       if (status === "NOT_AUTHORIZED") {
@@ -537,15 +548,17 @@ useEffect(() => {
         visible={isModalVisible}
         onRequestClose={toggleModal}
       >
-          <RNCamera
+          <Camera
             ref={cameraRef}
             style={style.preview}
-            onBarCodeRead={onBarCodeRead}
+            device={device}
+            isActive={true}
+            audio={false}
+            codeScanner={onBarCodeRead}
             captureAudio={false}
-            onStatusChange={({ status }) => handleCameraStatus(status)} // Use onStatusChange
           >
             <QRScannerComponent setModalVisible={setModalVisible}/>
-          </RNCamera>
+          </Camera>
       </Modal>
         <Modal
           animationType="fade"
@@ -823,7 +836,7 @@ const style = StyleSheet.create({
     elevation: 6,
   },
   gradientButton: {
-    paddingVertical: hp(2),
+    height: hp(6),
     alignItems: 'center',
     justifyContent: 'center',
   },

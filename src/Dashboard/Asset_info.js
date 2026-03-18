@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
   Animated,
+  Dimensions,
 } from "react-native";
 import Icon from "../icon";
 import {
@@ -21,7 +22,7 @@ import { REACT_APP_LOCAL_TOKEN } from "./exchange/crypto-exchange-front-end-main
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { GET, authRequest } from "./exchange/crypto-exchange-front-end-main/src/api";
 import { alert } from "./reusables/Toasts";
-import { Chart, Line, Area, Tooltip } from "react-native-responsive-linechart";
+import { LineChart } from "react-native-gifted-charts";
 import { useSelector } from "react-redux";
 import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import Stellar_image from "../../assets/Stellar_(XLM).png";
@@ -30,6 +31,7 @@ import TokenQrCode from "./Modals/TokensQrCode";
 import InfoComponent from "./exchange/crypto-exchange-front-end-main/src/components/InfoComponent";
 
 const Asset_info = ({ route }) => {
+  const { width: SCREEN_WIDTH } = Dimensions.get("window");
   const state = useSelector((state) => state);
   const isDark = state.THEME.THEME;
   const { asset_type } = route.params;
@@ -194,8 +196,7 @@ const Asset_info = ({ route }) => {
       if (!data || data.length === 0) throw new Error("No chart data");
 
       const formattedData = data.map((item) => ({
-        x: new Date(parseInt(item[0])).getTime(),
-        y: parseFloat(item[4]),
+        value: parseFloat(item[4]),
       }));
 
       setChartData(formattedData);
@@ -454,61 +455,46 @@ const Asset_info = ({ route }) => {
                     Unable to load chart
                   </Text>
                 </View>
-              ) : (
-                <Chart
-                  style={styles.chart}
-                  data={chartData}
-                  padding={{ left: 0, bottom: 0, right: 0, top: 20 }}
-                  xDomain={{
-                    min: Math.min(...chartData.map((d) => d.x)),
-                    max: Math.max(...chartData.map((d) => d.x)),
-                  }}
-                  yDomain={{
-                    min: Math.min(...chartData.map((d) => d.y)) * 0.995,
-                    max: Math.max(...chartData.map((d) => d.y)) * 1.005,
-                  }}
-                >
-                  <Area
-                    theme={{
-                      gradient: {
-                        from: { color: lineColor, opacity: 0.4 },
-                        to: { color: lineColor, opacity: 0.0 },
+                ) : (
+                  <LineChart
+                    data={chartData}
+                    adjustToWidth
+                    width={wp(86)}
+                    height={hp(28)}
+                    color={lineColor}
+                    thickness={2}
+                    curved
+                    areaChart
+                    startFillColor={lineColor}
+                    startOpacity={0.3}
+                    endFillColor={lineColor}
+                    endOpacity={0}
+                    hideDataPoints
+                    hideYAxisText
+                    hideXAxisText
+                    hideAxesAndRules
+                    initialSpacing={0}
+                    endSpacing={0}
+                    pointerConfig={{
+                      pointerStripHeight: hp(26),
+                      pointerStripColor: isDark
+                        ? "rgba(255,255,255,0.15)"
+                        : "rgba(0,0,0,0.12)",
+                      pointerStripWidth: 1,
+                      pointerColor: lineColor,
+                      radius: 5,
+                      pointerLabelWidth: 110,
+                      pointerLabelHeight: 95,
+                      activatePointersOnLongPress: false,
+                      autoAdjustPointerLabelPosition: true,
+                      pointerLabelComponent: (items) => {
+                        setCurrentPrice(items?.[0]?.value);
+                        return null;
                       },
                     }}
-                    smoothing="bezier"
                   />
-                  <Line
-                    tooltipComponent={
-                      <Tooltip
-                        theme={{
-                          formatter: ({ y, x }) => {
-                            setCurrentPrice(y);
-                          },
-                          shape: {
-                            width: 0,
-                            height: 0,
-                            dx: 0,
-                            dy: 0,
-                            color: "transparent",
-                          },
-                        }}
-                      />
-                    }
-                    theme={{
-                      stroke: { color: lineColor, width: 2 },
-                      scatter: {
-                        selected: {
-                          width: 1,
-                          height: hp(99),
-                          rx: 4,
-                          color: lineColor,
-                        },
-                      },
-                    }}
-                    smoothing="bezier"
-                  />
-                </Chart>
-              )}
+
+                )}
               </View>
 
               <View style={[styles.timeframeContainer,{backgroundColor:isDark?"#1B1B1C":"#FFFFFF"}]}>

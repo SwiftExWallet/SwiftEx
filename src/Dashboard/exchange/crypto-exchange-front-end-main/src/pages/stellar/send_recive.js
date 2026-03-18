@@ -13,7 +13,7 @@ import Bridge from "../../../../../../../assets/Bridge.png";
 import QRCode from "react-native-qrcode-svg";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { useSelector } from "react-redux";
-import { RNCamera } from 'react-native-camera';
+import { Camera, useCameraDevice, useCodeScanner } from "react-native-vision-camera";
 import { Exchange_screen_header } from "../../../../../reusables/ExchangeHeader";
 import { alert } from "../../../../../reusables/Toasts";
 import { STELLAR_URL } from "../../../../../constants";
@@ -34,6 +34,7 @@ const send_recive = ({route}) => {
     console.log("----------------usdtAsse-----------------",bala,asset_name,assetIssuer)
     const usdtAsset = asset_name==="native"?StellarSdk.Asset.native():new StellarSdk.Asset(asset_name, assetIssuer);
   const cameraRef = useRef(null);
+    const device = useCameraDevice('back');
     const state = useSelector((state) => state);
     const FOCUSED = useIsFocused();
     const navigation = useNavigation();
@@ -51,23 +52,33 @@ const send_recive = ({route}) => {
     const [Loading, setLoading] = useState(false);
     const [ACTIVATION_MODAL_PROD, setACTIVATION_MODAL_PROD] = useState(false);
 
+    useEffect(() => {
+      const requestPermission = async () => {
+        const status = await Camera.requestCameraPermission();
+        handleCameraStatus(status);
+      };
+      requestPermission();
+    }, []);
 
-  const onBarCodeRead = (e) => {
-    if (e?.data && e?.data !== lastScannedData) {
-      setLastScannedData(e?.data); // Update the last scanned data
-      setErroVisible(false)
-      alert("success", "QR Code Decoded successfully..");
-      setrecepi_address(e?.data);
-      setModalVisible(false);
-  
-      if (!validateStellarAddress(e?.data)) {
-        setModalVisible(false);
-        setErroVisible(false)
-        setrecepi_address("");
-        setErroVisible(true)
-      }
-    }
-  };
+  const onBarCodeRead = useCodeScanner({
+      codeTypes: ['qr'],
+      onCodeScanned: (codes) => {
+        for (const code of codes) {
+          setLastScannedData(code.value);
+          setErroVisible(false)
+          alert("success", "QR Code Decoded successfully..");
+          setrecepi_address("");
+          setrecepi_address(code.value);
+          setModalVisible(false);
+          if (!validateStellarAddress(code.value)) {
+            setModalVisible(false);
+            setErroVisible(false)
+            setrecepi_address("");
+            setErroVisible(true)
+          }
+        }
+      },
+    });
   const handleCameraStatus = (status) => {
     if (status === "NOT_AUTHORIZED") {
       setModalVisible(false);
@@ -434,15 +445,16 @@ const send_recive = ({route}) => {
         visible={isModalVisible}
         onRequestClose={toggleModal}
       >
-         <RNCamera
-            ref={cameraRef}
-            style={styles.preview}
-            onBarCodeRead={onBarCodeRead}
-            captureAudio={false}
-            onStatusChange={({ status }) => handleCameraStatus(status)} // Use onStatusChange
-          >
+        <Camera
+          ref={cameraRef}
+          style={styles.preview}
+          device={device}
+          isActive={true}
+          audio={false}
+          codeScanner={onBarCodeRead}
+          captureAudio={false}>
              <QRScannerComponent setModalVisible={setModalVisible}/>
-          </RNCamera>
+          </Camera>
     </Modal>
             </View>
         <TokenQrCode

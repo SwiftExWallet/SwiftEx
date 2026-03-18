@@ -38,7 +38,7 @@ const WalletActivationComponent = ({
 }) => {
     const dispatch_ = useDispatch()
     const state = useSelector((state) => state);
-  
+    const backHandler = useRef(null);
   const [Wallet_activation,setWallet_activation]=useState(false);
   const [visibleBuyUi,setVisibleBuyUi]=useState(false);
   const [qrVisible, setQrVisible] = useState(false);
@@ -77,21 +77,20 @@ const WalletActivationComponent = ({
     onClose();
   };
 
-  // Handle back button press on Android
   useEffect(() => {
     const handleBackPress = () => {
-      if (showSheet) {
-        handleClose();
-        return true;
-      }
-      return false;
+        if (showSheet) {
+            handleClose();
+            return true;
+        }
+        return false;
     };
 
-    BackHandler.addEventListener('hardwareBackPress', handleBackPress);
+    backHandler.current = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
     return () => {
-      BackHandler.removeEventListener('hardwareBackPress', handleBackPress);
+        backHandler.current?.remove();
     };
-  }, [showSheet, navigation, shouldNavigateBack]);
+}, [showSheet, navigation, shouldNavigateBack]);
 
   // Optimized animation logic
   useEffect(() => {

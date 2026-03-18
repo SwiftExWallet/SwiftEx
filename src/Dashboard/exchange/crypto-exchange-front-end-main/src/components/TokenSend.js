@@ -23,7 +23,7 @@ import { useSelector } from "react-redux";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { isInteger } from "lodash";
 import { isFloat } from "validator";
-import { RNCamera } from 'react-native-camera';
+import { Camera, useCameraDevice, useCodeScanner } from "react-native-vision-camera";
 import { useToast } from "native-base";
 import { Wallet_screen_header } from "../../../../reusables/ExchangeHeader";
 import ErrorComponet from "../../../../../utilities/ErrorComponet";
@@ -52,6 +52,7 @@ const TokenSend = ({ route }) => {
   const [Message, setMessage] = useState("");
   const [Payment_loading, setPayment_loading] = useState(false);
   const cameraRef = useRef(null);
+  const device = useCameraDevice('back');
   const state = useSelector((state) => state);
   const navigation = useNavigation();
   const [isModalVisible, setModalVisible] = useState(false);
@@ -59,7 +60,13 @@ const TokenSend = ({ route }) => {
   const [ErroVisible, setErroVisible] = useState(false);
   const [showTxInfo,setShowTxInfo]=useState(false);
 
-
+  useEffect(() => {
+    const requestPermission = async () => {
+      const status = await Camera.requestCameraPermission();
+      handleCameraStatus(status);
+    };
+    requestPermission();
+  }, []);
 
 
   const sendBNBToken = async (tokenAddress,tokenDecimals) => {
@@ -224,23 +231,26 @@ const TokenSend = ({ route }) => {
     checkPermission();
   };
 
-  const onBarCodeRead = (e) => {
-    if (e?.data && e?.data !== lastScannedData) {
-      setLastScannedData(e?.data);
-      setErroVisible(false)
-      alert("success", "QR Code Decoded successfully..");
-      setAddress("");
-      setAddress(e?.data);
-      setModalVisible(false);
-
-      if (!validateTokenAddress(e?.data)) {
-        setModalVisible(false);
+  const onBarCodeRead = useCodeScanner({
+    codeTypes: ['qr'],
+    onCodeScanned: (codes) => {
+      for (const code of codes) {
+        setLastScannedData(code.value);
         setErroVisible(false)
+        alert("success", "QR Code Decoded successfully..");
         setAddress("");
-        setErroVisible(true)
+        setAddress(code.value);
+        setModalVisible(false);
+        if (!validateTokenAddress(code.value)) {
+          setModalVisible(false);
+          setErroVisible(false)
+          setAddress("");
+          setErroVisible(true)
+        }
       }
-    }
-  };
+    },
+  });
+
   const handleCameraStatus = (status) => {
     if (status === "NOT_AUTHORIZED") {
       setModalVisible(false);
@@ -560,15 +570,17 @@ const TokenSend = ({ route }) => {
         onRequestClose={toggleModal}
       >
         <View style={styles.modalContainer}>
-          <RNCamera
+          <Camera
             ref={cameraRef}
             style={styles.camera}
-            onBarCodeRead={onBarCodeRead}
+            device={device}
+            isActive={true}
+            audio={false}
+            codeScanner={onBarCodeRead}
             captureAudio={false}
-            onStatusChange={({ status }) => handleCameraStatus(status)}
           >
-            <QRScannerComponent setModalVisible={setModalVisible}/>
-          </RNCamera>
+            <QRScannerComponent setModalVisible={setModalVisible} />
+          </Camera>
         </View>
       </Modal>
 
@@ -709,7 +721,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   gradientButton: {
-    paddingVertical: hp(2),
+    height: hp(6),
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -7,23 +7,20 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		00E356F31AD99517003FC87E /* test_appTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E356F21AD99517003FC87E /* test_appTests.m */; };
 		040F243A2F32279F00B0D0D0 /* TransactionSigner.m in Sources */ = {isa = PBXBuildFile; fileRef = 040F24392F32279F00B0D0D0 /* TransactionSigner.m */; };
 		04234AEA2F3314F900B97E49 /* StellarSigner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04234AE92F3314F900B97E49 /* StellarSigner.swift */; };
 		04234AEC2F33152200B97E49 /* StellarSigner.m in Sources */ = {isa = PBXBuildFile; fileRef = 04234AEB2F33152200B97E49 /* StellarSigner.m */; };
 		0439A4D62F31D84000E16E61 /* TransactionSigner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0439A4D52F31D84000E16E61 /* TransactionSigner.swift */; };
 		04D431A22F332303002BF903 /* stellarsdk in Frameworks */ = {isa = PBXBuildFile; productRef = 04D431A12F332303002BF903 /* stellarsdk */; };
+		04D696EF2F643C3700E809CD /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04D696EE2F643C3700E809CD /* AppDelegate.swift */; };
 		04F5D0272F31C31100E9257B /* EthereumWallet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F5D0262F31C31100E9257B /* EthereumWallet.swift */; };
 		04F5D02F2F31C3A900E9257B /* EthereumWallet.m in Sources */ = {isa = PBXBuildFile; fileRef = 04F5D02E2F31C3A900E9257B /* EthereumWallet.m */; };
 		04F5D0312F31C3E100E9257B /* AppStorageModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F5D0302F31C3E100E9257B /* AppStorageModule.swift */; };
 		04F5D0332F31C42B00E9257B /* StorageModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 04F5D0322F31C42B00E9257B /* StorageModule.m */; };
-		13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB01A68108700A75B9A /* AppDelegate.mm */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		13B07FC11A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB71A68108700A75B9A /* main.m */; };
 		180F488F2CFD957F003A044B /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 180F488E2CFD957F003A044B /* GoogleService-Info.plist */; };
-		5BC48A0692CF888E04EC7653 /* Pods_test_app_test_appTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 919AAFDFE31E6A4E35C47C7C /* Pods_test_app_test_appTests.framework */; };
-		7F0142282240814B75770AFC /* Pods_test_app.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3E90E682331171381656D07D /* Pods_test_app.framework */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		87D23042B48BABD8DEB03FC1 /* libPods-test_app.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E54CD3F27AA182D53D7B94C5 /* libPods-test_app.a */; };
 		C09AD1F36A04CC9CD9860CBB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 679DD7D20FDE1C926ACDB0F0 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
@@ -39,12 +36,11 @@
 
 /* Begin PBXFileReference section */
 		00E356EE1AD99517003FC87E /* test_appTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = test_appTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		00E356F11AD99517003FC87E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		00E356F21AD99517003FC87E /* test_appTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = test_appTests.m; sourceTree = "<group>"; };
 		040F24392F32279F00B0D0D0 /* TransactionSigner.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = TransactionSigner.m; path = test_app/TransactionSigner.m; sourceTree = "<group>"; };
 		04234AE92F3314F900B97E49 /* StellarSigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StellarSigner.swift; path = test_app/StellarSigner.swift; sourceTree = "<group>"; };
 		04234AEB2F33152200B97E49 /* StellarSigner.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = StellarSigner.m; path = test_app/StellarSigner.m; sourceTree = "<group>"; };
 		0439A4D52F31D84000E16E61 /* TransactionSigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TransactionSigner.swift; path = test_app/TransactionSigner.swift; sourceTree = "<group>"; };
+		04D696EE2F643C3700E809CD /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		04F5D0262F31C31100E9257B /* EthereumWallet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EthereumWallet.swift; path = test_app/EthereumWallet.swift; sourceTree = "<group>"; };
 		04F5D02E2F31C3A900E9257B /* EthereumWallet.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = EthereumWallet.m; path = test_app/EthereumWallet.m; sourceTree = "<group>"; };
 		04F5D0302F31C3E100E9257B /* AppStorageModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStorageModule.swift; path = test_app/AppStorageModule.swift; sourceTree = "<group>"; };
@@ -52,21 +48,15 @@
 		04F5D0342F31C58800E9257B /* test_app-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "test_app-Bridging-Header.h"; path = "test_app/test_app-Bridging-Header.h"; sourceTree = "<group>"; };
 		088F971FB7D94366A4996597 /* Pods-test_app.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-test_app.debug.xcconfig"; path = "Target Support Files/Pods-test_app/Pods-test_app.debug.xcconfig"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* test_app.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = test_app.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		13B07FAF1A68108700A75B9A /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AppDelegate.h; path = test_app/AppDelegate.h; sourceTree = "<group>"; };
-		13B07FB01A68108700A75B9A /* AppDelegate.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = AppDelegate.mm; path = test_app/AppDelegate.mm; sourceTree = "<group>"; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = test_app/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = test_app/Info.plist; sourceTree = "<group>"; };
-		13B07FB71A68108700A75B9A /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = main.m; path = test_app/main.m; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = test_app/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		180F488E2CFD957F003A044B /* GoogleService-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "../../GoogleService-Info.plist"; sourceTree = "<group>"; };
 		180F48902CFDA388003A044B /* test_appRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = test_appRelease.entitlements; path = test_app/test_appRelease.entitlements; sourceTree = "<group>"; };
-		2A0B6974A4FAFBA11455F96A /* Pods-test_app-test_appTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-test_app-test_appTests.debug.xcconfig"; path = "Target Support Files/Pods-test_app-test_appTests/Pods-test_app-test_appTests.debug.xcconfig"; sourceTree = "<group>"; };
-		3E90E682331171381656D07D /* Pods_test_app.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_test_app.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		679DD7D20FDE1C926ACDB0F0 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = test_app/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		7797012F018C3D7F6FB676E4 /* Pods-test_app.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-test_app.release.xcconfig"; path = "Target Support Files/Pods-test_app/Pods-test_app.release.xcconfig"; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = test_app/LaunchScreen.storyboard; sourceTree = "<group>"; };
-		919AAFDFE31E6A4E35C47C7C /* Pods_test_app_test_appTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_test_app_test_appTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		E6D4F13BB8DE4900FFBD7666 /* Pods-test_app-test_appTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-test_app-test_appTests.release.xcconfig"; path = "Target Support Files/Pods-test_app-test_appTests/Pods-test_app-test_appTests.release.xcconfig"; sourceTree = "<group>"; };
+		E54CD3F27AA182D53D7B94C5 /* libPods-test_app.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-test_app.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -75,7 +65,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5BC48A0692CF888E04EC7653 /* Pods_test_app_test_appTests.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -83,42 +72,23 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7F0142282240814B75770AFC /* Pods_test_app.framework in Frameworks */,
 				04D431A22F332303002BF903 /* stellarsdk in Frameworks */,
+				87D23042B48BABD8DEB03FC1 /* libPods-test_app.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		00E356EF1AD99517003FC87E /* test_appTests */ = {
-			isa = PBXGroup;
-			children = (
-				00E356F21AD99517003FC87E /* test_appTests.m */,
-				00E356F01AD99517003FC87E /* Supporting Files */,
-			);
-			path = test_appTests;
-			sourceTree = "<group>";
-		};
-		00E356F01AD99517003FC87E /* Supporting Files */ = {
-			isa = PBXGroup;
-			children = (
-				00E356F11AD99517003FC87E /* Info.plist */,
-			);
-			name = "Supporting Files";
-			sourceTree = "<group>";
-		};
 		13B07FAE1A68108700A75B9A /* test_app */ = {
 			isa = PBXGroup;
 			children = (
+				04D696EE2F643C3700E809CD /* AppDelegate.swift */,
 				180F48902CFDA388003A044B /* test_appRelease.entitlements */,
 				180F488E2CFD957F003A044B /* GoogleService-Info.plist */,
-				13B07FAF1A68108700A75B9A /* AppDelegate.h */,
-				13B07FB01A68108700A75B9A /* AppDelegate.mm */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
-				13B07FB71A68108700A75B9A /* main.m */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
 				679DD7D20FDE1C926ACDB0F0 /* PrivacyInfo.xcprivacy */,
 				04F5D0262F31C31100E9257B /* EthereumWallet.swift */,
@@ -138,8 +108,7 @@
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				3E90E682331171381656D07D /* Pods_test_app.framework */,
-				919AAFDFE31E6A4E35C47C7C /* Pods_test_app_test_appTests.framework */,
+				E54CD3F27AA182D53D7B94C5 /* libPods-test_app.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -156,7 +125,6 @@
 			children = (
 				13B07FAE1A68108700A75B9A /* test_app */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
-				00E356EF1AD99517003FC87E /* test_appTests */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
@@ -180,8 +148,6 @@
 			children = (
 				088F971FB7D94366A4996597 /* Pods-test_app.debug.xcconfig */,
 				7797012F018C3D7F6FB676E4 /* Pods-test_app.release.xcconfig */,
-				2A0B6974A4FAFBA11455F96A /* Pods-test_app-test_appTests.debug.xcconfig */,
-				E6D4F13BB8DE4900FFBD7666 /* Pods-test_app-test_appTests.release.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -193,12 +159,9 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 00E357021AD99517003FC87E /* Build configuration list for PBXNativeTarget "test_appTests" */;
 			buildPhases = (
-				3FC281E11A8D7A84774F1606 /* [CP] Check Pods Manifest.lock */,
 				00E356EA1AD99517003FC87E /* Sources */,
 				00E356EB1AD99517003FC87E /* Frameworks */,
 				00E356EC1AD99517003FC87E /* Resources */,
-				E7A86D3E02AED397E20E40B7 /* [CP] Embed Pods Frameworks */,
-				64047EC4A58B294E7DD21A17 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -327,28 +290,6 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-test_app/Pods-test_app-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		3FC281E11A8D7A84774F1606 /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-test_app-test_appTests-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
 		5CAE6C74552E1AC89A030AEB /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -369,23 +310,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-		64047EC4A58B294E7DD21A17 /* [CP] Copy Pods Resources */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-test_app-test_appTests/Pods-test_app-test_appTests-resources-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			name = "[CP] Copy Pods Resources";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-test_app-test_appTests/Pods-test_app-test_appTests-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-test_app-test_appTests/Pods-test_app-test_appTests-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		CC2BCF73C3D5DAB367082ECA /* [CP] Copy Pods Resources */ = {
@@ -432,23 +356,6 @@
 			shellPath = /bin/sh;
 			shellScript = "#!/usr/bin/env bash\n#\n# Copyright (c) 2016-present Invertase Limited & Contributors\n#\n# Licensed under the Apache License, Version 2.0 (the \"License\");\n# you may not use this library except in compliance with the License.\n# You may obtain a copy of the License at\n#\n#   http://www.apache.org/licenses/LICENSE-2.0\n#\n# Unless required by applicable law or agreed to in writing, software\n# distributed under the License is distributed on an \"AS IS\" BASIS,\n# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n# See the License for the specific language governing permissions and\n# limitations under the License.\n#\nset -e\n\nif [[ ${PODS_ROOT} ]]; then\n  echo \"info: Exec FirebaseCrashlytics Run from Pods\"\n  \"${PODS_ROOT}/FirebaseCrashlytics/run\"\nelse\n  echo \"info: Exec FirebaseCrashlytics Run from framework\"\n  \"${PROJECT_DIR}/FirebaseCrashlytics.framework/run\"\nfi\n";
 		};
-		E7A86D3E02AED397E20E40B7 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-test_app-test_appTests/Pods-test_app-test_appTests-frameworks-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-test_app-test_appTests/Pods-test_app-test_appTests-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-test_app-test_appTests/Pods-test_app-test_appTests-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -456,7 +363,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				00E356F31AD99517003FC87E /* test_appTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -466,9 +372,8 @@
 			files = (
 				040F243A2F32279F00B0D0D0 /* TransactionSigner.m in Sources */,
 				0439A4D62F31D84000E16E61 /* TransactionSigner.swift in Sources */,
-				13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */,
 				04234AEC2F33152200B97E49 /* StellarSigner.m in Sources */,
-				13B07FC11A68108700A75B9A /* main.m in Sources */,
+				04D696EF2F643C3700E809CD /* AppDelegate.swift in Sources */,
 				04F5D0272F31C31100E9257B /* EthereumWallet.swift in Sources */,
 				04F5D02F2F31C3A900E9257B /* EthereumWallet.m in Sources */,
 				04234AEA2F3314F900B97E49 /* StellarSigner.swift in Sources */,
@@ -490,7 +395,6 @@
 /* Begin XCBuildConfiguration section */
 		00E356F61AD99517003FC87E /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 2A0B6974A4FAFBA11455F96A /* Pods-test_app-test_appTests.debug.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -517,7 +421,6 @@
 		};
 		00E356F71AD99517003FC87E /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = E6D4F13BB8DE4900FFBD7666 /* Pods-test_app-test_appTests.release.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COPY_PHASE_STRIP = NO;
@@ -659,6 +562,16 @@
 					"${PODS_CONFIGURATION_BUILD_DIR}/React-NativeModulesApple/React_NativeModulesApple.framework/Headers",
 					"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers",
 					"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers/react/renderer/graphics/platform/ios",
+					"${PODS_ROOT}/ReactCommon",
+					"${PODS_ROOT}/ReactCommon/react/nativemodule/core",
+					"${PODS_ROOT}/React-runtimeexecutor",
+					"${PODS_ROOT}/React-runtimeexecutor/platform/ios",
+					"${PODS_ROOT}/ReactCommon-Samples",
+					"${PODS_ROOT}/ReactCommon-Samples/platform/ios",
+					"${PODS_ROOT}/React-Fabric/react/renderer/components/view/platform/cxx",
+					"${PODS_ROOT}/React-NativeModulesApple",
+					"${PODS_ROOT}/React-graphics",
+					"${PODS_ROOT}/React-graphics/react/renderer/graphics/platform/ios",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
 				LD = "";
@@ -674,6 +587,10 @@
 				);
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-DRCT_REMOVE_LEGACY_ARCH=1",
+				);
 				OTHER_CPLUSPLUSFLAGS = (
 					"$(OTHER_CFLAGS)",
 					"-DFOLLY_NO_CONFIG",
@@ -681,11 +598,13 @@
 					"-DFOLLY_USE_LIBCPP=1",
 					"-DFOLLY_CFG_NO_COROUTINES=1",
 					"-DFOLLY_HAVE_CLOCK_GETTIME=1",
+					"-DRCT_REMOVE_LEGACY_ARCH=1",
 				);
 				OTHER_LDFLAGS = "$(inherited)";
 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				USE_HERMES = true;
 			};
 			name = Debug;
@@ -744,6 +663,16 @@
 					"${PODS_CONFIGURATION_BUILD_DIR}/React-NativeModulesApple/React_NativeModulesApple.framework/Headers",
 					"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers",
 					"${PODS_CONFIGURATION_BUILD_DIR}/React-graphics/React_graphics.framework/Headers/react/renderer/graphics/platform/ios",
+					"${PODS_ROOT}/ReactCommon",
+					"${PODS_ROOT}/ReactCommon/react/nativemodule/core",
+					"${PODS_ROOT}/React-runtimeexecutor",
+					"${PODS_ROOT}/React-runtimeexecutor/platform/ios",
+					"${PODS_ROOT}/ReactCommon-Samples",
+					"${PODS_ROOT}/ReactCommon-Samples/platform/ios",
+					"${PODS_ROOT}/React-Fabric/react/renderer/components/view/platform/cxx",
+					"${PODS_ROOT}/React-NativeModulesApple",
+					"${PODS_ROOT}/React-graphics",
+					"${PODS_ROOT}/React-graphics/react/renderer/graphics/platform/ios",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
 				LD = "";
@@ -758,6 +687,10 @@
 					"\"$(inherited)\"",
 				);
 				MTL_ENABLE_DEBUG_INFO = NO;
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-DRCT_REMOVE_LEGACY_ARCH=1",
+				);
 				OTHER_CPLUSPLUSFLAGS = (
 					"$(OTHER_CFLAGS)",
 					"-DFOLLY_NO_CONFIG",
@@ -765,10 +698,12 @@
 					"-DFOLLY_USE_LIBCPP=1",
 					"-DFOLLY_CFG_NO_COROUTINES=1",
 					"-DFOLLY_HAVE_CLOCK_GETTIME=1",
+					"-DRCT_REMOVE_LEGACY_ARCH=1",
 				);
 				OTHER_LDFLAGS = "$(inherited)";
 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				USE_HERMES = true;
 				VALIDATE_PRODUCT = YES;
 			};

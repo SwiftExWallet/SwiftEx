@@ -22,7 +22,7 @@ import {
 } from "react-native-responsive-screen";
 import Icon from "../../../../../icon";
 import { alert } from "../../../../reusables/Toasts";
-import { Chart, Line, Tooltip } from "react-native-responsive-linechart";
+import { LineChart } from "react-native-gifted-charts";
 import Clipboard from "@react-native-clipboard/clipboard";
 import SELECT_WALLET_EXC from "../../../../Modals/SELECT_WALLET_EXC";
 import { Exchange_screen_header } from "../../../../reusables/ExchangeHeader";
@@ -190,9 +190,9 @@ export const HomeView = () => {
         navigation.navigate("Home");
         return true;
       };
-      BackHandler.addEventListener("hardwareBackPress", onBackPress);
+      const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
 
-      return () => BackHandler.removeEventListener("hardwareBackPress", onBackPress);
+      return () => subscription.remove();
     }, [navigation])
   );
 
@@ -219,9 +219,7 @@ export const HomeView = () => {
   );
 
   const chartData = apiData.map((item) => ({
-    x: new Date(parseInt(item.timestamp, 10)).getTime(),
-    y: parseFloat(item.close),
-    avg: parseFloat(item.avg),
+    value: parseFloat(item.close),
   }));
 
 
@@ -380,48 +378,41 @@ export const HomeView = () => {
           {apiDataLoading ? (
             <ActivityIndicator color={"#4052D6"} size={"large"} />
           ) : (
-            <Chart
-              style={{ width: wp(98), height: 190 }}
-              data={chartData}
-              padding={{ left: 10, bottom: 30, right: 20, top: 30 }}
-              xDomain={{
-                min: Math.min(...chartData.map((d) => d.x)),
-                max: Math.max(...chartData.map((d) => d.x)),
-              }}
-              yDomain={{
-                min:
-                  Math.min(...chartData.map((d) => d.y)) -
-                  0.1 * (Math.max(...chartData.map((d) => d.y)) - Math.min(...chartData.map((d) => d.y))),
-                max:
-                  Math.max(...chartData.map((d) => d.y)) +
-                  0.1 * (Math.max(...chartData.map((d) => d.y)) - Math.min(...chartData.map((d) => d.y))),
-              }}
-            >
-              <Line
-                smoothing="bezier"
-                theme={{
-                  stroke: { color: lineColor, width: 2 },
-                  scatter: { selected: { width: 1, height: hp(99), rx: 4, color: lineColor } },
+              <LineChart
+                data={chartData}
+                adjustToWidth
+                width={wp(89)}
+                height={hp(28)}
+                color={lineColor}
+                thickness={2}
+                curved
+                areaChart
+                startFillColor={lineColor}
+                startOpacity={0.3}
+                endFillColor={lineColor}
+                endOpacity={0}
+                hideDataPoints
+                hideYAxisText
+                hideXAxisText
+                hideAxesAndRules
+                initialSpacing={0}
+                endSpacing={0}
+                pointerConfig={{
+                  pointerStripHeight: hp(26),
+                  pointerStripColor: "rgba(255,255,255,0.15)",
+                  pointerStripWidth: 1,
+                  pointerColor: lineColor,
+                  radius: 5,
+                  pointerLabelWidth: 110,
+                  pointerLabelHeight: 95,
+                  activatePointersOnLongPress: false,
+                  autoAdjustPointerLabelPosition: true,
+                  pointerLabelComponent: (items) => {
+                    setPointsData(items?.[0]?.value);
+                    return null;
+                  },
                 }}
-                tooltipComponent={
-                  <Tooltip
-                    theme={{
-                      formatter: ({ y, x }) => {
-                        setPointsData(y);
-                        setPointsDataTime(
-                          new Date(parseInt(x, 10)).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                          })
-                        );
-                      },
-                      shape: { width: 0, height: 0, dx: 0, dy: 0, color: "black" },
-                    }}
-                  />
-                }
               />
-            </Chart>
           )}
         </View>
         {/* <CandleStickChart visible={apiDataLoading} activeTheme={state.THEME.THEME} pair={PAIRS[chartIndex]}/> */}

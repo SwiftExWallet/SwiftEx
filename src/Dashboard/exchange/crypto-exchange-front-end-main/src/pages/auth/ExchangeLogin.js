@@ -25,7 +25,7 @@ import { useDispatch } from "react-redux";
 import PhoneInput from "react-native-phone-number-input";
 import { getAuth, login, saveToken, verifyLoginOtp } from "../../api";
 import { useFocusEffect, useIsFocused, useNavigation } from "@react-navigation/native";
-import RNOtpVerify from "react-native-otp-verify";
+import {OtpInput} from "react-native-otp-entry";
 import { ShowErrotoast, Showsuccesstoast, alert } from "../../../../../reusables/Toasts";
 import { ExchangeHeaderIcon } from "../../../../../header";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
@@ -77,7 +77,7 @@ const FOCUSED=useIsFocused();
 
   const removeListener = () => {
     if (Platform.OS === "android") {
-      RNOtpVerify.removeListener();
+      // RNOtpVerify.removeListener();
       console.log("removed listener");
     }
   };
@@ -396,11 +396,11 @@ const FOCUSED=useIsFocused();
     if (Platform.OS === "android") {
       if (isOtpSent) {
         try {
-          RNOtpVerify.getOtp()
-            .then((p) => RNOtpVerify.addListener(otpHandler))
-            .catch((error) => {
-              console.log(error);
-            });
+          // RNOtpVerify.getOtp()
+          //   .then((p) => RNOtpVerify.addListener(otpHandler))
+          //   .catch((error) => {
+          //     console.log(error);
+          //   });
         } catch (e) {
           console.log(e);
         }

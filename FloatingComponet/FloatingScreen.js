@@ -27,24 +27,24 @@ const FloatingScreen = ({ uri, visible, onClose }) => {
     const webViewRef = useRef(null);
 
     useEffect(() => {
-        if (visible) {
-            backHandler.current = BackHandler.addEventListener('hardwareBackPress', () => {
-                if (isMinimized) {
-                   CustomInfoProvider.show("Info", "Do you want to exit?", [
-                        { text: "Cancel", style: "cancel" },
-                        { text: "Yes", onPress: onClose },
-                    ]);
-                } else {
-                    handleHeaderBack();
-                }
-                return true;
-            });
-        }
+    if (visible) {
+        backHandler.current = BackHandler.addEventListener('hardwareBackPress', () => {
+            if (isMinimized) {
+               CustomInfoProvider.show("Info", "Do you want to exit?", [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Yes", onPress: onClose },
+                ]);
+            } else {
+                handleHeaderBack();
+            }
+            return true;
+        });
+    }
 
-        return () => {
-            if (backHandler.current) backHandler.current.remove();
-        };
-    }, [visible, isMinimized]);
+    return () => {
+        if (backHandler.current) backHandler.current.remove();
+    };
+}, [visible, isMinimized]);
 
     const panResponder = useRef(
         PanResponder.create({

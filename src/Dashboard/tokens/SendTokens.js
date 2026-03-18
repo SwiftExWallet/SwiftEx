@@ -22,7 +22,7 @@ import { Animated } from "react-native";
 import { useDispatch, useSelector } from "react-redux";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
-import { RNCamera } from 'react-native-camera';
+import { Camera, useCameraDevice, useCodeScanner } from "react-native-vision-camera";
 import {
   getBalance,
   getEthBalance,
@@ -45,6 +45,7 @@ const xrpl = require("xrpl");
 //'https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png?1644979850'
 const SendTokens = (props) => {
   const cameraRef = useRef(null);
+  const device = useCameraDevice('back');
   const [qrData, setQrData] = useState('');
   const EthBalance = useSelector((state) => state.EthBalance);
   const MaticBalance = useSelector((state) => state.MaticBalance);
@@ -66,24 +67,32 @@ const SendTokens = (props) => {
   const navigation = useNavigation();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  
-  const onBarCodeRead = (e) => {
-    if (e?.data && e?.data !== lastScannedData) {
-      setLastScannedData(e?.data); // Update the last scanned data
-      setErroVisible(false)
-      alert("success", "QR Code Decoded successfully..");
-      setAddress("");
-      setAddress(e?.data);
-      setModalVisible(false);
-  
-      if (!checkAddressValidity(e?.data)) {
-        setModalVisible(false);
+  useEffect(() => {
+    const requestPermission = async () => {
+      const status = await Camera.requestCameraPermission();
+      handleCameraStatus(status);
+    };
+    requestPermission();
+  }, []);
+  const onBarCodeRead = useCodeScanner({
+    codeTypes: ['qr'],
+    onCodeScanned: (codes) => {
+      for (const code of codes) {
+        setLastScannedData(code.value);
         setErroVisible(false)
+        alert("success", "QR Code Decoded successfully..");
         setAddress("");
-        setErroVisible(true)
+        setAddress(code.value);
+        setModalVisible(false);
+        if (!checkAddressValidity(code.value)) {
+          setModalVisible(false);
+          setErroVisible(false)
+          setAddress("");
+          setErroVisible(true)
+        }
       }
-    }
-  };
+    },
+  });
 
 
   const handleCameraStatus = (status) => {
@@ -476,15 +485,16 @@ const checkPermission = async () => {
         visible={isModalVisible}
         onRequestClose={toggleModal}
       >
-          <RNCamera
+          <Camera
             ref={cameraRef}
             style={style.preview}
-            onBarCodeRead={onBarCodeRead}
-            captureAudio={false}
-            onStatusChange={({ status }) => handleCameraStatus(status)}
-          >
+            device={device}
+            isActive={true}
+            audio={false}
+            codeScanner={onBarCodeRead}
+            captureAudio={false}>
            <QRScannerComponent setModalVisible={setModalVisible}/>
-          </RNCamera>
+          </Camera>
       </Modal>
           </View>
 </>
@@ -603,9 +613,9 @@ const style = StyleSheet.create({
     elevation: 6,
   },
   gradientButton: {
-    paddingVertical: hp(2),
     alignItems: 'center',
     justifyContent: 'center',
+    height:hp(6)
   },
   buttonContent: {
     flexDirection: 'row',

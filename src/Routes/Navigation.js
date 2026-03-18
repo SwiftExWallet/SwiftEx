@@ -89,13 +89,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../Screens/ThemeColorsConfig";
 import BridgeAssets from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/BridgeAssets";
 import { AppCheck } from "../Screens/AppChecks/AppCheck";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 const Stack = createNativeStackNavigator();
 
 const AuthStack = () => {
   const [webUri, setWebUri] = useState(null);
   return(
-    <>
+    <GestureHandlerRootView style={{flex:1}}>
     <NavigationContainer
     // theme={{ colors: { background: "#000C66" } }}
     theme={{ colors: { background: "black" } }}
@@ -663,7 +664,7 @@ const AuthStack = () => {
         visible={!!webUri}
         onClose={() => setWebUri(null)}
       />
-  </>
+  </GestureHandlerRootView>
   )
 };
 const NavigationProvider = () => {

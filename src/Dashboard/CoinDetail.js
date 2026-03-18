@@ -8,16 +8,18 @@ import {
   ScrollView,
   Image,
   Animated,
+  Dimensions,
 } from "react-native";
 import { useSelector } from "react-redux";
 import {
   widthPercentageToDP as wp,
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
-import { Area, Chart, Line, Tooltip } from "react-native-responsive-linechart";
+import { LineChart } from "react-native-gifted-charts";
 import { useNavigation } from "@react-navigation/native";
 import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import Icon from "../icon";
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export const CoinDetails = (props) => {
   const navigation = useNavigation();
@@ -131,8 +133,7 @@ export const CoinDetails = (props) => {
       }));
 
       const pt_Data = data.map((item) => ({
-        x: new Date(parseInt(item[0])).getTime(),
-        y: parseFloat(item[4]),
+        value: parseFloat(item[4]),
       }));
 
       setData(ptData);
@@ -199,57 +200,43 @@ export const CoinDetails = (props) => {
                   </Text>
                 </View>
               ) : (
-                <Chart
-                  style={styles.chart}
-                  data={chartData}
-                  padding={{ left: 10, bottom: 0, right: 0, top: 20 }}
-                  xDomain={{
-                    min: Math.min(...chartData.map((d) => d.x)),
-                    max: Math.max(...chartData.map((d) => d.x)),
-                  }}
-                  yDomain={{
-                    min:
-                      Math.min(...chartData.map((d) => d.y)) -
-                      0.05 * (Math.max(...chartData.map((d) => d.y)) - Math.min(...chartData.map((d) => d.y))),
-                    max:
-                      Math.max(...chartData.map((d) => d.y)) +
-                      0.05 * (Math.max(...chartData.map((d) => d.y)) - Math.min(...chartData.map((d) => d.y))),
-                  }}
-                >
-                          <Area
-                    theme={{
-                      gradient: {
-                        from: { color: lineColor, opacity: 0.4 },
-                        to: { color: lineColor, opacity: 0.0 },
-                      },
-                    }}
-                    smoothing="bezier"
-                  />
-                  <Line
-                    tooltipComponent={
-                      <Tooltip
-                        theme={{
-                          formatter: ({ y, x }) => {
-                            setpoints_data(y);
-                            setpoints_data_time(new Date(parseInt(x)).toLocaleTimeString());
-                          },
-                          shape: {
-                            width: 0,
-                            height: 0,
-                            color: "transparent",
-                          },
-                        }}
-                      />
-                    }
-                    theme={{
-                      stroke: { color: lineColor, width: 2 },
-                      scatter: {
-                        selected: { width: 1, height: hp(99),rx: 4, color: lineColor },
-                      },
-                    }}
-                    smoothing="bezier"
-                  />
-                </Chart>
+                    <LineChart
+                      data={chartData}
+                      adjustToWidth
+                      width={SCREEN_WIDTH - wp(8)}
+                      height={hp(28)}
+                      color={lineColor}
+                      thickness={2}
+                      curved
+                      areaChart
+                      startFillColor={lineColor}
+                      startOpacity={0.3}
+                      endFillColor={lineColor}
+                      endOpacity={0}
+                      hideDataPoints
+                      hideYAxisText
+                      hideXAxisText
+                      hideAxesAndRules
+                      initialSpacing={0}
+                      endSpacing={0}
+                      pointerConfig={{
+                        pointerStripHeight: hp(26),
+                        pointerStripColor: isDark
+                          ? "rgba(255,255,255,0.15)"
+                          : "rgba(0,0,0,0.12)",
+                        pointerStripWidth: 1,
+                        pointerColor: lineColor,
+                        radius: 5,
+                        pointerLabelWidth: 110,
+                        pointerLabelHeight: 95,
+                        activatePointersOnLongPress: false,
+                        autoAdjustPointerLabelPosition: true,
+                        pointerLabelComponent: (items) => {
+                          setpoints_data(items?.[0]?.value);
+                          return null;
+                        },
+                      }}
+                    />
               )}
             </View>
 
