@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -33,6 +33,7 @@ export const CoinDetails = (props) => {
   const [fadeAnim] = useState(new Animated.Value(0));
   const [Data, setData] = useState([]);
   const [chartError, setChartError] = useState(false);
+  const prvValue = useRef(null);
 
   const state = useSelector((state) => state);
   const isDark = state.THEME.THEME;
@@ -182,9 +183,6 @@ export const CoinDetails = (props) => {
               <Text style={styles.priceChangePercent}>
                 (+{coinData?.priceChangePercentage24h?.toFixed(1) || "1.6"}%)
               </Text>
-              <Text style={[styles.todayLabel, { color: isDark ? "#8E8E93" : "#8E8E93" }]}>
-                Today
-              </Text>
             </View>
 
             {/* Chart */}
@@ -232,7 +230,11 @@ export const CoinDetails = (props) => {
                         activatePointersOnLongPress: false,
                         autoAdjustPointerLabelPosition: true,
                         pointerLabelComponent: (items) => {
-                          setpoints_data(items?.[0]?.value);
+                          const val = items?.[0]?.value;
+                          if (prvValue.current !== val) {
+                            prvValue.current = val;
+                            setTimeout(() => setpoints_data(val), 0);
+                          } 
                           return null;
                         },
                       }}

@@ -32,6 +32,7 @@ import CandleStickChart from "./stellar/CommanCandleStickChart";
 
 
 export const HomeView = () => {
+  const prvValue = useRef(null);
   const [openChartApi, setOpenChartApi] = useState(false);
   const [visibleSelectWallet, setVisibleSelectWallet] = useState(false);
   const [chartIndex, setChartIndex] = useState(0);
@@ -408,7 +409,11 @@ export const HomeView = () => {
                   activatePointersOnLongPress: false,
                   autoAdjustPointerLabelPosition: true,
                   pointerLabelComponent: (items) => {
-                    setPointsData(items?.[0]?.value);
+                    const val = items?.[0]?.value;
+                    if (prvValue.current !== val) {
+                      prvValue.current = val;
+                      setTimeout(() => setPointsData(val), 0);
+                    }
                     return null;
                   },
                 }}

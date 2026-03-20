@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -31,7 +31,7 @@ import TokenQrCode from "./Modals/TokensQrCode";
 import InfoComponent from "./exchange/crypto-exchange-front-end-main/src/components/InfoComponent";
 
 const Asset_info = ({ route }) => {
-  const { width: SCREEN_WIDTH } = Dimensions.get("window");
+  const prvValue = useRef(null);
   const state = useSelector((state) => state);
   const isDark = state.THEME.THEME;
   const { asset_type } = route.params;
@@ -421,14 +421,6 @@ const Asset_info = ({ route }) => {
                   >
                     ${Math.abs(priceChange * currentPrice / 100).toFixed(2)} ({priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%)
                   </Text>
-                  <Text
-                    style={[
-                      styles.priceTime,
-                      { color: isDark ? "#666" : "#999" },
-                    ]}
-                  >
-                    {priceTime}
-                  </Text>
                 </View>
 
               {chartLoading ? (
@@ -488,7 +480,11 @@ const Asset_info = ({ route }) => {
                       activatePointersOnLongPress: false,
                       autoAdjustPointerLabelPosition: true,
                       pointerLabelComponent: (items) => {
-                        setCurrentPrice(items?.[0]?.value);
+                        const val = items?.[0]?.value;
+                        if (prvValue.current !== val) {
+                          prvValue.current = val;
+                          setTimeout(() => setCurrentPrice(val), 0);
+                        }
                         return null;
                       },
                     }}
