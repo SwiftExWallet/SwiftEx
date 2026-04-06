@@ -29,6 +29,7 @@ import Stellar_image from "../../assets/Stellar_(XLM).png";
 import brridge_new from "../../assets/brridge_new.png";
 import TokenQrCode from "./Modals/TokensQrCode";
 import InfoComponent from "./exchange/crypto-exchange-front-end-main/src/components/InfoComponent";
+import LinearGradient from "react-native-linear-gradient";
 
 const Asset_info = ({ route }) => {
   const prvValue = useRef(null);
@@ -202,13 +203,13 @@ const Asset_info = ({ route }) => {
       setChartData(formattedData);
       
       const lastPrice = formattedData[formattedData.length - 1];
-      setCurrentPrice(lastPrice.y);
+      setCurrentPrice(lastPrice.value);
       setPriceTime("Today");
 
-      const firstPrice = formattedData[0].y;
-      const lastPriceValue = lastPrice.y;
+      const firstPrice = formattedData[0].value;
+      const lastPriceValue = lastPrice.value;
       const change = ((lastPriceValue - firstPrice) / firstPrice) * 100;
-      setPriceChange(change);
+      setPriceChange(parseFloat(change));
       setLineColor(lastPriceValue >= firstPrice ? "#40BF6A" : "#FF6B6B");
 
       setChartLoading(false);
@@ -231,23 +232,23 @@ const Asset_info = ({ route }) => {
   };
 
   const handleSend = useCallback(() => {
-    if(asset_type.chain === "Stellar"){
-      if (asset_type.symbol === "XLM") {
+    if (asset_type.chain === "Stellar") {
+      if (asset_type.contractAddress === "Native") {
         navigation.navigate("SendXLM");
+      } else {
+        navigation.navigate("send_recive", { bala: asset_type.balance, assetIssuer: asset_type?.contractAddress, asset_name: asset_type.symbol });
       }
-      if (asset_type.symbol === "USDC") {
-        navigation.navigate("send_recive", { bala: asset_type.balance, assetIssuer:asset_type?.contractAddress, asset_name: asset_type.symbol });
-      }
-    } else if (asset_type.symbol==="BNB"||asset_type.symbol==="ETH") {
+    } else if (asset_type.contractAddress === "Native") {
       navigation.navigate("Send", {
-        token: asset_type?.symbol === "ETH" ? "Ethereum" : asset_type?.symbol,
+        token: asset_type?.chain,
       });
-    } else if (asset_type?.symbol!=="BNB"||asset_type?.symbol!=="ETH") {
+    } else {
       navigation.navigate("TokenSend", {
         tokenAddress: asset_type?.contractAddress,
-        tokenType: asset_type?.chain === "ETH" ? "Ethereum" : "Binance",
+        tokenType: asset_type?.chain,
         tokenDecimals: asset_type?.decimals,
-        tokenSymbol: asset_type?.symbol || asset_type?.name
+        tokenSymbol: asset_type?.symbol || asset_type?.name,
+        tokenImage:asset_type?.img || asset_type?.imageUrl
       });
     }
   }, [asset_type, navigation]);
@@ -384,12 +385,22 @@ const Asset_info = ({ route }) => {
           <View style={[styles.chartContainer,{backgroundColor:isDark?"#242426":"#F4F4F8"}]}>
             <View style={styles.headerSection}>
               <View style={styles.assetHeader}>
-                <Image source={assetImage} style={styles.assetIcon} />
+                  {!(assetImage?.uri||assetImage?.source)?<LinearGradient
+                    colors={['#3b82f6', '#8b5cf6']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.fallbackImageCon}
+                  >
+                    <Text style={styles.fallbackImageConText}>{assetSymbol?.charAt(0)}</Text>
+                  </LinearGradient>:
+                <Image source={assetImage} style={styles.assetIcon} />}
                 <Text
                   style={[
                     styles.assetSymbol,
                     { color: isDark ? "#FFF" : "#000" },
                   ]}
+                  numberOfLines={1}
+                  ellipsizeMode={"tail"}
                 >
                   {assetSymbol}
                 </Text>
@@ -401,7 +412,7 @@ const Asset_info = ({ route }) => {
                     { color: isDark ? "#FFF" : "#000" },
                   ]}
                 >
-                  {currentPrice?.toLocaleString('en-US', {
+                  {isNaN(currentPrice)?"Info unavailable":currentPrice?.toLocaleString('en-US', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
                   })}
@@ -419,7 +430,8 @@ const Asset_info = ({ route }) => {
                       { color: priceChange >= 0 ? "#4ADE80" : "#FF6B6B" },
                     ]}
                   >
-                    ${Math.abs(priceChange * currentPrice / 100).toFixed(2)} ({priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%)
+                    {isNaN(currentPrice)?"Info unavailable":
+                    `${Math.abs(priceChange * currentPrice / 100).toFixed(2)} ${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(2)}%`}
                   </Text>
                 </View>
 
@@ -586,7 +598,7 @@ const Asset_info = ({ route }) => {
                     >
                       {assetData.total_supply !== "N/A"
                         ? `${assetData.total_supply?.toLocaleString()} ${assetSymbol}`
-                        : "N/A"}
+                        : "Info unavailable"}
                     </Text>
                   </View>
                   <View style={[styles.statItem,{backgroundColor:isDark?"#1B1B1C":"#FFFFFF"}]}>
@@ -604,7 +616,7 @@ const Asset_info = ({ route }) => {
                         { color: isDark ? "#E6E8EB" : "#282828" },
                       ]}
                     >
-                      ${assetData.current_price?.toLocaleString()}
+                      {isNaN(assetData.current_price?.toLocaleString())?"Info unavailable":`$${assetData.current_price?.toLocaleString()}`}
                     </Text>
                   </View>
                 </View>
@@ -625,7 +637,7 @@ const Asset_info = ({ route }) => {
                         { color: isDark ? "#E6E8EB" : "#282828" },
                       ]}
                     >
-                      ${assetData.high_24h?.toLocaleString()}
+                      {isNaN(assetData.high_24h)?"Info unavailable":`$${assetData.high_24h?.toLocaleString()}`}
                     </Text>
                   </View>
                   <View style={[styles.statItem,{backgroundColor:isDark?"#1B1B1C":"#FFFFFF"}]}>
@@ -643,7 +655,7 @@ const Asset_info = ({ route }) => {
                         { color: isDark ? "#E6E8EB" : "#282828" },
                       ]}
                     >
-                      ${assetData.low_24h?.toLocaleString()}
+                      {isNaN(assetData.low_24h)?"Info unavailable":`$${assetData.low_24h?.toLocaleString()}`}
                     </Text>
                   </View>
                 </View>
@@ -694,6 +706,7 @@ const styles = StyleSheet.create({
   assetSymbol: {
     fontSize: 20,
     fontWeight: "600",
+    maxWidth:wp(40)
   },
   priceContainer: {
     marginBottom: hp(0),
@@ -821,6 +834,19 @@ const styles = StyleSheet.create({
   statsLoader: {
     paddingVertical: hp(3),
     alignItems: "center",
+  },
+  fallbackImageCon: {
+    width: 32,
+    height: 32,
+    borderRadius: 22,
+    marginRight: wp(1),
+    alignItems:"center",
+    justifyContent:"center"
+  },
+  fallbackImageConText: {
+    fontSize: 20,
+    fontWeight: "600",
+    color:"#fff"
   },
 });
 export default Asset_info;

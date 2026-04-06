@@ -10,6 +10,7 @@ import {
   PermissionsAndroid,
   Image,
   Linking,
+  ActivityIndicator,
 } from "react-native";
 import {
   widthPercentageToDP as wp,
@@ -43,6 +44,7 @@ const Settings = (props) => {
   const dispatch = useDispatch();
   const state = useSelector((state) => state);
   const theme = state.THEME.THEME ? colors.dark : colors.light;
+  const [notificationLoading,setNotificationLoading] = useState(false);
 
   const notificationPermissionStatus = async () => {
     try {
@@ -98,6 +100,7 @@ const Settings = (props) => {
 
   const handleNotification = async () => {
     try {
+      setNotificationLoading(true);
       const notiStatus = await AsyncStorageLib.getItem("notiPermissions");
       console.log(notiStatus)
       const app = getApp();
@@ -107,13 +110,16 @@ const Settings = (props) => {
         await AsyncStorageLib.setItem("notiPermissions", "true");
         setNotificationStatus(true);
         await notificationPermissionStatus();
+        setNotificationLoading(false);
       } else {
         await unsubscribeFromTopic(messagings, "txUpdates");
         await AsyncStorageLib.setItem("notiPermissions", "false");
         setNotificationStatus(false);
         await notificationPermissionStatus();
+        setNotificationLoading(false);
       }
     } catch (error) {
+      setNotificationLoading(false);
       console.error("handleNotification", error)
     }
   }
@@ -132,6 +138,17 @@ const Settings = (props) => {
             <Icon type={"ionicon"} name="wallet" size={31} color={"#4052D6"} />
           </View>
           <Text style={[styles.text, { color: theme.headingTx }]}>Choose Wallet</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.card, { borderBottomColor: theme.inactiveTx }]}
+          onPress={() => {
+            props.navigation.navigate("TokensManagement");
+          }}
+        >
+          <View style={styles.iconCon}>
+            <Icon type={"material"} name={"token"} size={31} color={"#4052D6"} />
+          </View>
+          <Text style={[styles.text, { color: theme.headingTx }]}>Manage Tokens</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -205,14 +222,15 @@ const Settings = (props) => {
             <Text style={[styles.text, { color: theme.headingTx }]}>Notification</Text>
           </View>
           <View style={Platform.OS == "android" ? { paddingRight: wp(2) } : { paddingRight: wp(3.5) }}>
-            <ToggleSwitch
+            {notificationLoading?<ActivityIndicator color={"green"} size={"small"}/>:
+              <ToggleSwitch
               isOn={notificationStatus}
               onColor="green"
               offColor="gray"
               onToggle={() => {
                 handleNotification()
               }}
-            />
+            />}
           </View>
         </View>
 

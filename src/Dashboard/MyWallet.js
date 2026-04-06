@@ -4,8 +4,10 @@ import {
   Text,
   View,
   TouchableOpacity,
+  TextInput,
+  ActivityIndicator,
 } from "react-native";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import {
   widthPercentageToDP as wp,
   heightPercentageToDP as hp,
@@ -16,14 +18,23 @@ import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import { useNavigation } from "@react-navigation/native";
 import BackupWallet from "./exchange/crypto-exchange-front-end-main/src/components/BackupWallet";
 import AuthRequest from "./reusables/AuthRequest";
+import AccessNativeStorage from "./Wallets/AccessNativeStorage";
+import CustomInfoProvider from "./exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { setCurrentWallet } from "../components/Redux/actions/auth";
+import { checkWalletExistOrNot } from "./Wallets/WalletManagement";
 
 const MyWallet = (props) => {
+  const dispatch=useDispatch();
   const navigation = useNavigation();
   const state = useSelector((state) => state);
   const [user, setUser] = useState("");
   const [visible, setVisible] = useState(false);
   const [backupVisible, setbackupVisible] = useState(false);
   const [showAuthRequest,setshowAuthRequest] = useState(false);
+  const [walletName, setWalletName] = useState("");
+  const [editWalletName, setEditWalletName] = useState(false);
+  const [updatingLoading, setUpdatingLoading] = useState(false);
 
   useEffect(() => {
     const fetch_wallet_name = async () => {
@@ -35,8 +46,86 @@ const MyWallet = (props) => {
       }
     }
     fetch_wallet_name()
-  }, []);
+  }, [updatingLoading]);
 
+  const handleWalletNameChange = (text) => {
+    const formattedUsername = text.replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu, '');
+    setWalletName(formattedUsername);
+  };
+
+  const updateUI = async (walletAddress, updatedName) => {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const pairs = await AsyncStorage.multiGet(keys);
+    const updatedPairs = pairs.map(([key, value]) => {
+      if (!value) return [key, value];
+
+      let parsed;
+      try {
+        parsed = JSON.parse(value);
+      } catch (e) {
+        return [key, value];
+      }
+
+      if (Array.isArray(parsed)) {
+        parsed = parsed.map(item =>
+          item.address === walletAddress ? { ...item, name: updatedName } : item
+        );
+      } else if (typeof parsed === "object" && parsed !== null) {
+        if (parsed.address === walletAddress) {
+          parsed = { ...parsed, name: updatedName };
+        }
+      }
+      return [key, JSON.stringify(parsed)];
+    });
+    await AsyncStorage.multiSet(updatedPairs);
+    await AsyncStorage.setItem("currentWallet",updatedName);
+    dispatch(
+      setCurrentWallet(
+        walletAddress,
+        updatedName,
+        ""
+      )
+    );
+    return {
+      status:true,
+      response:"wallet name updated success."
+    }
+  } catch (error) {
+    console.error("Error:", error);
+    return {
+      status:false,
+      response:error
+    }
+  }
+  }
+
+  const handleWalletNameUpdaing = async () => {
+    try {
+      const checkWalletName=await checkWalletExistOrNot(walletName);
+      if(checkWalletName){
+        return;
+      }
+      setUpdatingLoading(true);
+      const activeWallet = await AccessNativeStorage.getWalletAddress();
+      if (activeWallet.success) {
+        const walletUpdate = await AccessNativeStorage.walletRename(activeWallet.wallet.walletId, walletName);
+        const responseOfupdateUI = await updateUI(activeWallet.wallet.address, walletName);
+        setUpdatingLoading(false);
+        setEditWalletName(false);
+        setWalletName("");
+        if (walletUpdate.success && responseOfupdateUI.status) {
+          CustomInfoProvider.show("success", "Hurray", "Wallet name updated successfully.");
+        } else {
+          CustomInfoProvider.show("error", "!Opps", "unable to update wallet name.");
+        }
+      }
+    } catch (error) {
+      setUpdatingLoading(false);
+      CustomInfoProvider.show("error", "!Opps", "unable to update wallet name.");
+      console.error("error in handleWalletNameUpdaing: ", error);
+    }
+  }
 
   return (
     <View style={[styles.mainView, { backgroundColor: state.THEME.THEME === false ? "#fff" : "#1B1B1C" }]}>
@@ -48,8 +137,33 @@ const MyWallet = (props) => {
         <View style={[styles.inputContainer, {
           backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
         }]}>
-          <Text style={{ color: state.THEME.THEME === false ? "black":"#FFFFFF", fontSize: 19 }}>{user ? user : "Main Wallet 1"}</Text>
+          <TextInput
+            placeholder={user ? user : "Main Wallet 1"}
+            placeholderTextColor={state.THEME.THEME === false ? "black" : "#FFFFFF"}
+            style={{
+              color: state.THEME.THEME === false ? "black" : "#FFFFFF",
+              fontSize: 19, width: editWalletName?wp(90):wp(74.3)
+            }}
+            value={walletName}
+            editable={editWalletName}
+            onChangeText={(text) => {handleWalletNameChange(text)}}
+          />
+          {!editWalletName&&
+            <TouchableOpacity onPress={()=>{setEditWalletName(editWalletName?false:true)}}>
+              <Icon name="pencil" type={"materialCommunity"} color={"#4052D6"} size={25}/>
+            </TouchableOpacity>
+          }
         </View>
+        {editWalletName &&
+          <View style={styles.updateBtnsCon}>
+            <TouchableOpacity style={[styles.updateBtn, { backgroundColor: "gray" }]} disabled={updatingLoading} onPress={() => { setEditWalletName(false), setUpdatingLoading(false), setWalletName("") }}>
+              <Text style={styles.updateBtnTxt}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.updateBtn} disabled={updatingLoading} onPress={()=>{handleWalletNameUpdaing()}}>
+              {updatingLoading ? <ActivityIndicator color={"#fff"} size={"small"} /> : <Text style={styles.updateBtnTxt}>Update</Text>}
+            </TouchableOpacity>
+          </View>
+        }
       </View>
       
       <TouchableOpacity onPress={() => { setshowAuthRequest(!showAuthRequest) }} style={[styles.btnCard, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
@@ -162,5 +276,23 @@ const styles = StyleSheet.create({
     alignItems:"center",
     borderRadius:10,
     padding:10
+  },
+  updateBtn:{
+    width:wp(40),
+    paddingVertical:hp(1),
+    marginVertical:hp(1),
+    alignSelf:"center",
+    borderRadius:30,
+    alignItems:"center",
+    backgroundColor:"#4052D6"
+  },
+  updateBtnTxt:{
+    fontSize:16,
+    fontWeight:"500",
+    color:"#fff"
+  },
+  updateBtnsCon:{
+    flexDirection:"row",
+    justifyContent:"space-around"
   }
 });

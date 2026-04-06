@@ -218,7 +218,7 @@ const Passcode = (props) => {
           </TouchableOpacity>
         ))}
         <TouchableOpacity disabled={!status} onPress={()=>{resetInput(),handleBiometrics()}} style={styles.key}>
-         {status&& <Icon
+         {status === "pinset"&& <Icon
                 type={"materialCommunity"}
                 name={Platform.OS === "android" ? "fingerprint" : "face-recognition"}
                 size={36}

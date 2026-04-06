@@ -69,7 +69,8 @@ export async function swap_prepare(
     console.log("Broadcasting transactions");
 
     const broadcastResponse = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, {
-      signedTransactions
+      signedTransactions,
+      broadcastChain:walletType
     });
 
     console.log("broadcast response:", broadcastResponse);
@@ -156,7 +157,7 @@ async function signTransaction(publicKey, txData) {
       "eth",
       publicKey.toLowerCase(),
       JSON.stringify(nativeTxFormat),
-      1
+      meta.network.chainId
     );
 
     let signedTx = result?.signedTx || "";

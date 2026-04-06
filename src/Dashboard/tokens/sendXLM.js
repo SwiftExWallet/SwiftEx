@@ -77,14 +77,6 @@ const SendXLM = (props) => {
         checkPermission();
     };
 
-    useEffect(() => {
-      const requestPermission = async () => {
-        const status = await Camera.requestCameraPermission();
-        handleCameraStatus(status);
-      };
-      requestPermission();
-    }, []);
-
      const onBarCodeRead = useCodeScanner({
       codeTypes: ['qr'],
       onCodeScanned: (codes) => {
@@ -437,15 +429,15 @@ useEffect(() => {
                 Available Balance
               </Text>
              <View style={{alignSelf:"flex-end",justifyContent:"center",alignContent:"center"}}>
-             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+             {Loading?<ActivityIndicator color={"#5B65E1"} size={"small"}/>:<ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <Text style={[style.balanceAmount, { color: state.THEME.THEME === false ? "#212529" : "#FFFFFF" }]}>
                   {balance ? balance : show === false ? "0.00" : ""}
                 </Text>
               <Text style={[style.balanceAmount, { color: state.THEME.THEME === false ? "#212529" : "#FFFFFF" }]}> XLM</Text>
-              </ScrollView>
+              </ScrollView>}
              </View>
             </View>
-            <TouchableOpacity style={style.extraInfoCon} onPress={() => {setreservedError(!reservedError)}}>
+            {Loading?<ActivityIndicator color={"#5B65E1"} size={"small"}/>:<TouchableOpacity style={style.extraInfoCon} onPress={() => {setreservedError(!reservedError)}}>
             <Icon
               name={"information-outline"}
               type={"materialCommunity"}
@@ -453,7 +445,7 @@ useEffect(() => {
               size={21}
             />
             <Text style={[{ color: state.THEME.THEME === false ? "black" : "#fff" }]}> {!reservedBalance?"":reservedBalance+" XLM are reserved"}</Text>
-          </TouchableOpacity>
+          </TouchableOpacity>}
           </View>
         <View>
         <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
@@ -556,9 +548,8 @@ useEffect(() => {
             audio={false}
             codeScanner={onBarCodeRead}
             captureAudio={false}
-          >
+          />
             <QRScannerComponent setModalVisible={setModalVisible}/>
-          </Camera>
       </Modal>
         <Modal
           animationType="fade"
@@ -663,7 +654,7 @@ const style = StyleSheet.create({
         alignItems:"center"
       },
       preview: {
-        flex:1
+        ...StyleSheet.absoluteFillObject,
       },
       rectangleContainer: {
         flex: 1,
@@ -746,9 +737,6 @@ const style = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
-  },
-  preview: {
-    flex:1
   },
   pasteButton: {
     paddingHorizontal: wp(1),

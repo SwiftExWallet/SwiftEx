@@ -80,6 +80,38 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
         }
     }
 
+    @ReactMethod
+    fun signTypedData(
+        chainName: String,
+        walletAddress: String,
+        typedDataJson: String,
+        promise: Promise
+    ) {
+        try {
+            val privateKeyHex = getPrivateKey(chainName) ?:
+                return promise.reject("PRIVATE_KEY_ERROR", "Private key not found")
+
+            val credentials = Credentials.create(privateKeyHex)
+            val structuredData = StructuredDataEncoder(typedDataJson)
+            val hash           = structuredData.hashStructuredData()
+            val signature = Sign.signMessage(hash, credentials.ecKeyPair, false)
+
+            val r   = Numeric.toHexStringNoPrefix(signature.r).padStart(64, '0')
+            val s   = Numeric.toHexStringNoPrefix(signature.s).padStart(64, '0')
+            val v   = (signature.v[0].toInt() and 0xFF).toString(16).padStart(2, '0')
+            val sig = "0x$r$s$v"
+
+            val result = Arguments.createMap().apply {
+                putBoolean("success", true)
+                putString("signature", sig)
+            }
+            promise.resolve(result)
+
+        } catch (e: Exception) {
+            promise.reject("SIGN_TYPED_ERROR", e.message)
+        }
+    }
+
     private fun getPrivateKey(chainName: String): String? {
         val walletJson: String? = prefs.all["activeUserWallet"]?.toString() ?: return null
         return try {

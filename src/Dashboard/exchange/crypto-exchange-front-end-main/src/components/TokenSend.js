@@ -13,7 +13,8 @@ import {
   Modal,
   PermissionsAndroid,
   Linking,
-  NativeModules
+  NativeModules,
+  Image
 } from "react-native";
 import {
   widthPercentageToDP as wp,
@@ -40,6 +41,7 @@ import TokenTxDetails from "./TokenTxDetails";
 import LinearGradient from "react-native-linear-gradient";
 import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
 import AccessNativeStorage from "../../../../Wallets/AccessNativeStorage";
+import { CHAINS } from "../../../../../utilities/TokenUtils";
 const TokenSend = ({ route }) => {
   const toast = useToast();
   const FOCUSED = useIsFocused()
@@ -60,164 +62,82 @@ const TokenSend = ({ route }) => {
   const [ErroVisible, setErroVisible] = useState(false);
   const [showTxInfo,setShowTxInfo]=useState(false);
 
-  useEffect(() => {
-    const requestPermission = async () => {
-      const status = await Camera.requestCameraPermission();
-      handleCameraStatus(status);
-    };
-    requestPermission();
-  }, []);
 
 
-  const sendBNBToken = async (tokenAddress,tokenDecimals) => {
+  const sendERCTokens = async (
+    chain,
+    tokenAddress,
+    tokenDecimals,
+    toAddress,
+    amount,
+  ) => {
     try {
-      const BNBERC20ABI = [
-        "function transfer(address to, uint256 value) public returns (bool)"
+      const activeWalletAddress=state && state.wallet && state.wallet.address
+      const activeChain = CHAINS[chain];
+      if (!activeChain) {
+        alert('error', `Unsupported chain: ${chain}`);
+        return;
+      }
+
+      const ERC20_ABI = [
+        'function balanceOf(address) view returns (uint256)',
+        'function decimals() view returns (uint8)',
+        'function transfer(address to, uint256 amount) returns (bool)',
       ];
-      // Load wallet with private key
-      const wallet = state?.wallet?.address;
-      // Load ERC-20 contract
-      const tokenInterface = new ethers.utils.Interface(BNBERC20ABI);
+
+      const provider = new ethers.providers.JsonRpcProvider(activeChain.rpcUrl);
+
+      const tokenInterface = new ethers.utils.Interface(ERC20_ABI);
       const formattedAmount = ethers.utils.parseUnits(amount, tokenDecimals);
-      const data = tokenInterface.encodeFunctionData("transfer", [address, formattedAmount]);
-      const unsignedTx = {
+      const data = tokenInterface.encodeFunctionData('transfer', [toAddress, formattedAmount]);
+
+      const [nonce, feeData, estimatedGas] = await Promise.all([
+        provider.getTransactionCount(activeWalletAddress, 'pending'),
+        provider.getFeeData(),
+        provider.estimateGas({
+          from: activeWalletAddress,
+          to: tokenAddress,
+          data: data,
+        }).then(g => g.mul(120).div(100))
+          .catch(() => ethers.BigNumber.from(activeChain.gasLimit || 100000)),
+      ]);
+
+      const gasPrice = feeData.maxFeePerGas
+        ? feeData.maxFeePerGas.mul(120).div(100)
+        : feeData.gasPrice.mul(120).div(100);
+
+      const tx = {
+        nonce: ethers.utils.hexlify(nonce),
+        gasPrice: ethers.utils.hexlify(gasPrice),
+        gasLimit: ethers.utils.hexlify(estimatedGas),
         to: tokenAddress,
+        value: '0x0',
         data: data,
-        from: wallet
-      };
-      const { res, err } = await proxyRequest(
-        "/v1/bsc/transaction/prepare",
-        PPOST,
-        {
-          unsignedTx: unsignedTx,
-          walletAddress: wallet
-        }
-      );
-      if (err) {
-        CustomInfoProvider.show("error", err.message || "Transaction failed try again.");
-        return;
-      }
-      if (!res) {
-        CustomInfoProvider.show("error", "Transaction failed try again.");
-        return;
-      }
-      const upgradedTx = {
-        to: res.unsignedTx?.to || tokenAddress,
-        data: res.unsignedTx?.data || data,
-        gasLimit: ethers.BigNumber.from(res.gasLimit),
-        gasPrice: ethers.BigNumber.from(res.gasPrice),
-        nonce: res.nonce,
-        chainId: parseInt(res.chainId) || 56,
-        value: res.value ? ethers.BigNumber.from(res.value) : ethers.BigNumber.from(0),
+        chainId: activeChain.chainId,
       };
 
       const { TransactionSigner } = NativeModules;
-      const tx = {
-        chainId: parseInt(res.chainId) || 56,
-        nonce: ethers.utils.hexlify(res.nonce),
-        gasPrice: ethers.utils.hexlify(
-          ethers.BigNumber.from(res.gasPrice)
-        ),
-        gasLimit: ethers.utils.hexlify(
-          ethers.BigNumber.from(res.gasLimit)
-        ),
-        to: res.unsignedTx?.to || tokenAddress,
-        value: ethers.utils.hexlify(
-          res.value ? ethers.BigNumber.from(res.value) : 0
-        ),
-        data: (res.unsignedTx?.data || data).startsWith("0x")
-          ? (res.unsignedTx?.data || data)
-          : "0x" + (res.unsignedTx?.data || data),
-      };
       const signedTx = await TransactionSigner.signTransaction(
-        "bsc",
-        address,
+        chain,
+        activeWalletAddress,
         JSON.stringify(tx),
-        tx.chainId
+        activeChain.chainId,
       );
       let rawTx = signedTx.signedTx;
-      
-      if (rawTx.startsWith("0x0x")) {
-        rawTx = rawTx.replace(/^0x/, "");
+      if (rawTx.startsWith('0x0x')) {
+        rawTx = rawTx.replace(/^0x/, '');
       }
-
-      const respoExe = await proxyRequest(
-        "/v1/bsc/transaction/broadcast",
-        PPOST,
-        { signedTx: rawTx }
-      );
-      console.log("Broadcast response:", respoExe);
-      if (respoExe?.err) {
-        CustomInfoProvider.show("error", respoExe.err.message || "Transaction failed try again.");
-        return;
-      }
-      if (respoExe?.res?.txHash) {
+      const txResponse = await provider.sendTransaction(rawTx);
+      if (txResponse?.hash) {
         CustomInfoProvider.show("success", "Transaction successful!");
-        await ShortTermStorage.saveTx(state && state.wallet && state.wallet.address,{chain: "BSC",typeTx: "Token Send",status: "Pending",hash: respoExe?.res?.txHash});
+        await ShortTermStorage.saveTx(activeWalletAddress, { chain: chain, typeTx: "Token Send", status: "Pending", hash: txResponse.hash });
         navigation.navigate("Transactions");
       } else {
-             CustomInfoProvider.show("error", "Transaction failed try again.");
+        CustomInfoProvider.show("error", "Transaction failed try again.");
       }
     } catch (error) {
       console.error("Transaction Error:", error);
       CustomInfoProvider.show("error", "Transaction failed try again.");
-    } finally {
-      setAddress();
-      setAmount();
-      setdisable(false);
-      setPayment_loading(false);
-    }
-  };
-  // send Ether tokens
-  const sendEthTokens = async (tokenAddress,tokenDecimals) => {
-    try {
-      const usdtAbi = [
-        "function balanceOf(address) view returns (uint256)",
-        "function decimals() view returns (uint8)",
-        "function transfer(address to, uint256 amount) returns (bool)"
-      ];
-        // Load wallet with private key
-        const wallet = state?.wallet?.address;
-        // Load ERC-20 contract
-        const tokenInterface = new ethers.utils.Interface(usdtAbi);
-        const formattedAmount = ethers.utils.parseUnits(amount, tokenDecimals);
-        const data = tokenInterface.encodeFunctionData("transfer", [address, formattedAmount]);
-      const preInfo = await proxyRequest(`/v1/eth/wallet-address/${wallet}/info`, PGET);
-      if (preInfo.err) {
-        alert("error", preInfo.err.message||"Something went wrong...")
-      }
-      const { TransactionSigner } = NativeModules;
-      const gasPriceBN = ethers.BigNumber.from(preInfo.res.gasFeeData.gasPrice);
-      const tx = {
-        nonce: ethers.utils.hexlify(preInfo.res.transactionCount),
-        gasPrice: ethers.utils.hexlify(gasPriceBN),
-        gasLimit: ethers.utils.hexlify(100000),
-        to: tokenAddress,
-        value: "0x0",
-        data: data,
-      };
-      
-      const signedTx = await TransactionSigner.signTransaction(
-        "eth",
-        wallet,
-        JSON.stringify(tx),
-        1
-      );
-      let rawTx = signedTx.signedTx;
-      if (rawTx.startsWith("0x0x")) {
-        rawTx = rawTx.replace(/^0x/, "");
-      }
-      const respoExe = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, { signedTx: rawTx });
-      if (respoExe?.res?.txHash) {
-        alert("success", `Transaction successful!`);
-        await ShortTermStorage.saveTx(state && state.wallet && state.wallet.address,{chain: "ETH",typeTx: "Token Send",status: "Pending",hash: respoExe?.res?.txHash});
-        navigation.navigate("Transactions");
-      }else{
-        CustomInfoProvider.show("Error", respoExe.err.message||"Transaction failed. Check logs.");
-      }
-    } catch (error) {
-      console.error("Transaction Error:", error);
-     CustomInfoProvider.show("Error", "Transaction failed. Check logs.");
     } finally {
       setAddress();
       setAmount();
@@ -275,16 +195,9 @@ const TokenSend = ({ route }) => {
         setLoading(true)
         setMessage();
         setPayment_loading(false);
-        if (route?.params?.tokenType === "Ethereum") {
-          const newToken = await fetchTokenInfo(route?.params?.tokenAddress);
-          setBalance(newToken?.balance);
-          setLoading(false);
-        }
-        else {
-          const newToken = await fetchBNBTokenInfo(route?.params?.tokenAddress);
-          setBalance(newToken?.balance);
-          setLoading(false);
-        }
+        const newToken = await fetchTokenInfo(route?.params?.tokenAddress,route?.params?.tokenType?.slice(0,3));
+        setBalance(newToken?.balance);
+        setLoading(false);
       } catch (error) {
         console.log("-TokenEffect---", error)
         setBalance(0.00);
@@ -321,10 +234,10 @@ const TokenSend = ({ route }) => {
   }, [amount]);
 
   // Fetch token details
-  const fetchTokenInfo = async (address) => {
+  const fetchTokenInfo = async (address,network) => {
     try {
       if (address && state?.wallet?.address) {
-        const fetchedTokens = await getTokenBalancesUsingAddress(address, state?.wallet?.address, "ETH")
+        const fetchedTokens = await getTokenBalancesUsingAddress(address, state?.wallet?.address, network)
         console.log("walleetREspo--", fetchedTokens)
         if (fetchedTokens.status) {
           return fetchedTokens.tokenInfo[0]
@@ -394,7 +307,6 @@ const TokenSend = ({ route }) => {
     }
   };
 
-
   // Reset lastScannedData when modal is closed
   useEffect(() => {
     if (!isModalVisible) {
@@ -403,7 +315,7 @@ const TokenSend = ({ route }) => {
   }, [isModalVisible]);
   return (
     <>
-      <Wallet_screen_header title="Send" onLeftIconPress={() => navigation.goBack()} />
+      <Wallet_screen_header title={`Send `+route?.params?.tokenSymbol || 'TOKEN'} onLeftIconPress={() => navigation.goBack()} />
       <ErrorComponet
         isVisible={ErroVisible}
         onClose={() => setErroVisible(false)}
@@ -452,6 +364,18 @@ const TokenSend = ({ route }) => {
             </TouchableOpacity>
               </View>
             </View>
+            <View style={{borderBottomColor:"gray", borderWidth:0.5,marginVertical:15}}/>
+            <View style={styles.balanceHeader}>
+              <Text style={[styles.networkInfoTxt, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
+                Destination network
+              </Text>
+              <View style={{flexDirection:"row",alignItems:"center"}}>
+                <Image source={{uri:CHAINS[route?.params?.tokenType]?.imageUrl}} width={wp(6.7)} height={hp(3)}/>
+               <Text style={[styles.networkInfoTxt, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
+                {CHAINS[route?.params?.tokenType]?.name}
+              </Text>
+              </View>
+            </View>
               <View style={{borderBottomColor:"gray", borderWidth:0.5,marginVertical:15}}/>
             <View style={styles.balanceHeader}>
               <Text style={[styles.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
@@ -465,9 +389,13 @@ const TokenSend = ({ route }) => {
                   {balance ? balance : show === false ? "0.00" : ""}
                 </Text>
               </ScrollView>
-              <Text style={[styles.currency, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
-                {route?.params?.tokenSymbol || 'TOKEN'}
-              </Text>
+              <View style={{alignItems:"center"}}>
+                <Image source={{ uri: CHAINS[route?.params?.tokenType]?.imageUrl }} width={20} height={20} style={styles.overLayImg} />
+                <Image source={{ uri: route?.params?.tokenImage }} width={40} height={40}/>
+                <Text style={[styles.currency, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
+                  {route?.params?.tokenSymbol || 'TOKEN'}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -578,9 +506,8 @@ const TokenSend = ({ route }) => {
             audio={false}
             codeScanner={onBarCodeRead}
             captureAudio={false}
-          >
+          />
             <QRScannerComponent setModalVisible={setModalVisible} />
-          </Camera>
         </View>
       </Modal>
 
@@ -596,17 +523,14 @@ const TokenSend = ({ route }) => {
           tokenAddress: route?.params?.tokenAddress,
           recipientAddress: address,
           amount: amount,
-          network: route?.params?.tokenType === "Binance" ? "bsc" : "ethereum"
+          networkName: route?.params?.tokenType?.toLowerCase(),
+          network: route?.params?.tokenType?.slice(0,3),
+          tokenDecimals:route?.params?.tokenDecimals
         }}
         theme={state.THEME.THEME === false ? "light" : "dark"}
         onNextStep={() => {
           setShowTxInfo(false);
-          if (route?.params?.tokenType === "Binance") {
-            sendBNBToken(route?.params?.tokenAddress, route?.params?.tokenDecimals);
-          }
-          if (route?.params?.tokenType === "Ethereum") {
-            sendEthTokens(route?.params?.tokenAddress, route?.params?.tokenDecimals);
-          }
+            sendERCTokens(route?.params?.tokenType?.slice(0,3),route?.params?.tokenAddress, route?.params?.tokenDecimals,address,amount);
         }}
       />
     </>
@@ -687,6 +611,7 @@ const styles = StyleSheet.create({
   currency: {
     fontSize: 16,
     fontWeight: '600',
+    marginTop:hp(0.5)
   },
   maxButton: {
     paddingHorizontal: wp(4),
@@ -741,7 +666,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   camera: {
-    flex: 1,
+     ...StyleSheet.absoluteFillObject,
   },
   cameraOverlay: {
     flex: 1,
@@ -784,4 +709,16 @@ const styles = StyleSheet.create({
     paddingVertical: hp(4),
     paddingHorizontal: wp(8),
   },
+  networkInfoTxt: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    marginLeft:wp(1)
+  },
+  overLayImg: {
+    position: "absolute",
+    zIndex: 30,
+    bottom: 19,
+    left: 1
+  }
 });

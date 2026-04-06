@@ -28,12 +28,14 @@ import {
   getXrpBalance,
   getMaticBalance,
 } from "../../components/Redux/actions/auth";
+import { useNavigation } from "@react-navigation/native";
 import { alert } from "../reusables/Toasts";
 import Icon from "../../icon";
 import { Wallet_screen_header } from "../reusables/ExchangeHeader";
 import AccessNativeStorage from "./AccessNativeStorage";
 import apiHelper from "../exchange/crypto-exchange-front-end-main/src/apiHelper";
-import { REACT_APP_HOST } from "../exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
+import AuthRequest from "../reusables/AuthRequest";
+import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 
 const WALLET_ICONS = {
   BSC: Bnbimage,
@@ -49,17 +51,22 @@ const NAVIGATION_DELAY = 400;
 const Wallet_selection_bottom = ({ onClose }) => {
   const state = useSelector((state) => state);
   const dispatch = useDispatch();
-
+  const navigation = useNavigation();
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const [wallets, setWallets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [openAuthRequest, setOpenAuthRequest] = useState(false);
+  const [removeWallet, setRemoveWallet] = useState(null);
 
   const isDarkTheme = state.THEME?.THEME === true;
   const currentWalletName = state.wallet?.name;
 
   const containerStyle = useMemo(
-    () => [style.body],
+    () => [
+      style.body,
+      { backgroundColor: isDarkTheme ? "#1B1B1C" : "#FFFFFF" }
+    ],
     [isDarkTheme]
   );
 
@@ -160,6 +167,7 @@ const Wallet_selection_bottom = ({ onClose }) => {
 
       const parsedWallets = await AccessNativeStorage.getAllWallets();
       setWallets(parsedWallets);
+      return parsedWallets;
     } catch (error) {
       console.error("Error fetching wallets:", error);
       setWallets([]);
@@ -182,17 +190,44 @@ const Wallet_selection_bottom = ({ onClose }) => {
     fetchAllWallets();
   }, [fadeAnim, fetchAllWallets]);
 
+  const ManageDeleteWallet=(deleteRequest)=>{
+    setRemoveWallet(deleteRequest)
+    CustomInfoProvider.show("warning", "Before you go", "This action will permanently erase your wallet information from the app. We recommend backup your wallet information before proceeding.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Remove Wallet", style: "destructive", onPress: () => {setOpenAuthRequest(true)} },
+    ]);
+  }
+
+  const performeDeleteWalletAction=async(removeWalletReq)=>{
+    const response=await AccessNativeStorage.delete(removeWalletReq.walletId);
+    if(response==="wallet_removed"){
+      if(wallets.length===1){
+        const res = await AsyncStorageLib.getItem("AppStatusChecks");
+        const parseres = JSON.parse(res);
+        await AsyncStorageLib.clear();
+        await AsyncStorageLib.setItem("AppStatusChecks", JSON.stringify(parseres));
+        navigation.navigate("Passcode");
+      }
+      const walletUpdates= await fetchAllWallets();
+      if(removeWalletReq.name === currentWalletName){
+        handleWalletSelect(walletUpdates[0]);
+      }
+      CustomInfoProvider.show("success","Wallet Deleted","wallet deleted successfully!");
+    }else{
+      CustomInfoProvider.show("error","Wallet Deleted Faild","wallet deleted Faild!");
+    }
+  }
+
   const renderWalletItem = useCallback((item, index) => {
     const walletIcon = getWalletIcon(item.walletType);
     const isActive = item.name === currentWalletName;
 
     return (
-      <TouchableOpacity
+      <View
         key={`${item.name}-${index}`}
-        style={[style.box, { backgroundColor: isDarkTheme ? isActive?"#4052D6":"#2b2b2dff" : isActive?"#4052D6":"#d1d1e7ff" }]}
-        onPress={() => handleWalletSelect(item)}
+        style={[style.box, { backgroundColor: isDarkTheme ? isActive?"#4052D6":"#242426" : isActive?"#4052D6":"#F4F4F8" }]}
       >
-        <View style={style.walletContainer}>
+        <TouchableOpacity style={style.walletContainer} onPress={() => handleWalletSelect(item)}>
           <View style={style.walletInfo}>
             <Image
               style={style.img}
@@ -218,8 +253,16 @@ const Wallet_selection_bottom = ({ onClose }) => {
               />
             </View>
           )}
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={()=>{ManageDeleteWallet(item)}}>
+          <Icon
+                name="delete-circle-outline"
+                type="materialCommunity"
+                size={40}
+                color={"#dd1515bb"}
+              />
+        </TouchableOpacity>
+      </View>
     );
   }, [currentWalletName, isDarkTheme, getWalletIcon, handleWalletSelect]);
 
@@ -249,6 +292,7 @@ const Wallet_selection_bottom = ({ onClose }) => {
           }
         />
       </View>
+      <AuthRequest visible={openAuthRequest} heading={"Account Access"} subHeading={"Authentication required for account actions."} proccedNextStep={()=>{setOpenAuthRequest(false),performeDeleteWalletAction(removeWallet)}}/>
     </View>
   );
 };
@@ -267,15 +311,20 @@ const style = StyleSheet.create({
     fontSize: 16,
   },
   box: {
-    marginHorizontal: wp(4),
-    padding: wp(3),
+    margin:4,
+    flexDirection:"row",
     borderRadius: 19,
-    margin:4
+    width:wp(90),
+    alignItems:"center",
+    alignContent:"center",
+    alignSelf:"center"
   },
   walletContainer: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    width:wp(78),
+    padding: wp(3),
   },
   walletInfo: {
     flexDirection: "row",

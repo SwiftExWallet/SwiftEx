@@ -188,7 +188,7 @@ const CustomDrawer = ({ isVisible, onClose }) => {
 };
 
 
-export const Wallet_screen_header = ({ title, onLeftIconPress }) => {
+export const Wallet_screen_header = ({ title, onLeftIconPress,rightIcon, onRightIconPress }) => {
   const state = useSelector((state) => state);
   return (
     <>
@@ -202,7 +202,14 @@ export const Wallet_screen_header = ({ title, onLeftIconPress }) => {
           />
         </TouchableOpacity>
         <Text style={[styles.exchangeheaderTitle, { marginTop: Platform.OS === "ios" && hp(4),color:state.THEME.THEME===false?"black":"#fff" }]}>{title}</Text>
-      <View style={styles.exchangerightIconContainer} />
+        {rightIcon !== null ? <TouchableOpacity onPress={onRightIconPress} style={[styles.exchangeleftIconContainer, { marginTop: Platform.OS === "ios" && hp(4) }]}>
+          <Icon
+            name={rightIcon}
+            type={"materialCommunity"}
+            size={30}
+            color={state.THEME.THEME === false ? "black" : "#fff"}
+          />
+        </TouchableOpacity> : <View style={styles.exchangerightIconContainer} />}
       </View>
     </>
   );

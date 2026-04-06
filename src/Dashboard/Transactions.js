@@ -21,9 +21,10 @@ import { useSelector } from 'react-redux';
 import { Wallet_screen_header, TransactionForStellar } from './reusables/ExchangeHeader';
 import { useIsFocused, useNavigation, useRoute, useNavigationState } from '@react-navigation/native';
 import StellarTransactionHistory from './exchange/crypto-exchange-front-end-main/src/pages/StellarTransactionHistory';
-import { PGET, proxyRequest } from './exchange/crypto-exchange-front-end-main/src/api';
+import { PGET, PPOST, proxyRequest } from './exchange/crypto-exchange-front-end-main/src/api';
 import CustomInfoProvider from './exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import ShortTermStorage from '../utilities/ShortTermStorage';
+import { CHAINS } from '../utilities/TokenUtils'
 
 const ThemeContext = React.createContext();
 
@@ -140,29 +141,7 @@ const TransactionSkeleton = ({ colors }) => (
 // Chain Selector Component
 const ChainSelector = ({ activeChain, onSelect, colors }) => {
   const [modalVisible, setModalVisible] = useState(false);
-  
-  const chains = [
-    { 
-      id: 1, 
-      name: "Ethereum", 
-      symbol: "ETH",
-      icon: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2/logo.png"
-    },
-    { 
-      id: 2, 
-      name: "BNB Smart Chain", 
-      symbol: "BSC",
-      icon: "https://tokens.pancakeswap.finance/images/0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c.png"
-    },
-    { 
-      id: 3, 
-      name: "Stellar", 
-      symbol: "STR",
-      icon: "https://stellar.myfilebase.com/ipfs/QmSTXU2wn1USnmd5ZypA5zMze259wEPSDP3i8wivyr9qiq"
-    },
-  ];
-
-  const activeChainData = chains.find(c => c.symbol === activeChain);
+  const activeChainData = Object.values(CHAINS).find(c => c.symbol === activeChain);
 
   return (
     <>
@@ -170,7 +149,7 @@ const ChainSelector = ({ activeChain, onSelect, colors }) => {
         style={[styles.chainSelectorButton, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}
         onPress={() => setModalVisible(true)}
       >
-        <Image source={{ uri: activeChainData?.icon }} style={styles.chainIconSmall} />
+        <Image source={{ uri: activeChainData?.imageUrl }} style={styles.chainIconSmall} />
         <Text style={[styles.chainSelectorText, { color: colors.textPrimary }]}>
           {activeChainData?.symbol}
         </Text>
@@ -194,7 +173,7 @@ const ChainSelector = ({ activeChain, onSelect, colors }) => {
               Select Network
             </Text>
             
-            {chains.map((chain) => (
+            {Object.values(CHAINS).map((chain) => (
               <TouchableOpacity
                 key={chain.id}
                 style={[
@@ -207,7 +186,7 @@ const ChainSelector = ({ activeChain, onSelect, colors }) => {
                   setModalVisible(false);
                 }}
               >
-                <Image source={{ uri: chain.icon }} style={styles.chainIcon} />
+                <Image source={{ uri: chain.imageUrl }} style={styles.chainIcon} />
                 <View style={styles.chainDetails}>
                   <Text style={[styles.chainName, { color: colors.textPrimary }]}>
                     {chain.name}
@@ -294,6 +273,11 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
       case 'ETH': return `https://etherscan.io/tx/${item.hash}`;
       case 'BSC':
       case 'BNB': return `https://bscscan.com/tx/${item.hash}`;
+      case "POL": return `https://polygonscan.com/tx/${item.hash}`
+      case "ARB": return `https://arbiscan.io/tx/${item.hash}`
+      case "OPT": return `https://optimistic.etherscan.io/tx/${item.hash}`
+      case "AVAX": return `https://avascan.info/blockchain/c/tx/${item.hash}`
+      case "BASE": return `https://basescan.org/tx/${item.hash}`
       default: return null;
     }
   };
@@ -483,7 +467,7 @@ const TransactionHistory = () => {
   useEffect(() => {
     // Only set initial chain on first mount or when explicitly passed via route params
     if (route?.params?.txType) {
-      setActiveChain(route.params.txType);
+      setActiveChain(route.params.txType||"ETH");
     }
     
     // Auto-select filter based on previous screen
@@ -558,15 +542,18 @@ const TransactionHistory = () => {
         setLoadingMore(true);
       }
 
-      const chain = activeChain === 'ETH' ? 'eth' : 'bsc';
-      let endpoint = `/v1/transaction-history/${walletAddress}/${chain}`;
+
+      let endpoint = `/v1/transaction-history`;
 
       const params = new URLSearchParams();
       if (isLoadMore && sentPageKey) params.append('sentPageKey', sentPageKey);
       if (isLoadMore && receivedPageKey) params.append('receivedPageKey', receivedPageKey);
       if (params.toString()) endpoint += `?${params.toString()}`;
 
-      const { res, err } = await proxyRequest(endpoint, PGET);
+      const { res, err } = await proxyRequest(endpoint, PPOST,{
+        walletAddress,
+        chain:activeChain.toLowerCase()==="bnb"?"bsc":activeChain.toLowerCase()
+      });
 
       if (err?.status) {
         setError('Failed to fetch transactions');

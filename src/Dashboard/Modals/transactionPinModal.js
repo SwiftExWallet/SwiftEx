@@ -154,7 +154,7 @@ const TransactionPinModal = ({
             if (res.txHash) {
               try {
                 await ShortTermStorage.saveTx(state && state.wallet && state.wallet.address,{chain: "ETH",typeTx: "Send",status: "Pending",hash: res?.txHash});
-                ShowToast(toast, "Transaction Successful");
+                // ShowToast(toast, "Transaction Successful");
   
                 setLoading(false);
                 setLoader(false);
@@ -193,7 +193,7 @@ const TransactionPinModal = ({
                 );
   
                 console.log(saveTransaction);
-                ShowToast(toast, "Transaction Successful");
+                // ShowToast(toast, "Transaction Successful");
   
                 setLoading(false);
                 setLoader(false);
@@ -225,7 +225,7 @@ const TransactionPinModal = ({
       
          if (res.txHash) {
               try {
-                ShowToast(toast, "Transaction Successful");
+                // ShowToast(toast, "Transaction Successful");
                 await ShortTermStorage.saveTx(state && state.wallet && state.wallet.address,{chain: "BSC",typeTx: "Send",status: "Pending",hash: res?.txHash});
                 setLoading(false);
                 setLoader(false);
@@ -261,7 +261,7 @@ const TransactionPinModal = ({
               );
   
               console.log(saveTransaction);
-              ShowToast(toast, "Transaction Successful");
+              // ShowToast(toast, "Transaction Successful");
   
               setLoading(false);
               setDisable(false);

@@ -6,10 +6,10 @@ import {
   Platform,
   UIManager,
   TouchableOpacity,
-  StatusBar, SafeAreaView, TouchableWithoutFeedback, ActivityIndicator
+  StatusBar, ActivityIndicator,
+  ScrollView
 } from "react-native";
 import { Text } from "react-native-paper";
-import SendModal from "./Modals/SendModal";
 import RecieveModal from "./Modals/RecieveModal";
 import { useNavigation } from "@react-navigation/native";
 import {
@@ -17,25 +17,14 @@ import {
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
 import { useDispatch, useSelector } from "react-redux";
-import {
-  getEthBalance,
-  getMaticBalance,
-  getXrpBalance,
-} from "../components/Redux/actions/auth";
 import { Animated } from "react-native";
 import SwapModal from "./Modals/SwapModal";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
-import {
-  getEthPrice,
-  getBnbPrice,
-  getXrpPrice,
-  getXLMPrice,
-} from "../utilities/utilities";
 import Icon from "../icon";
 import Wallet_selection_bottom from "./Wallets/Wallet_selection_bottom";
-import CustomInfoProvider from "./exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import { PORTFOLIO_CONFIG } from "../components/Redux/actions/type";
 import Modal from "react-native-modal";
+import InvestmentChart from "./InvestmentChart";
 if (
   Platform.OS === "android" &&
   UIManager.setLayoutAnimationEnabledExperimental(true)
@@ -60,11 +49,6 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
       UIManager.setLayoutAnimationEnabledExperimental(true);
     }
   }
-  const openModal1 = () => {
-    setModalVisible(true);
-    setModalVisible2(false);
-    setModalVisible3(false);
-  };
 
   const openModal2 = () => {
     setModalVisible(false);
@@ -151,7 +135,9 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
   };
   
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: themeColors.bg }]}>
+    <View style={[styles.safeArea, { backgroundColor: themeColors.bg }]}>
+    <ScrollView>
+    
       <StatusBar
         barStyle={isDark ? "light-content" : "dark-content"}
         backgroundColor={themeColors.header}
@@ -172,7 +158,7 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
                 onPress={() => setWallet_modal(true)}
               >
                 <Text style={[styles.walletNameText, { color: themeColors.text }]}>
-                  {user ? user.slice(0, 11) : "Wallet"}
+                  {user ? user.slice(0, 14) : "Wallet"}
                 </Text>
                 <Icon
                   name="chevron-down-outline"
@@ -234,7 +220,7 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
                 name: "Send",
                 icon: "paper-plane-outline",
                 type: "ionicon",
-                action: openModal1,
+                action: ()=>{navigation.navigate("Send")},
               },
               {
                 name: "Receive",
@@ -282,10 +268,15 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
               </TouchableOpacity>
             ))}
           </View>
+          <TouchableOpacity style={styles.navCon} onPress={() => { navigation.navigate("TokensManagement") }}>
+            <Text style={[styles.featureText, { color: "#4052D6",marginTop: 0}]}>Manage </Text>
+            <Icon name={"options"} type={"ionicon"} size={21} color={"#4052D6"} />
+          </TouchableOpacity>
+          <InvestmentChart/>
         </View>
       )}
 
-      <SendModal modalVisible={modalVisible} setModalVisible={setModalVisible} />
+
       <RecieveModal modalVisible={modalVisible2} setModalVisible={setModalVisible2} />
       <SwapModal
         modalVisible={modalVisible3}
@@ -340,7 +331,8 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
               <Wallet_selection_bottom onClose={handleClosewalletmodal} />
             </View>
       </Modal>
-    </SafeAreaView>
+    </ScrollView>
+    </View>
   );
 };
 
@@ -348,7 +340,7 @@ export default MyHeader2;
 
 const styles = StyleSheet.create({
   safeArea: {
-    width:"100%"
+    width:"100%",
   },
   headerContainer: {
     width: wp(100),
@@ -370,7 +362,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   walletNameText: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "800",
     marginRight: 5,
   },
@@ -461,5 +453,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 15,
     padding: 5,
+  },
+  navCon: {
+    marginVertical:hp(1),
+    alignSelf:"flex-end",
+    marginHorizontal:wp(5),
+    flexDirection:"row",
+    alignContent:"center",
+    justifyContent:"center"
   },
 });

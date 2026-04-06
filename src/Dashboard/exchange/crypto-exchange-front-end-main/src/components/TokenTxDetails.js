@@ -16,25 +16,9 @@ import axios from 'axios';
 import { RPC } from '../../../../constants';
 import { REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL } from '../ExchangeConstants';
 import Icon from '../../../../../icon';
+import { CHAINS } from '../../../../../utilities/TokenUtils';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-const NETWORKS = {
-  ethereum: {
-    name: 'Ethereum Mainnet',
-    rpc: RPC.ETHRPC,
-    symbol: 'ETH',
-    gasLimit: 65000,
-    coingeckoId: 'ethereum'
-  },
-  bsc: {
-    name: 'Binance Smart Chain',
-    rpc: RPC.BSCRPC,
-    symbol: 'BNB',
-    gasLimit: 65000,
-    coingeckoId: 'binancecoin'
-  },
-};
 
 const ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
@@ -131,11 +115,9 @@ const TokenTxDetails = ({ visible, onClose, params, theme,onNextStep }) => {
     setTimeout(() => onClose(), 300);
   };
 
-  const getTokenInfo = async (tokenAddress, network) => {
-    const config = NETWORKS[network];
-    const provider = new ethers.providers.JsonRpcProvider(config.rpc);
+  const getTokenInfo = async (tokenAddress, config) => {
+    const provider = new ethers.providers.JsonRpcProvider(config.rpcUrl);
     const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-
     const [name, symbol, decimals] = await Promise.all([
       tokenContract.name().catch(() => 'Unknown Token'),
       tokenContract.symbol().catch(() => 'UNKNOWN'),
@@ -151,16 +133,14 @@ const TokenTxDetails = ({ visible, onClose, params, theme,onNextStep }) => {
     };
   };
 
-  const getWalletBalances = async (walletAddress, tokenAddress, network) => {
-    const config = NETWORKS[network];
-    const provider = new ethers.providers.JsonRpcProvider(config.rpc);
+  const getWalletBalances = async (walletAddress, tokenAddress,config) => {
+    const provider = new ethers.providers.JsonRpcProvider(config.rpcUrl);
     const nativeBalanceWei = await provider.getBalance(walletAddress);
     const nativeBalance = ethers.utils.formatEther(nativeBalanceWei);
     const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
     const decimals = await tokenContract.decimals();
     const tokenBalanceRaw = await tokenContract.balanceOf(walletAddress);
     const tokenBalance = ethers.utils.formatUnits(tokenBalanceRaw, decimals);
-
     return {
       native: {
         balance: nativeBalance,
@@ -174,9 +154,8 @@ const TokenTxDetails = ({ visible, onClose, params, theme,onNextStep }) => {
     };
   };
 
-  const getGasPrice = async (network) => {
-    const config = NETWORKS[network];
-    const provider = new ethers.providers.JsonRpcProvider(config.rpc);
+  const getGasPrice = async (config) => {
+    const provider = new ethers.providers.JsonRpcProvider(config.rpcUrl);
     const feeData = await provider.getFeeData();
     const gasPrice = feeData.gasPrice;
     const gasPriceGwei = ethers.utils.formatUnits(gasPrice, 'gwei');
@@ -187,43 +166,28 @@ const TokenTxDetails = ({ visible, onClose, params, theme,onNextStep }) => {
     };
   };
 
-  const getNativeTokenPrice = async (network) => {
-    try {
-      const config = NETWORKS[network];
-      const response = await axios.get(
-        `${REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL}?ids=${config.coingeckoId}&vs_currencies=usd`
-      );
-      return response.data[config.coingeckoId]?.usd || 0;
-    } catch {
-      return 0;
-    }
-  };
-
   const calculateFees = async () => {
     setLoading(true);
     setError(null);
     setResult(null);
 
     try {
-      const { walletAddress, tokenAddress, recipientAddress, amount, network = 'ethereum' } = params;
+      const { walletAddress, tokenAddress, recipientAddress, amount, network, tokenDecimals } = params;
 
       if (!ethers.utils.isAddress(walletAddress)) throw new Error('Invalid wallet address');
       if (!ethers.utils.isAddress(tokenAddress)) throw new Error('Invalid token address');
       if (!ethers.utils.isAddress(recipientAddress)) throw new Error('Invalid recipient address');
       if (parseFloat(amount) <= 0) throw new Error('Amount must be greater than 0');
 
-      const config = NETWORKS[network];
-      const [tokenInfo, balances, gasData, nativePrice] = await Promise.all([
-        getTokenInfo(tokenAddress, network),
-        getWalletBalances(walletAddress, tokenAddress, network),
-        getGasPrice(network),
-        getNativeTokenPrice(network)
+      const config = CHAINS[network];
+      const [tokenInfo, balances, gasData] = await Promise.all([
+        getTokenInfo(tokenAddress,config),
+        getWalletBalances(walletAddress, tokenAddress, config),
+        getGasPrice(config)
       ]);
-
       const estimatedGas = config.gasLimit;
       const txFeeWei = BigInt(gasData.gasPrice) * BigInt(estimatedGas);
       const txFee = ethers.utils.formatEther(txFeeWei);
-      const txFeeUsd = parseFloat(txFee) * nativePrice;
       const nativeBalance = parseFloat(balances.native.balance);
       const tokenBalance = parseFloat(balances.token.balance);
       const sendAmount = parseFloat(amount);
@@ -231,7 +195,6 @@ const TokenTxDetails = ({ visible, onClose, params, theme,onNextStep }) => {
       const hasSufficientNative = nativeBalance >= txFeeAmount;
       const hasSufficientToken = tokenBalance >= sendAmount;
       const canExecuteTransfer = hasSufficientNative && hasSufficientToken;
-
       const warnings = [];
       const errors = [];
 
@@ -263,7 +226,6 @@ const TokenTxDetails = ({ visible, onClose, params, theme,onNextStep }) => {
           estimatedGas,
           gasPrice: gasData.gasPriceGwei.toFixed(2),
           txFee: txFeeAmount.toFixed(6),
-          txFeeUsd: txFeeUsd.toFixed(2),
           symbol: config.symbol
         },
         balances: {
@@ -283,7 +245,9 @@ const TokenTxDetails = ({ visible, onClose, params, theme,onNextStep }) => {
         errors
       });
     } catch (err) {
-      setError(err.message);
+      console.error("error in calculateFees", err);
+      const message =err?.reason || err?.message || 'Something went wrong';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -368,12 +332,6 @@ const TokenTxDetails = ({ visible, onClose, params, theme,onNextStep }) => {
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>Gas & Fees</Text>
                 <InfoRow label="Gas Price" value={`${result.gas.gasPrice} Gwei`} />
                 <InfoRow label="Estimated Gas" value={result.gas.estimatedGas.toLocaleString()} />
-                <InfoRow
-                  label="Transaction Fee"
-                  value={`${result.gas.txFee} ${result.gas.symbol}`}
-                  highlight
-                />
-                <InfoRow label="Fee (USD)" value={`$${result.gas.txFeeUsd}`} />
 
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>Balances</Text>
                 <InfoRow

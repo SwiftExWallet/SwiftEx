@@ -186,13 +186,73 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     @ReactMethod
     fun delete(key: String, promise: Promise) {
         try {
-            prefs.edit().remove(key).apply()
-            val result = Arguments.createMap().apply {
-                putBoolean("success", true)
+            val walletDataString: String? = prefs.all["appAllWallet"]?.toString()
+            if (walletDataString.isNullOrEmpty()) {
+                return promise.reject("DECODING_ERROR", "No wallets found")
             }
-            promise.resolve(result)
+
+            val walletArray = JSONArray(walletDataString)
+            var walletForRemove = -1
+
+            for (i in (walletArray.length()-1)downTo 0) {
+                val wallet = walletArray.getJSONObject(i)
+                if (wallet.optString("walletId") == key) {
+                    walletForRemove = i
+                    break
+                }
+            }
+
+            if(walletForRemove != -1){
+                walletArray.remove(walletForRemove)
+                prefs.edit()
+                .putString("appAllWallet", walletArray.toString())
+                .apply()
+                promise.resolve("wallet_removed")
+            }
+            else{
+                promise.reject("DELETE_ERROR","wallet delete failed")
+            }
         } catch (e: Exception) {
             promise.reject("DELETE_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun renameWallet(key: String, walletName: String, promise: Promise) {
+        try {
+            val walletDataString: String? = prefs.all["appAllWallet"]?.toString()
+            if (walletDataString.isNullOrEmpty()) {
+                return promise.reject("DECODING_ERROR", "No wallet found")
+            }
+
+            val walletArray = JSONArray(walletDataString)
+            var walletForRename = -1
+
+            for (i in 0 until walletArray.length()) {
+                val wallet = walletArray.getJSONObject(i)
+                if (wallet.optString("walletId") == key) {
+                    walletForRename = i
+                    break
+                }
+            }
+
+            if (walletForRename != -1) {
+                val userWallet = walletArray.getJSONObject(walletForRename)
+                userWallet.put("name", walletName)
+                prefs.edit()
+                    .putString("appAllWallet", walletArray.toString())
+                    .apply()
+                
+                val result = Arguments.createMap().apply {
+                 putBoolean("success", true)
+                 putString("user wallet updated to", walletName)
+                }
+                promise.resolve(result)
+            } else {
+                promise.reject("RENAME_ERROR", "wallet rename failed")
+            }
+        } catch (e: Exception) {
+            promise.reject("RENAME_ERROR", e.message)
         }
     }
 

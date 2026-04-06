@@ -20,6 +20,7 @@ import AllbridgeTxTrack from './AllbridgeTxTrack';
 import CustomInfoProvider from './CustomInfoProvider';
 import { convertMultiple } from '../utils/UsdPriceHandler';
 import { colors } from '../../../../../Screens/ThemeColorsConfig';
+import { CHAINS } from '../../../../../utilities/TokenUtils'
 
 const ExportUSDC = () => {
   const Focused = useIsFocused();
@@ -28,17 +29,8 @@ const ExportUSDC = () => {
   const [stellarWalletActivated, setstellarWalletActivated] = useState(false);
   const [basicProccesing, setbasicProccesing] = useState(false);
   const [walletBalance, setwalletBalance] = useState('0.00');
-  const [selectedNetworkDetils, setselectedNetworkDetils] = useState(null);
-  const [selectedAssetDetils, setselectedAssetDetils] = useState({
-    name: "USDC",
-    image: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png",
-    type:"sendAsset",
-    symbole:"USDC"
-  });
-  const [selectedReciveNetworkDetils,setselectedReciveNetworkDetils]=useState(null);
-  const [selectedReciveAssetDetils,setselectedReciveAssetDetils]=useState(null);
-  const [chooseAsset,setchooseAsset]=useState(null);
-  const [chooseNetwork,setchooseNetwork]=useState(null);
+  const [selectedReciveNetworkDetils,setselectedReciveNetworkDetils]=useState(Object.values(CHAINS)[0]);
+  const [selectedReciveAssetDetils,setselectedReciveAssetDetils]=useState(Object.values(CHAINS)[0].bridgeSupportTokens[0]);
   const [chooseReciveAsset,setchooseReciveAsset]=useState(null);
   const [chooseReciveNetwork,setchooseReciveNetwork]=useState(null);
   const [amount,setamount] = useState('0.00');
@@ -51,53 +43,13 @@ const ExportUSDC = () => {
   const [showTxHash,setshowTxHash]=useState([]);
   const [viewInUSD, setViewInUSD] = useState(false);
   const manageFeeViewer = () => setViewInUSD(prev => !prev);
-
-
-  const sendNetworks = [
-    {
-      name: "Stellar",
-      image: "https://stellar.myfilebase.com/ipfs/QmSTXU2wn1USnmd5ZypA5zMze259wEPSDP3i8wivyr9qiq",
-      type:"sendNetworks",
-      symbole:"SRB"
-    }
-  ];
-  const sendAseets = [
-    {
-      name: "USDC",
-      image: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png",
-      type:"sendAsset",
-      symbole:"USDC"
-    }
-  ];
-  const reciveNetwork = [
-    {
-      name: "Ethereum",
-      image: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2/logo.png",
-      type:"reciveNetwork",
-      symbole:"ETH"
-    },
-    {
-      name: "BNB",
-      image: "https://tokens.pancakeswap.finance/images/0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c.png",
-      type:"reciveNetwork",
-      symbole:"BSC"
-    },
-  ];
-  const reciveAsset = [
-    {
-      name: "USDT",
-      image: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png",
-      type:"reciveAsset",
-      symbole:"USDT"
-    },
-    {
-      name: "USDC",
-      image: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png",
-      type:"reciveAsset",
-      symbole:"USDC"
-    }
-  ];
-
+  const [selectedNetworkDetils, setselectedNetworkDetils] = useState(CHAINS["STR"]);
+  const [selectedAssetDetils, setselectedAssetDetils] = useState({
+    name: "USDC",
+    image: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png",
+    type:"sendAsset",
+    symbol:"USDC"
+  });
 
   useEffect(() => {
     setshowTx(false);
@@ -107,11 +59,6 @@ const ExportUSDC = () => {
     fetchStellarWalletdetails();
     setwalletBalance("0.00");
     setamount("");
-    setselectedNetworkDetils(null);
-    setselectedReciveNetworkDetils(null);
-    setselectedReciveAssetDetils(null);
-    setchooseAsset(null);
-    setchooseNetwork(null);
     setchooseReciveAsset(null);
     setchooseReciveNetwork(null);
     setgetInfo(false);
@@ -127,7 +74,7 @@ const ExportUSDC = () => {
     if (parseFloat(numericText) === 0 || !numericText) {
       return;
     }
-    getQuote(!selectedNetworkDetils ? sendNetworks[0].symbole : selectedNetworkDetils.symbole, !selectedReciveNetworkDetils ? reciveNetwork[0].symbole : selectedReciveNetworkDetils.symbole, !selectedAssetDetils ? sendAseets[0].symbole : selectedAssetDetils.symbole, !selectedReciveAssetDetils ? reciveAsset[0].symbole : selectedReciveAssetDetils.symbole,amount);
+    getQuote(selectedReciveNetworkDetils.chainName, selectedNetworkDetils.chainName, selectedAssetDetils.symbol, amount);
   }, [chooseReciveAsset,chooseReciveNetwork])
 
   const fetchStellarWalletdetails = async () => {
@@ -163,18 +110,11 @@ const ExportUSDC = () => {
     // navigation.goBack()
   };
 
-  const handleValueUpdater = (data) => {
-    switch (data.type) {
-      case "sendNetworks":
-        setselectedNetworkDetils(data)
-        setchooseNetwork(false)
-        break;
-      case "sendAsset":
-        setselectedAssetDetils(data)
-        setchooseAsset(false)
-        break;
+  const handleValueUpdater = (data,type) => {
+    switch (type) {
       case "reciveNetwork":
         setselectedReciveNetworkDetils(data)
+        setselectedReciveAssetDetils(CHAINS[data.symbol].bridgeSupportTokens[0])
         setchooseReciveNetwork(false)
         break;
       case "reciveAsset":
@@ -187,11 +127,11 @@ const ExportUSDC = () => {
     }
   }
 
-    const chooseRenderItem = ({ item }) => {
+    const ChooseRenderItem = ( {item,type} ) => {
       return(
-        <TouchableOpacity onPress={() => {handleValueUpdater(item)}} style={styles.chooseItemContainer}>
-        <Image style={styles.chooseItemImage} source={{ uri: item.image }} />
-        <Text style={[styles.chooseItemText,{color:theme.headingTx}]}>{item.name}</Text>
+        <TouchableOpacity onPress={() => {handleValueUpdater(item.item,type)}} style={styles.chooseItemContainer}>
+        <Image style={styles.chooseItemImage} source={{ uri: item.item.image||item.item.imageUrl||item.item.logoURI }} />
+        <Text style={[styles.chooseItemText,{color:theme.headingTx}]}>{item.item.name}</Text>
       </TouchableOpacity>
       )
     };
@@ -204,7 +144,7 @@ const ExportUSDC = () => {
       return;
     }
     setgetInfo(true)
-    getQuote(!selectedNetworkDetils ? sendNetworks[0].symbole : selectedNetworkDetils.symbole, !selectedReciveNetworkDetils ? reciveNetwork[0].symbole : selectedReciveNetworkDetils.symbole, !selectedAssetDetils ? sendAseets[0].symbole : selectedAssetDetils.symbole, !selectedReciveAssetDetils ? reciveAsset[0].symbole : selectedReciveAssetDetils.symbole,numericText);
+    getQuote(selectedNetworkDetils.chainName, selectedReciveNetworkDetils.chainName, selectedAssetDetils.symbol, selectedReciveAssetDetils.symbol,numericText);
   }
 
   const getQuote = useCallback(
@@ -264,10 +204,10 @@ const ExportUSDC = () => {
         secretKey: state && state.STELLAR_SECRET_KEY
       };
       const result = await swapPepare(
-        !selectedNetworkDetils ? sendNetworks[0].symbole : selectedNetworkDetils.symbole,
-        !selectedReciveNetworkDetils ? reciveNetwork[0].symbole : selectedReciveNetworkDetils.symbole,
-        !selectedAssetDetils ? sendAseets[0].symbole : selectedAssetDetils.symbole,
-        !selectedReciveAssetDetils ? reciveAsset[0].symbole : selectedReciveAssetDetils.symbole,
+        selectedNetworkDetils.chainName,
+        selectedReciveNetworkDetils.chainName,
+        selectedAssetDetils.symbol,
+        selectedReciveAssetDetils.symbol,
         amount,
         state && state.wallet && state.wallet.address,
         stellarWallet,
@@ -353,12 +293,12 @@ console.log("resQuotes-",resQuotes)
       <ScrollView style={[styles.scrollCon,{backgroundColor:theme.bg}]}>
         <View style={[styles.card,{backgroundColor:theme.cardBg,flexDirection:"column"}]}>
         {/* Select network */}
-        <TouchableOpacity disabled={true} style={[styles.modalOpen,{backgroundColor:theme.bg}]} onPress={() => { setchooseNetwork(true); }}>
+        <View style={[styles.modalOpen,{backgroundColor:theme.bg}]}>
           <View style={{ flexDirection: "row" }}>
-            <Image source={{ uri: !selectedNetworkDetils?sendNetworks[0].image:selectedNetworkDetils.image }} style={styles.iconCon} />
+            <Image source={{ uri: selectedNetworkDetils.imageUrl }} style={styles.iconCon} />
             <View>
               <Text style={[styles.networkSubHeading,{color:theme.inactiveTx}]}>Network</Text>
-              <Text style={[styles.networkHeading,{color:theme.headingTx}]}>{!selectedNetworkDetils?sendNetworks[0].name:selectedNetworkDetils.name}</Text>
+              <Text style={[styles.networkHeading,{color:theme.headingTx}]}>{selectedNetworkDetils.name}</Text>
             </View>
           </View>
           {/* <Icon name={"chevron-down"} type={"materialCommunity"} color={theme.headingTx} size={30} /> */}
@@ -384,7 +324,7 @@ console.log("resQuotes-",resQuotes)
                 <Text style={[ { color: theme.inactiveTx }]}> USDC</Text>
               </View>
             </View>
-        </TouchableOpacity>
+        </View>
         </View>
 
         {/* perfect stellar usdc balance componet */}
@@ -434,10 +374,10 @@ console.log("resQuotes-",resQuotes)
           {/* Select recive network */}
         <TouchableOpacity style={[styles.exportCon,{backgroundColor:theme.bg}]} onPress={() => { setchooseReciveNetwork(true); }}>
           <View style={{ flexDirection: "row" }}>
-            <Image source={{ uri: !selectedReciveNetworkDetils?reciveNetwork[0].image:selectedReciveNetworkDetils.image }} style={styles.iconCon} />
+            <Image source={{ uri: selectedReciveNetworkDetils.imageUrl }} style={styles.iconCon} />
             <View>
               <Text style={[styles.networkSubHeading,{color:theme.inactiveTx}]}>Network</Text>
-              <Text style={[styles.networkHeading,{color:theme.headingTx}]}>{!selectedReciveNetworkDetils?reciveNetwork[0].name:selectedReciveNetworkDetils.name}</Text>
+              <Text style={[styles.networkHeading,{color:theme.headingTx}]}>{selectedReciveNetworkDetils.name}</Text>
             </View>
           </View>
           <Icon name={"chevron-down"} type={"materialCommunity"} color={theme.headingTx} size={30} />
@@ -446,10 +386,10 @@ console.log("resQuotes-",resQuotes)
         {/* Select recive network */}
         <TouchableOpacity style={[styles.exportCon,{backgroundColor:theme.bg}]} onPress={() => { setchooseReciveAsset(true); }}>
           <View style={{ flexDirection: "row" }}>
-            <Image source={{ uri: !selectedReciveAssetDetils?reciveAsset[0].image:selectedReciveAssetDetils.image }} style={styles.iconCon} />
+            <Image source={{ uri: selectedReciveAssetDetils.logoURI }} style={styles.iconCon} />
             <View>
               <Text style={[styles.networkSubHeading,{color:theme.inactiveTx}]}>Asset</Text>
-              <Text style={[styles.networkHeading,{color:theme.headingTx}]}>{!selectedReciveAssetDetils?reciveAsset[0].name:selectedReciveAssetDetils.name}</Text>
+              <Text style={[styles.networkHeading,{color:theme.headingTx}]}>{selectedReciveAssetDetils.name}</Text>
             </View>
           </View>
           <Icon name={"chevron-down"} type={"materialCommunity"} color={theme.headingTx} size={30} />
@@ -475,7 +415,7 @@ console.log("resQuotes-",resQuotes)
             <View style={styles.quoteRow}>
               <Text style={[styles.quoteLabel,{color:theme.inactiveTx}]}>Conversion Rate</Text>
               <Text style={[styles.quoteValue,{color:theme.headingTx}]}>
-                1 {!selectedAssetDetils?sendAseets[0].symbole:selectedAssetDetils.symbole} = {resQuotes.conversionRate} {!selectedReciveAssetDetils?reciveAsset[0].symbole:selectedReciveAssetDetils.symbole}
+                1 {selectedAssetDetils.symbol} = {resQuotes.conversionRate} {selectedReciveAssetDetils.symbol}
               </Text>
             </View>
 
@@ -492,7 +432,7 @@ console.log("resQuotes-",resQuotes)
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <Text style={[styles.quoteValue,{color:theme.headingTx}]}>{resQuotes.minimumAmountOut}</Text>
                 </ScrollView>
-                <Text style={[styles.quoteValue,{color:theme.headingTx}]}>{!selectedReciveAssetDetils?reciveAsset[0].symbole:selectedReciveAssetDetils.symbole}</Text>
+                <Text style={[styles.quoteValue,{color:theme.headingTx}]}>{selectedReciveAssetDetils.symbol}</Text>
               </View>
             </View>
           </View>
@@ -527,7 +467,7 @@ console.log("resQuotes-",resQuotes)
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <Text style={[styles.quoteText,{color:theme.headingTx}]}> {feeData?.symbol==="Native"?resQuotes.minimumAmountOut:Math.max(0,parseFloat(resQuotes.minimumAmountOut || "0")-parseFloat(resQuotes?.fee?.stablecoin?.amount || "0"))}</Text>
             </ScrollView>
-            <Text style={[styles.quoteText,{color:theme.headingTx}]}>{!selectedReciveAssetDetils?reciveAsset[0].symbole:selectedReciveAssetDetils.symbole}</Text>
+            <Text style={[styles.quoteText,{color:theme.headingTx}]}>{selectedReciveAssetDetils.symbol}</Text>
           </View>
         </View>}
 
@@ -544,24 +484,6 @@ console.log("resQuotes-",resQuotes)
         </TouchableOpacity>
 
 
-        {/* perfect network selection */}
-        <Modal
-          animationType="slide"
-          transparent={true}
-          visible={chooseNetwork}
-        >
-          <TouchableOpacity style={styles.chooseModalContainer} onPress={() => setchooseNetwork(false)}>
-            <View style={[styles.chooseModalContent,{backgroundColor:theme.cardBg}]}>
-              <Text style={{ fontSize: 20, fontWeight: "bold", marginVertical: hp(1), color: theme.headingTx }}>Select Wallet</Text>
-              <FlatList
-                data={sendNetworks}
-                renderItem={chooseRenderItem}
-                keyExtractor={(item,index) => index}
-              />
-            </View>
-          </TouchableOpacity>
-        </Modal>
-
         {/* perfect recive network selection */}
         <Modal
           animationType="slide"
@@ -572,8 +494,8 @@ console.log("resQuotes-",resQuotes)
             <View style={[styles.chooseModalContent,{backgroundColor:theme.cardBg}]}>
               <Text style={{ fontSize: 20, fontWeight: "bold", marginVertical: hp(1), color: theme.headingTx }}>Choose Network</Text>
               <FlatList
-                data={reciveNetwork}
-                renderItem={chooseRenderItem}
+                data={Object.values(CHAINS)}
+                renderItem={(t)=>{return <ChooseRenderItem item={t} type={"reciveNetwork"}/>}}
                 keyExtractor={(item,index) => index}
               />
             </View>
@@ -590,8 +512,8 @@ console.log("resQuotes-",resQuotes)
             <View style={[styles.chooseModalContent,{backgroundColor:theme.cardBg}]}>
               <Text style={{ fontSize: 20, fontWeight: "bold", marginVertical: hp(1), color: theme.headingTx }}>Choose Asset</Text>
               <FlatList
-                data={reciveAsset}
-                renderItem={chooseRenderItem}
+                data={CHAINS[selectedReciveNetworkDetils.symbol].bridgeSupportTokens}
+                renderItem={(t)=>{ return <ChooseRenderItem item={t} type={"reciveAsset"}/>}}
                 keyExtractor={(item,index) => index}
               />
             </View>

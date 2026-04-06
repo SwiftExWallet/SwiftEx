@@ -207,12 +207,16 @@ const CustomInfoProvider = () => {
 };
 
 // Static show method to call alert like Alert.alert:
-CustomInfoProvider.show = (type, messageOrTitle, buttonsOrUndefined) => {
-  if (typeof messageOrTitle === "string" && 
-    messageOrTitle.includes("[big.js] ")) {
-    messageOrTitle = "Invalid value";
+CustomInfoProvider.show = (type, title, message, buttons) => {
+  if (typeof message === "string" && 
+    message.includes("[big.js] ")) {
+    message = "Invalid value";
   }
-  internalShowFunc(type, messageOrTitle, buttonsOrUndefined);
+  if (typeof title === "string" && 
+    title.includes("[big.js] ")) {
+    title = "Invalid value";
+  }
+  internalShowFunc(type, title, message, buttons);
 };
 
 export default CustomInfoProvider;

@@ -1,18 +1,14 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Modal,
-  FlatList,
   ActivityIndicator,
-  Alert,
   Image,
   ScrollView,
   Keyboard,
-  TouchableWithoutFeedback,
   NativeModules
 } from 'react-native';
 import {
@@ -21,40 +17,29 @@ import {
 } from "react-native-responsive-screen";
 import { ethers } from 'ethers';
 import { Wallet_screen_header } from '../Dashboard/reusables/ExchangeHeader';
-import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import Icon from "react-native-vector-icons/Ionicons";
 import { useSelector } from 'react-redux';
 import ErrorComponet from '../utilities/ErrorComponet';
-import { fetchBSCTokenInfo, fetchTokenInfo } from './tokenUtils';
 import Snackbar from 'react-native-snackbar';
-import { PGET, PPOST, proxyRequest } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/api';
-import EtherTokens from "../Dashboard/tokens/tokenList.json";
-import BNBTokens from "../Dashboard/tokens/pancakeSwap/PancakeList.json";
-import { getTokenBalancesUsingAddress, getWalletBalance } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/utils/getWalletInfo/EtherWalletService';
+import { PPOST, proxyRequest } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/api';
+import { getTokenBalancesUsingAddress } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/utils/getWalletInfo/EtherWalletService';
 import ShortTermStorage from '../utilities/ShortTermStorage';
 import { debounce } from 'lodash';
-
-const NETWORK = [
-  {
-    symbol: 'ETH',
-    logoURI: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2/logo.png",
-  },
-  {
-    symbol: 'BNB',
-    logoURI:'https://tokens.pancakeswap.finance/images/0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c.png'
-  }
-];
+import { CHAINS, TemporaryTokens } from "../utilities/TokenUtils";
+import { colors } from "../Screens/ThemeColorsConfig";
+import { ChainSupportedToken } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/ChainWithTokenInfo";
+import Modal from "react-native-modal";
+import CustomInfoProvider from '../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
+import ToggleSwitch from 'toggle-switch-react-native';
 
 const EthSwap = () => {
   const navigation = useNavigation();
-  const routeParam=useRoute();
-  const FOCUSED = useIsFocused();
   const state = useSelector((state) => state);
-  
   const [errorVisible, setErrorVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [fromToken, setFromToken] = useState(EtherTokens[0]);
-  const [toToken, setToToken] = useState(EtherTokens[1]);
+  const [fromToken, setFromToken] = useState(null);
+  const [toToken, setToToken] = useState(null);
   const [amount, setAmount] = useState('');
   const [quoteInfo, setQuoteInfo] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -66,18 +51,32 @@ const EthSwap = () => {
   const [btnMessage, setbtnMessage] = useState("Swap");
   const [btnDisable, setbtnDisable] = useState(true);
   const [swapExecuting, setSwapExecuting] = useState(false);
-  const [currentNetwork, setCurrentNetwork] = useState(0);
+  const [currentNetwork, setCurrentNetwork] = useState(TemporaryTokens[1].symbol);
+  const [visibleConfirmation, setVisibleConfirmation] = useState(false);
+  const [providerQuoteInfo, setProviderQuoteInfo] = useState(null);
   const abortControllerRef = useRef(null);
+  const theme = state.THEME.THEME ? colors.dark : colors.light;
+  const [goWithGas, setgoWithGas] = useState(false);
 
   const getSwapQuote = useCallback(async (tokenIn, tokenOut, amountIn, type) => {
+    if(!tokenIn||!tokenOut)
+    {
+      CustomInfoProvider.show("warning", "!Opps", "Please choose the “From” and “To” network for swap.");
+      return null;
+    }
+    if (tokenIn.chain !== tokenOut.chain) {
+      CustomInfoProvider.show("warning", "!Opps", "Please choose the same network for both “From” and “To”.");
+      return null;
+    }
     try {
       const { res, err } = await proxyRequest(
-        `/v1/${type}/swap-quote`, 
+        `/v1/quoter/quote`, 
         PPOST, 
         { 
-          tokenIn: tokenIn, 
-          tokenOut: tokenOut, 
-          amount: amountIn 
+          tokenIn: tokenIn.address, 
+          tokenOut: tokenOut.address, 
+          amount: ethers.utils.parseUnits(amountIn,tokenIn.decimals).toString(),
+          chain:type
         }
       );
       
@@ -96,6 +95,37 @@ const EthSwap = () => {
     }
   }, []);
 
+  const getProviderQoute=async()=>{
+        try {
+      const { res, err } = await proxyRequest(
+        `/v1/swap/1inch/getSwapQuote`, 
+        PPOST, 
+        { 
+          tokenIn: fromToken.address, 
+          tokenOut: toToken.address, 
+          amount: ethers.utils.parseUnits(amount,fromToken?.decimals).toString(),
+          walletAddress: state?.wallet?.address,
+          chain: currentNetwork
+        }
+      );
+      
+      if (err?.status) {
+        setErrorMessage(err.message || 'Failed to get quote. Please try again.');
+        setErrorVisible(true);
+        return null;
+      }
+      setProviderQuoteInfo(res);
+      setVisibleConfirmation(true)
+      setSwapExecuting(false);
+    } catch (error) {
+      console.error('Quote error:', error);
+      setErrorMessage('Network error. Please check your connection.');
+      setErrorVisible(true);
+      setSwapExecuting(false);
+      return null;
+    }
+  }
+
   const fetchTokenBalances = useCallback(async (token0Addr, token1Addr, network) => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -110,22 +140,13 @@ const EthSwap = () => {
 
       const addresses = [token0Addr, token1Addr];
       let responseBalance;
-
-      if (network === 0) {
-        responseBalance = await fetchTokenInfo(addresses, walletAddress, {
+        responseBalance = await getTokenBalancesUsingAddress(addresses, walletAddress,network, {
           signal: controller.signal
         });
-      } else {
-        responseBalance = await fetchBSCTokenInfo(addresses, walletAddress, {
-          signal: controller.signal
-        });
-      }
-      const balance0 = parseFloat(responseBalance?.[0]?.balance || 0);
-      const balance1 = parseFloat(responseBalance?.[1]?.balance || 0);
-      const decimals0 = Number(responseBalance?.[0]?.decimals || 18);
-      const decimals1 = Number(responseBalance?.[1]?.decimals || 18);
-      setFromTokenBalance(balance0);
-      setToTokenBalance(balance1);
+        if(responseBalance.status){
+          setFromTokenBalance(parseFloat(responseBalance?.tokenInfo?.[0]?.balance || 0));
+          setToTokenBalance(parseFloat(responseBalance?.tokenInfo?.[1]?.balance || 0));
+        }
     } catch (error) {
       console.error("Error fetching BSC token balance:", error);
       Snackbar.show({
@@ -140,7 +161,7 @@ const EthSwap = () => {
 
   const debouncedFetchBalances = useCallback(
     debounce((token0Addr, token1Addr, network) => {
-      fetchTokenBalances(token0Addr, token1Addr, network);
+      fetchTokenBalances(token0Addr, token1Addr, network.toLowerCase());
     }, 400),
     [fetchTokenBalances]
   );
@@ -160,11 +181,12 @@ const EthSwap = () => {
       setLoading(true);
       
       try {
-        const type = currentNetwork === 0 ? "eth" : "bsc";
-        const quote = await getSwapQuote(fromToken, toToken, amount, type);
+        const quote = await getSwapQuote(fromToken, toToken, amount, currentNetwork.toLowerCase());
         
         if (quote) {
-          setQuoteInfo(quote);
+          if(quote.success){
+            setQuoteInfo(quote.data);
+          }
           
           // Validate balance
           const amountNum = parseFloat(amount);
@@ -202,42 +224,11 @@ const EthSwap = () => {
   // Fetch balances when tokens change
   useEffect(() => {
     if (balanceLoading) return;
-    debouncedFetchBalances(fromToken.address, toToken.address, currentNetwork);
+    debouncedFetchBalances(fromToken?.address, toToken?.address, currentNetwork);
     return () => {
       debouncedFetchBalances.cancel();
     };
-  }, [fromToken.address, toToken.address, currentNetwork]);
-
-  // Network change handler
-  useEffect(() => {
-    setAmount('');
-    setQuoteInfo(null);
-
-    const timer = setTimeout(() => {
-      if (currentNetwork === 0) {
-        setFromToken(EtherTokens[0]);
-        setToToken(routeParam.params?.activeAsset || EtherTokens[1]);
-      } else {
-        setFromToken(BNBTokens[0]);
-        setToToken(routeParam.params?.activeAsset || BNBTokens[1]);
-      }
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [currentNetwork]);
-
-  // Focus handler
-  useEffect(() => {
-    if (!FOCUSED) return;
-    if (routeParam.params?.activeNetwork === "BNB") {
-      setCurrentNetwork(1);
-    } else if (routeParam.params?.activeNetwork === "Ethereum") {
-      setCurrentNetwork(0);
-    } else {
-      setCurrentNetwork(0);
-    }
-  }, [FOCUSED]);
-
+  }, [fromToken?.address, toToken?.address, currentNetwork]);
 
   // Token selector component
   const TokenSelector = ({ token, onPress, balance }) => (
@@ -245,16 +236,26 @@ const EthSwap = () => {
       disabled={balanceLoading || loading}
       style={[
         styles.tokenSelector,
-        { backgroundColor: state?.THEME?.THEME === false ? "#FFFFFF" : "#1B1B1C",opacity: balanceLoading || loading ? 0.7 : 1}
+        { backgroundColor: theme.bg,opacity: balanceLoading || loading ? 0.7 : 1}
       ]} 
       onPress={onPress}
       activeOpacity={0.7}
     >
       <View style={[styles.tokenContainer, { width: wp(30) }]}>
-        <Image source={{ uri: token.logoURI }} style={[styles.logoImage, { marginRight: 5 }]} />
-        <Text style={[styles.tokenSymbol, { color: state?.THEME?.THEME === false ? "black" : "#fff" }]}>
-          {token.symbol}
-        </Text>
+        {!token ?
+          <Text style={[styles.tokenSymbol, { color: theme.headingTx, fontSize: 16 }]}>Select Network</Text> :
+          <>
+            <Image source={{ uri: token?.logoURI }} style={[styles.logoImage, { marginRight: 5 }]} />
+            <View>
+              <Text style={[styles.tokenSymbol, { color: theme.headingTx }]}>
+                {token?.symbol}
+              </Text>
+              <Text style={[styles.tokenChainSymbol, { color: theme.inactiveTx }]}>
+                {token?.chain}
+              </Text>
+            </View>
+          </>
+        }
       </View>
       {balanceLoading ? (
         <ActivityIndicator size="small" color="#4052D6" />
@@ -273,24 +274,6 @@ const EthSwap = () => {
 
   // Token list modal
   const TokenListModal = () => {
-    const [searchQuery, setSearchQuery] = useState('');
-    
-    const filteredTokens = useMemo(() => {
-      const tokens = currentNetwork === 0 ? EtherTokens : BNBTokens;
-
-      if (!searchQuery.trim()) {
-        return tokens;
-      }
-      
-      const query = searchQuery.toLowerCase().trim();
-
-      return tokens.filter(token => 
-        token.symbol?.toLowerCase().includes(query) ||
-        token.name?.toLowerCase().includes(query) ||
-        token.address?.toLowerCase().includes(query)
-      );
-    }, [searchQuery, currentNetwork]);
-
     const handleTokenSelect = useCallback((item) => {
       if (balanceLoading) {
         Snackbar.show({
@@ -304,9 +287,11 @@ const EthSwap = () => {
       setShowTokenList(false);
       
       requestAnimationFrame(() => {
-        if (selectingFor === 'from' && item.address !== toToken.address) {
+        if (selectingFor === 'from' && item.address !== toToken?.address) {
+          setCurrentNetwork(item.chain);
           setFromToken(item);
-        } else if (selectingFor === 'to' && item.address !== fromToken.address) {
+        } else if (selectingFor === 'to' && item.address !== fromToken?.address) {
+          setCurrentNetwork(item.chain);
           setToToken(item);
         } else {
           Snackbar.show({
@@ -316,115 +301,15 @@ const EthSwap = () => {
           });
         }
       });
-    }, [selectingFor, fromToken.address, toToken.address, balanceLoading]);
+    }, [selectingFor, fromToken?.address, toToken?.address, balanceLoading]);
 
     return (
-      <Modal
+      <ChainSupportedToken
         visible={showTokenList}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowTokenList(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setShowTokenList(false)}>
-          <View style={styles.modalContainer}>
-            <TouchableWithoutFeedback>
-              <View style={[
-                styles.modalContent, 
-                { backgroundColor: state?.THEME?.THEME === false ? "#F4F4F8" : "#242426" }
-              ]}>
-                <Text style={[
-                  styles.modalTitle, 
-                  { color: state?.THEME?.THEME === false ? "black" : "#fff" }
-                ]}>
-                  Select Token
-                </Text>
-                
-                <View style={[styles.searchContainer, {
-                  backgroundColor: state?.THEME?.THEME === false ? "#f8f9fa" : "#2a2a2a",
-                  borderColor: state?.THEME?.THEME === false ? "#e9ecef" : "#404040"
-                }]}>
-                  <TextInput
-                    style={[styles.searchInput, {
-                      color: state?.THEME?.THEME === false ? "black" : "#fff"
-                    }]}
-                    placeholder="Search by name, symbol, or address..."
-                    placeholderTextColor={state?.THEME?.THEME === false ? "#6c757d" : "#888"}
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  {searchQuery.length > 0 && (
-                    <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-                      <Text style={[styles.clearButtonText, {
-                        color: state?.THEME?.THEME === false ? "#6c757d" : "#888"
-                      }]}>×</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                
-                <FlatList
-                  data={filteredTokens}
-                  keyExtractor={(item, index) => index.toString()}
-                  style={{height:hp(60)}}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.tokenListItem}
-                      onPress={() => handleTokenSelect(item)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.tokenContainer}>
-                        <Image source={{ uri: item.logoURI }} style={styles.logoImage} />
-                        <View style={styles.tokenDetaisContainer}>
-                          <Text style={[
-                            styles.tokenListSymbol, 
-                            { color: state?.THEME?.THEME === false ? "black" : "#fff" }
-                          ]}>
-                            {item.symbol}
-                          </Text>
-                          <Text style={[
-                            styles.tokenListName, 
-                            { color: state?.THEME?.THEME === false ? "#666" : "#888" }
-                          ]}>
-                            {item.name}
-                          </Text>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                  ListEmptyComponent={() => (
-                    <View style={styles.emptyContainer}>
-                      <Text style={[styles.emptyText, {
-                        color: state?.THEME?.THEME === false ? "#6c757d" : "#888"
-                      }]}>
-                        No tokens found matching "{searchQuery}"
-                      </Text>
-                    </View>
-                  )}
-                />
-                
-                <TouchableOpacity
-                  style={[
-                    styles.closeButton, 
-                    { backgroundColor: state?.THEME?.THEME === false ? "#f8f9fa" : "#080a0a" }
-                  ]}
-                  onPress={() => {
-                    setShowTokenList(false);
-                    setSearchQuery('');
-                  }}
-                >
-                  <Text style={[
-                    styles.closeButtonText, 
-                    { color: state?.THEME?.THEME === false ? "black" : "#fff" }
-                  ]}>
-                    Close
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+        onclose={() => { setShowTokenList(false) }}
+        selectedToken={(item) => {
+          handleTokenSelect(item)
+        }} />
     );
   };
 
@@ -442,6 +327,189 @@ const EthSwap = () => {
     setFromTokenBalance(toTokenBalance);
     setToTokenBalance(fromTokenBalance);
   };
+
+
+const formatUSD = (value) => {
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 2,
+  }).format(num);
+};
+
+const formatDuration = (seconds) => {
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.round(seconds / 60)}m`;
+};
+
+const Row = ({ label, value, subValue }) => (
+  <View style={styles.row}>
+    <Text style={[styles.rowLabel,{color:theme.headingTx}]}>{label}</Text>
+    <View style={{ alignItems: 'flex-end' }}>
+      <Text style={[styles.rowValue,{color:theme.inactiveTx}]}>
+        {value}
+      </Text>
+      {subValue ? <Text style={[styles.rowSubValue,{color:theme.inactiveTx}]}>{subValue}</Text> : null}
+    </View>
+  </View>
+);
+
+  
+
+
+const ConfirmTx = ({
+  visible,
+  quote,
+  onConfirm,
+  onClose,
+}) => {
+  const [confirming, setConfirming] = useState(false);
+  const activePreset = quote.presets[quote.recommended_preset];
+  const fromAmountRaw = parseFloat(ethers.utils.formatUnits(quote.fromTokenAmount, fromToken?.decimals));
+  const toAmountRaw = parseFloat(ethers.utils.formatUnits(quote.toTokenAmount, toToken?.decimals));
+  const toUSDRate = parseFloat(quote.prices.usd.toToken);
+  const fromUSD = fromAmountRaw * parseFloat(quote.prices.usd.fromToken);
+  const toUSD = toAmountRaw * toUSDRate;
+  const feeAmountRaw = parseFloat(ethers.utils.formatUnits(activePreset.tokenFee, toToken?.decimals));
+  const feeUSD = feeAmountRaw * toUSDRate;
+  const minReceive = parseFloat(ethers.utils.formatUnits(activePreset.auctionEndAmount, toToken?.decimals));
+  const handleConfirm = async () => {
+    setConfirming(true);
+    await onConfirm();
+    setConfirming(false);
+  };
+  return (
+    <Modal
+    visible={visible}
+    transparent
+    animationType="slide"
+        onRequestClose={onClose}
+      >
+        <TouchableOpacity
+          style={styles.backdrop}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+
+        <View style={[styles.sheet,{backgroundColor:theme.bg}]}>
+          <View style={styles.handleWrap}>
+            <View style={styles.handle} />
+          </View>
+
+          <View style={styles.header}>
+            <Text style={[styles.headerTitle,{color:theme.headingTx}]}>Confirm swap</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+            <Icon name="close-circle-outline" size={26} color={theme.headingTx} />
+            </TouchableOpacity>
+          </View>
+
+          {providerQuoteInfo===null?<ActivityIndicator color={theme.cardSubTx} size={"large"}/>:<ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            <View style={[styles.swapCard,{backgroundColor:theme.cardBg}]}>
+              <View style={styles.tokenRow}>
+                <View style={styles.tokenInfo}>
+                  <View style={styles.tokenIcon}>
+                    <Image source={{ uri: fromToken?.logoURI }} style={[styles.logoImage]} />
+                  </View>
+                  <View>
+                    <Text style={[styles.tokenLabel,{color:theme.headingTx}]}>You pay</Text>
+                    <Text style={[styles.tokenSymbol,{color:theme.headingTx}]}>{fromToken?.symbol}</Text>
+                  </View>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[styles.tokenAmount,{color:theme.headingTx}]}>
+                    {fromAmountRaw}
+                  </Text>
+                  <Text style={[styles.tokenUSD,{color:theme.inactiveTx}]}>{formatUSD(fromUSD)}</Text>
+                </View>
+              </View>
+
+              <View style={styles.arrowWrap}>
+                <View style={[styles.arrowLine,{backgroundColor:theme.headingTx}]} />
+                <View style={[styles.arrowCircle,{borderColor:theme.headingTx}]}>
+                  <Text style={[styles.arrowIcon,{color:theme.headingTx}]}>↓</Text>
+                </View>
+                <View style={[styles.arrowLine,{backgroundColor:theme.headingTx}]} />
+              </View>
+
+              <View style={styles.tokenRow}>
+                <View style={styles.tokenInfo}>
+                  <View style={styles.tokenIcon}>
+                    <Image source={{ uri: toToken?.logoURI }} style={[styles.logoImage, { marginRight: 5 }]} />
+                  </View>
+                  <View>
+                    <Text style={[styles.tokenLabel,{color:theme.headingTx}]}>You receive</Text>
+                    <Text style={[styles.tokenSymbol,{color:theme.headingTx}]}>{toToken?.symbol}</Text>
+                  </View>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[styles.tokenAmount, { color: theme.headingTx}]}>
+                    {toAmountRaw}
+                  </Text>
+                  <Text style={[styles.tokenUSD,{color:theme.inactiveTx}]}>{formatUSD(toUSD)}</Text>
+                </View>
+              </View>
+            </View>
+
+            {parseFloat(quoteInfo.allQuotes[0].amountOutFormatted)>parseFloat(minReceive)&&<View style={[styles.warningBanner,{backgroundColor:theme.cardBg,borderColor:theme.inactiveTx}]}>
+              <Text style={[styles.warningText,{color:"#f19c5bff"}]}>We found a better rout for this swap.</Text>
+            </View>}
+
+            <View style={[styles.detailsCard,{backgroundColor:theme.cardBg}]}>
+               <Row
+                label="Provider"
+                value={`1inch`}
+              />
+              <Row
+                label="Rate"
+                value={`1 ${fromToken?.symbol} = ${(toAmountRaw / fromAmountRaw)} ${toToken?.symbol}`}
+              />
+              <View style={[styles.divider,{backgroundColor:theme.smallCardBorderColor}]} />
+              <Row
+                label="Min. received"
+                value={`${minReceive} ${toToken?.symbol}`}
+              />
+              <View style={[styles.divider,{backgroundColor:theme.smallCardBorderColor}]} />
+              <Row
+                label="Network fee"
+                value={`${feeAmountRaw} ${toToken?.symbol}`}
+                subValue={`≈ ${formatUSD(feeUSD)}`}
+              />
+              <View style={[styles.divider,{backgroundColor:theme.smallCardBorderColor}]} />
+              <Row
+                label="Price impact"
+                value={`${quote.priceImpactPercent}%`}
+              />
+              <View style={[styles.divider,{backgroundColor:theme.smallCardBorderColor}]} />
+              <Row
+                label="Time"
+                value={formatDuration(activePreset.auctionDuration)}
+              />
+            </View>
+            
+            <TouchableOpacity
+              style={[styles.confirmBtn, confirming && { opacity: 0.7 }]}
+              onPress={handleConfirm}
+              disabled={confirming}
+              activeOpacity={0.85}
+            >
+              {confirming
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={[styles.confirmBtnText,{color:theme.headingTx}]}>Confirm swap</Text>
+              }
+            </TouchableOpacity>
+          </ScrollView>}
+        </View>
+      </Modal>
+    );
+  }
 
   // Execute swap
   const handleSwap = async () => {
@@ -466,33 +534,67 @@ const EthSwap = () => {
     }
 
     setSwapExecuting(true);
-
     try {
-      // const result = await swapForEth(amount, state?.wallet?.privateKey);
-      const result = currentNetwork === 0 ? await swapForEth(amount, state?.wallet?.address): await swapBnb(amount, state?.wallet?.address);
-      console.log("swap result",result)
-      if (result.status) {
+      const respo = await proxyRequest("/v1/swap/1inch/buildFusionOrder", PPOST, {
+          quote:providerQuoteInfo,
+          tokenIn: fromToken.address, 
+          tokenOut: toToken.address, 
+          amount: ethers.utils.parseUnits(amount,fromToken?.decimals).toString(),
+          walletAddress: state?.wallet?.address,
+          chain: currentNetwork
+        });
+      if (respo.err?.status) {
+        return {
+          status: false,
+          message: respo.err.message || "Failed to prepare swap",
+        };
+      }
+
+      const { primaryType, types, domain, message } = respo.res.typedData;
+      const typedDataJson = JSON.stringify({
+        primaryType,
+        types,
+        domain,
+        message,
+      });
+      const result = await NativeModules.TransactionSigner.signTypedData(
+        currentNetwork.toLowerCase(),
+        state?.wallet?.address,
+        typedDataJson,
+      );
+       console.error("result",typeof(result.signature))
+      const submitResult = await proxyRequest("/v1/swap/1inch/submitOrder", PPOST, {
+        "chain": currentNetwork,
+        "order": {
+          "maker": respo.res.typedData.message.maker,
+          "makerAsset": respo.res.typedData.message.makerAsset,
+          "takerAsset": respo.res.typedData.message.takerAsset,
+          "makerTraits": respo.res.typedData.message.makerTraits,
+          "salt": respo.res.typedData.message.salt,
+          "makingAmount": respo.res.typedData.message.makingAmount,
+          "takingAmount": respo.res.typedData.message.takingAmount,
+          "receiver": state?.wallet?.address,
+        },
+        "quoteId": providerQuoteInfo.quoteId,
+        "extension": respo.res.extension,
+        "signature": result.signature
+      });
+      console.error("submitResult",submitResult)
+      if (submitResult.err?.status) {
+        Snackbar.show({
+          text: submitResult.message || "Swap failed",
+          duration: Snackbar.LENGTH_LONG,
+          backgroundColor: '#ff6b6b',
+        });
+      } else {
         Snackbar.show({
           text: "Swap successful!",
           duration: Snackbar.LENGTH_LONG,
           backgroundColor: '#51cf66',
         });
-        
-        // Reset form
-        setAmount('');
-        setQuoteInfo(null);
-        
-        
-        // Navigate after short delay
         setTimeout(() => {
           navigation.navigate("Transactions");
         }, 1000);
-      } else {
-        Snackbar.show({
-          text: result.message || "Swap failed",
-          duration: Snackbar.LENGTH_LONG,
-          backgroundColor: '#ff6b6b',
-        });
       }
     } catch (error) {
       console.error('Swap error:', error);
@@ -515,11 +617,10 @@ const EthSwap = () => {
         tokenOut: toToken,
         amount: amount,
         recipient: address,
+        chainId:currentNetwork
       };
 
-      console.log("Preparing swap:", payload);
-
-      const respo = await proxyRequest("/v1/eth/swap-transaction/prepare", PPOST, payload);
+      const respo = await proxyRequest("/v1/quoter/swap", PPOST, payload);
 
       if (respo.err?.status) {
         return {
@@ -528,7 +629,7 @@ const EthSwap = () => {
         };
       }
 
-      const rawTxs = respo.res;
+      const rawTxs = respo.res.data;
       
       if (!rawTxs || rawTxs.length === 0) {
         return {
@@ -588,10 +689,8 @@ const EthSwap = () => {
           };
         }
       }
-
-      console.log("Broadcasting transactions...");
       
-      const { res, err } = await proxyRequest("/v1/eth/swap-transaction/execute", PPOST, { txs: signedTxs });
+      const { res, err } = await proxyRequest("/v1/eth/swap-transaction/execute", PPOST, { txs: signedTxs,broadcastChain:currentNetwork });
 
       if (err?.status) {
         return {
@@ -605,24 +704,28 @@ const EthSwap = () => {
         
         for (const tx of validTxs) {
           await ShortTermStorage.saveTx(state?.wallet?.address, {
-            chain: "ETH",
+            chain: currentNetwork,
             typeTx: "Swap",
             status: "Pending",
             hash: tx.txResponse.hash,
           });
         }
-
+        setSwapExecuting(false);
+        CustomInfoProvider.show('success',"Swap","Swap completed successfully");
         return {
           status: true,
           message: "Swap completed successfully",
         };
       }
-
+      setSwapExecuting(false);
+      CustomInfoProvider.show('error',"Swap","Swap execution faild");
       return {
         status: false,
         message: "No transaction hash received",
       };
     } catch (error) {
+      setSwapExecuting(false);
+      CustomInfoProvider.show('error',"Swap","Swap execution faild");
       console.error("Swap execution error:", error);
       return {
         status: false,
@@ -795,7 +898,7 @@ const EthSwap = () => {
   };
 
   return (
-    <View style={{ backgroundColor: state?.THEME?.THEME === false ? "#FFF" : "#1B1B1C", flex: 1 }}>
+    <View style={{ backgroundColor: theme.bg, flex: 1 }}>
       <Wallet_screen_header title="Swap" onLeftIconPress={() => navigation.goBack()} />
       
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -804,34 +907,9 @@ const EthSwap = () => {
           onClose={() => setErrorVisible(false)}
           message={errorMessage}
         />
-
-        <View style={[styles.container, { backgroundColor: state?.THEME?.THEME === false ? "#FFF" : "#1B1B1C" }]}>
-          {/* Network Selector */}
-          <View style={[styles.card, { backgroundColor: state?.THEME?.THEME === false ? "#F4F4F8" : "#242426" }]}>
-            <View style={styles.networkCon}>
-              <Text style={styles.label}>Network</Text>
-            </View>
-            <TouchableOpacity 
-              style={[styles.headerCard, { backgroundColor: state?.THEME?.THEME === false ? "#FFFFFF" : "#1B1B1C" }]} 
-              onPress={() => setCurrentNetwork(currentNetwork === 0 ? 1 : 0)}
-            >
-              <View style={styles.assetInfo}>
-                <Image source={{ uri: NETWORK[currentNetwork].logoURI }} style={styles.assetIcon} />
-                <View>
-                  <Text style={[styles.assetName, { color: state?.THEME?.THEME ? "#FFF" : "#000" }]}>
-                    {NETWORK[currentNetwork].symbol}
-                  </Text>
-                  <Text style={[styles.assetSymbol, { color: state?.THEME?.THEME ? "#8B8B99" : "#666" }]}>
-                    Active Network
-                  </Text>
-                </View>
-              </View>
-              <Icon name="arrow-down" size={30} color="#666" />
-            </TouchableOpacity>
-          </View>
-
+        <View style={[styles.container, { backgroundColor: theme.bg }]}>
           {/* From Token */}
-          <View style={[styles.card, { backgroundColor: state?.THEME?.THEME === false ? "#F4F4F8" : "#242426", marginTop: hp(1) }]}>
+          <View style={[styles.card, { backgroundColor: theme.cardBg, marginTop: hp(1) }]}>
             <View style={styles.networkCon}>
               <Text style={styles.label}>From</Text>
             </View>
@@ -851,12 +929,12 @@ const EthSwap = () => {
               style={[
                 styles.input,
                 { 
-                  backgroundColor: state?.THEME?.THEME === false ? "#FFFFFF" : "#1B1B1C",
-                  color: state?.THEME?.THEME === false ? "black" : "#fff" 
+                  backgroundColor: theme.bg,
+                  color: theme.headingTx 
                 }
               ]}
               value={amount}
-              onChangeText={(text) => handleChange(text, fromToken.decimals)}
+              onChangeText={(text) => handleChange(text, fromToken?.decimals)}
               placeholder="0.0"
               keyboardType="decimal-pad"
               placeholderTextColor="#666"
@@ -865,14 +943,14 @@ const EthSwap = () => {
 
           {/* Swap Button */}
           <TouchableOpacity 
-            style={[styles.swapButton, { backgroundColor: state?.THEME?.THEME === false ? "#FFFFFF" : "#1B1B1C" }]} 
+            style={[styles.swapButton, { backgroundColor: theme.bg }]} 
             onPress={tokenHandle}
           >
             <Icon name="swap-vertical" size={24} color="#4052D6" />
           </TouchableOpacity>
 
           {/* To Token */}
-          <View style={[styles.card, { backgroundColor: state?.THEME?.THEME === false ? "#F4F4F8" : "#242426", marginTop: -2 }]}>
+          <View style={[styles.card, { backgroundColor: theme.cardBg, marginTop: -2 }]}>
             <View style={styles.networkCon}>
               <Text style={styles.label}>To</Text>
             </View>
@@ -889,18 +967,18 @@ const EthSwap = () => {
             {quoteInfo && (
               <View style={[
                 styles.quoteTextCon,
-                { backgroundColor: state?.THEME?.THEME === false ? "#fff" : "#1B1B1C" }
+                { backgroundColor: theme.bg }
               ]}>
-                <Text style={[styles.quoteText, { color: state?.THEME?.THEME === false ? "black" : "#fff" }]}>
+                <Text style={[styles.quoteText, { color: theme.headingTx }]}>
                   ≈
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <Text style={[styles.quoteText, { color: state?.THEME?.THEME === false ? "black" : "#fff" }]}>
-                    {quoteInfo.outputAmount}
+                  <Text style={[styles.quoteText, { color: theme.headingTx }]}>
+                    {quoteInfo.allQuotes[0].amountOutFormatted}
                   </Text>
                 </ScrollView>
-                <Text style={[styles.quoteText, { color: state?.THEME?.THEME === false ? "black" : "#fff" }]}>
-                  {quoteInfo.outputToken}
+                <Text style={[styles.quoteText, { color: theme.headingTx }]}>
+                  {quoteInfo.tokenOut.symbol}
                 </Text>
               </View>
             )}
@@ -910,62 +988,66 @@ const EthSwap = () => {
           {quoteInfo && (
             <View style={[
               styles.quoteDetailsContainer,
-              { backgroundColor: state?.THEME?.THEME === false ? "#F4F4F8" : "#242426" }
+              { backgroundColor: theme.cardBg }
             ]}>
-              <Text style={[styles.quoteTitle, { color: state?.THEME?.THEME === false ? "black" : "#fff" }]}>
-                Quote Details
+              <Text style={[styles.quoteTitle, { color: theme.headingTx }]}>
+                Estimated Quote Details
               </Text>
               
               <View style={styles.quoteRow}>
                 <Text style={styles.quoteLabel}>Rate</Text>
-                <Text style={[styles.quoteValue, { color: state?.THEME?.THEME === false ? "black" : "#fff" }]}>
-                  1 {quoteInfo.inputToken} = {parseFloat(quoteInfo.pricePerToken).toFixed(6)} {quoteInfo.outputToken}
+                <Text style={[styles.quoteValue, { color: theme.headingTx }]}>
+                  1 {quoteInfo.tokenIn.symbol} = {parseFloat(quoteInfo.allQuotes[0].pricePerToken).toFixed(6)} {quoteInfo.tokenOut.symbol}
                 </Text>
               </View>
 
               <View style={styles.quoteRow}>
                 <Text style={styles.quoteLabel}>Fee Tier</Text>
-                <Text style={[styles.quoteValue, { color: state?.THEME?.THEME === false ? "black" : "#fff" }]}>
-                  {quoteInfo.fee.includes(',') ? 'Multi-hop' : `${parseFloat(quoteInfo.fee) / 10000}%`}
+                <Text style={[styles.quoteValue, { color: theme.headingTx }]}>
+                  {quoteInfo.allQuotes[0].feeTierLabel}
                 </Text>
               </View>
 
-              {quoteInfo.route && quoteInfo.route !== 'direct' && (
-                <View style={styles.quoteRow}>
-                  <Text style={styles.quoteLabel}>Route</Text>
-                  <Text style={[styles.quoteValue, { color: state?.THEME?.THEME === false ? "black" : "#fff" }]}>
-                    {quoteInfo.route}
-                  </Text>
-                </View>
-              )}
-
-              {quoteInfo.networkFee &&(
                 <View style={styles.quoteRow}>
                   <Text style={styles.quoteLabel}>Network Fee</Text>
                    <View style={{ width: wp(25), flexDirection: "row" }}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <Text style={[styles.quoteValue, { color: state?.THEME?.THEME === false ? "black" : "#fff" }]}>
-                      {quoteInfo.networkFee}
+                    <Text style={[styles.quoteValue, { color: theme.headingTx }]}>
+                      {quoteInfo.allQuotes[0].gasCostEth}
                     </Text>
                   </ScrollView>
-                  <Text style={[styles.quoteValue, { color: state?.THEME?.THEME === false ? "black" : "#fff" }]}>
-                    {' '}{NETWORK[currentNetwork].symbol}
+                  <Text style={[styles.quoteValue, { color: theme.headingTx }]}>
+                    {' '}{CHAINS[currentNetwork].symbol}
                   </Text>
                 </View>
                 </View>
-              )}
 
               <View style={styles.quoteRow}>
                 <Text style={styles.quoteLabel}>Minimum Received</Text>
                 <View style={{ width: wp(25), flexDirection: "row" }}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <Text style={[styles.quoteValue, { color: state?.THEME?.THEME === false ? "black" : "#fff" }]}>
-                      {parseFloat(quoteInfo.outputAmount).toFixed(6)}
+                    <Text style={[styles.quoteValue, { color: theme.headingTx }]}>
+                      {parseFloat(quoteInfo.allQuotes[0].minimumReceived)}
                     </Text>
                   </ScrollView>
-                  <Text style={[styles.quoteValue, { color: state?.THEME?.THEME === false ? "black" : "#fff" }]}>
-                    {' '}{quoteInfo.outputToken}
+                  <Text style={[styles.quoteValue, { color: theme.headingTx }]}>
+                    {' '}{quoteInfo.tokenOut.symbol}
                   </Text>
+                </View>
+              </View>
+
+              <View style={styles.quoteRow}>
+                <Text style={[styles.quoteLabel,{fontSize:16}]}>Go with gas less</Text>
+                <View style={{ alignSelf:"flex-end" }}>
+                  <ToggleSwitch
+                    isOn={goWithGas}
+                    onColor="green"
+                    offColor="gray"
+                    size="small"
+                    onToggle={() => {
+                      setgoWithGas(goWithGas?false:true);
+                    }}
+                  />
                 </View>
               </View>
               
@@ -990,7 +1072,7 @@ const EthSwap = () => {
               { backgroundColor: btnDisable || swapExecuting ? "#666" : "#4052D6" }
             ]} 
             disabled={btnDisable || swapExecuting} 
-            onPress={handleSwap}
+            onPress={async()=>{setSwapExecuting(true),goWithGas===true?await getProviderQoute():await swapForEth(amount,state?.wallet?.address)}}
           >
             {swapExecuting ? (
               <ActivityIndicator color="#fff" />
@@ -1002,6 +1084,11 @@ const EthSwap = () => {
 
         <TokenListModal />
       </ScrollView>
+      {providerQuoteInfo!==null&&<ConfirmTx visible={visibleConfirmation}
+        quote={providerQuoteInfo}
+        onClose={()=>{setSwapExecuting(false),setVisibleConfirmation(false)}}
+        onConfirm={async()=>{setSwapExecuting(false),await handleSwap()}}
+      />}
     </View>
   );
 };
@@ -1046,10 +1133,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 8,
   },
-  tokenSymbol: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: "black"
+  tokenChainSymbol: {
+    fontSize: 11,
+    fontWeight: "800",
   },
   tokenBalance: {
     fontSize: 14,
@@ -1116,9 +1202,8 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   modalContainer: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignSelf:"center",
+    justifyContent:"flex-end"
   },
   modalContent: {
     backgroundColor: '#fff',
@@ -1254,6 +1339,152 @@ const styles = StyleSheet.create({
   loadingBalanceText: {
     fontSize: 12,
     marginTop: 4,
+  },
+  backdrop: {
+    flex: 1,
+  },
+  sheet: {
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+    width:wp(100),
+    alignSelf:"center"
+  },
+  handleWrap: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 32,
+  },
+  swapCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  tokenRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  tokenInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  tokenIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tokenLabel: {
+    fontSize: 15,
+    marginBottom: 1,
+  },
+  tokenSymbol: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  tokenAmount: {
+    fontSize: 18,
+    fontWeight: '600',
+    letterSpacing: -0.5,
+  },
+  tokenUSD: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  arrowWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 12,
+  },
+  arrowLine: {
+    flex: 1,
+    height: 0.5,
+  },
+  arrowCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 0.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 8,
+  },
+  arrowIcon: {
+    fontSize: 14,
+  },
+  detailsCard: {
+    borderRadius: 14,
+    borderWidth: 0.5,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  rowLabel: {
+    fontSize: 14,
+  },
+  rowValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'right',
+  },
+  rowSubValue: {
+    fontSize: 11,
+    marginTop: 2,
+    textAlign: 'right',
+  },
+  divider: {
+    height: 0.5,
+    marginHorizontal: -16,
+  },
+  warningBanner: {
+    borderRadius: 10,
+    borderWidth: 0.5,
+    padding: 12,
+    marginBottom:hp(1.5)
+  },
+  warningText: {
+    fontSize: 14,
+  },
+  confirmBtn: {
+    backgroundColor: '#4052D6',
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 2,
+  },
+  confirmBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
 

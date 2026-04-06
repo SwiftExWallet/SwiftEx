@@ -191,7 +191,9 @@ const KycComponent = ({ route }) => {
 
   const handleChange = (text) => {
     const replaceComma = text.replace(',', '.');
-    const payAmount=replaceComma.replace(/[^0-9.]/g, '')
+    const payAmount=replaceComma
+      .replace(/[^0-9.]/g, '')
+      .replace(/(\..*?)\..*/g, '$1');
     setamountSend(payAmount)
     waitAndQoutesFetch(payAmount,operationType,selectedCrypto,selectedfiat)
   };

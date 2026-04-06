@@ -52,14 +52,6 @@ const send_recive = ({route}) => {
     const [Loading, setLoading] = useState(false);
     const [ACTIVATION_MODAL_PROD, setACTIVATION_MODAL_PROD] = useState(false);
 
-    useEffect(() => {
-      const requestPermission = async () => {
-        const status = await Camera.requestCameraPermission();
-        handleCameraStatus(status);
-      };
-      requestPermission();
-    }, []);
-
   const onBarCodeRead = useCodeScanner({
       codeTypes: ['qr'],
       onCodeScanned: (codes) => {
@@ -452,9 +444,8 @@ const send_recive = ({route}) => {
           isActive={true}
           audio={false}
           codeScanner={onBarCodeRead}
-          captureAudio={false}>
+          captureAudio={false}/>
              <QRScannerComponent setModalVisible={setModalVisible}/>
-          </Camera>
     </Modal>
             </View>
         <TokenQrCode
@@ -582,7 +573,7 @@ const styles = StyleSheet.create({
         alignItems:"center"
       },
       preview: {
-        flex:1
+         ...StyleSheet.absoluteFillObject,
       },
       rectangleContainer: {
         flex: 1,

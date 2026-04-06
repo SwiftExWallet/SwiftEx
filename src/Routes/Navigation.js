@@ -90,6 +90,7 @@ import { colors } from "../Screens/ThemeColorsConfig";
 import BridgeAssets from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/BridgeAssets";
 import { AppCheck } from "../Screens/AppChecks/AppCheck";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import {TokensManagement} from "../Dashboard/TokensManagement";
 
 const Stack = createNativeStackNavigator();
 
@@ -647,6 +648,13 @@ const AuthStack = () => {
        <Stack.Screen
         name="AppCheck"
         component={AppCheck}
+        options={{
+          headerShown:false
+        }}
+      />
+      <Stack.Screen
+        name="TokensManagement"
+        component={TokensManagement}
         options={{
           headerShown:false
         }}
