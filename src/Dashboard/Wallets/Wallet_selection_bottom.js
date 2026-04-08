@@ -200,7 +200,7 @@ const Wallet_selection_bottom = ({ onClose }) => {
 
   const performeDeleteWalletAction=async(removeWalletReq)=>{
     const response=await AccessNativeStorage.delete(removeWalletReq.walletId);
-    if(response==="wallet_removed"){
+      if(response==="wallet_removed"||response.wallet_removed==="wallet_removed"){
       if(wallets.length===1){
         const res = await AsyncStorageLib.getItem("AppStatusChecks");
         const parseres = JSON.parse(res);
@@ -253,14 +253,6 @@ const Wallet_selection_bottom = ({ onClose }) => {
               />
             </View>
           )}
-        </TouchableOpacity>
-        <TouchableOpacity onPress={()=>{ManageDeleteWallet(item)}}>
-          <Icon
-                name="delete-circle-outline"
-                type="materialCommunity"
-                size={40}
-                color={"#dd1515bb"}
-              />
         </TouchableOpacity>
       </View>
     );
@@ -323,7 +315,7 @@ const style = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    width:wp(78),
+    width:wp(88),
     padding: wp(3),
   },
   walletInfo: {

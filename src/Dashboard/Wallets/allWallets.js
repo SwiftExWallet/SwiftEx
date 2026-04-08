@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Image,
+  Platform,
 } from "react-native";
 import {
   widthPercentageToDP as wp,
@@ -200,7 +201,7 @@ const AllWallets = () => {
 
   const performeDeleteWalletAction=async(removeWalletReq)=>{
     const response=await AccessNativeStorage.delete(removeWalletReq.walletId);
-    if(response==="wallet_removed"){
+    if(response==="wallet_removed"||response.wallet_removed==="wallet_removed"){
       if(wallets.length===1){
         const res = await AsyncStorageLib.getItem("AppStatusChecks");
         const parseres = JSON.parse(res);
@@ -243,25 +244,34 @@ const AllWallets = () => {
             </Text>
           </View>
 
-          {isActive && (
-            <View style={style.activeContainer}>
-              <Icon
-                name="check-decagram"
-                type="materialCommunity"
-                size={hp(3)}
-                color="green"
-              />
-            </View>
-          )}
         </TouchableOpacity>
-        <TouchableOpacity onPress={()=>{ManageDeleteWallet(item)}}>
+        {isActive ? (
+          <View style={style.activeContainer}>
+            <Icon
+              name="check-decagram"
+              type="materialCommunity"
+              size={hp(3)}
+              style={{ marginLeft: Platform.OS === "android" && wp(-7) }}
+              color="green"
+            />
+            {Platform.OS === "android" &&
+              <TouchableOpacity onPress={() => { ManageDeleteWallet(item) }}>
+                <Icon
+                  name="delete-circle-outline"
+                  type="materialCommunity"
+                  size={40}
+                  color={"#dd1515bb"}
+                />
+              </TouchableOpacity>}
+          </View>
+        ) : <TouchableOpacity onPress={() => { ManageDeleteWallet(item) }}>
           <Icon
-                name="delete-circle-outline"
-                type="materialCommunity"
-                size={40}
-                color={"#dd1515bb"}
-              />
-        </TouchableOpacity>
+            name="delete-circle-outline"
+            type="materialCommunity"
+            size={40}
+            color={"#dd1515bb"}
+          />
+        </TouchableOpacity>}
       </View>
     );
   }, [currentWalletName, isDarkTheme, getWalletIcon, handleWalletSelect]);
