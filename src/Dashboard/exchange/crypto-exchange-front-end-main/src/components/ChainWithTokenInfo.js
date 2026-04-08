@@ -1,4 +1,4 @@
-import { View, StyleSheet, TouchableOpacity, Image, FlatList, Text, TextInput, ActivityIndicator } from "react-native"
+import { View, StyleSheet, TouchableOpacity, Image, FlatList, Text, TextInput, ActivityIndicator, Platform } from "react-native"
 import { useSelector } from "react-redux";
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
 import { Wallet_screen_header } from "../../../../reusables/ExchangeHeader";
@@ -84,8 +84,9 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
             alignSelf: "center"
         },
         searchBar: {
-            fontSize: 16,
-            color: theme.headingTx
+            fontSize: 18,
+            color: theme.headingTx,
+            height:hp(5)
         },
         listEmptyCom: {
             justifyContent: "center",
@@ -138,7 +139,7 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
             onRequestClose={onclose}
             style={styles.modalCon}
         >
-            <View>
+            <View style={{paddingTop:Platform.OS==="ios"?hp(4):0}}>
             
             <Wallet_screen_header elementestID={"Select"} title={`Selected `+headerHeading} onLeftIconPress={onclose} />
             <View style={styles.container}>

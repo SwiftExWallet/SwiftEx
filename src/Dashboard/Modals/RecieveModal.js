@@ -3,6 +3,7 @@ import { useSelector } from "react-redux";
 import Modal from "react-native-modal";
 import { ChainSupportedToken } from "../exchange/crypto-exchange-front-end-main/src/components/ChainWithTokenInfo";
 import TokenQrCode from "./TokensQrCode";
+import { Platform } from "react-native";
 
 const RecieveModal = ({ modalVisible, setModalVisible }) => {
   const [visible, setVisible] = useState(false);
@@ -17,6 +18,7 @@ const RecieveModal = ({ modalVisible, setModalVisible }) => {
         isChainProvide={true}
         chain={"STR"}
         selectedToken={(item) => {
+          setModalVisible(Platform.OS==="ios"?false:true)
           setVisible(true);
           setAssetInfo(item);
         }}
@@ -28,6 +30,7 @@ const RecieveModal = ({ modalVisible, setModalVisible }) => {
         setModalVisible={()=>{
           setVisible(false);
           setModalVisible(false);
+          setModalVisible(true)
         }}
         iconType={assetInfo.symbol||assetInfo.code}
         qrvalue={assetInfo.chain === "STR" ? state?.STELLAR_PUBLICK_KEY : state?.wallet?.address}

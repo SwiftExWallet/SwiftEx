@@ -135,7 +135,7 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
   };
   
   return (
-    <View style={[styles.safeArea, { backgroundColor: themeColors.bg }]}>
+    <View style={[styles.safeArea, { backgroundColor: themeColors.bg,paddingTop:Platform.OS==="ios"?hp(5):0 }]}>
     <ScrollView>
     
       <StatusBar

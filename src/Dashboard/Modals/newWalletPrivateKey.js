@@ -47,7 +47,7 @@ const NewWalletPrivateKey = ({
        setTimeout(async()=>{
          const parsedWallets = await AccessNativeStorage.getAllWallets();
         let wallet = Wallet;
-        wallet.accountName = `Main-Wallet ${parsedWallets.length+1}`;
+        wallet.accountName = `Main-Wallet ${parsedWallets.length+1} ${Math.floor(Math.random() * 10)}`;
         await handleWallet();
        },0)
       } catch (error) {

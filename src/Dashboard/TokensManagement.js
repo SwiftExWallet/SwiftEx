@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import ToggleSwitch from "toggle-switch-react-native";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { MULTICHAIN_PORTFOLIO } from "../components/Redux/actions/type";
-import { useAssetManager } from "../utilities/TokenManageHook";
+import { getAssetId, useAssetManager } from "../utilities/TokenManageHook";
 
 export const GetCryptoList = async (chainId, state) => {
     try {
@@ -136,8 +136,9 @@ export const TokensManagement = () => {
             alignSelf: "center"
         },
         searchBar: {
-            fontSize: 16,
-            color: theme.headingTx
+            fontSize: 18,
+            color: theme.headingTx,
+            height:hp(5)
         },
         listEmptyCom: {
             justifyContent: "center",
@@ -158,7 +159,7 @@ export const TokensManagement = () => {
 
     useEffect(() => {
         setFindBar("");
-    }, [focused])
+    }, [focused]);
 
     useEffect(() => {
         const initChainInfo = async () => {
@@ -168,57 +169,97 @@ export const TokensManagement = () => {
                 setListData(response.processedTokens);
             }
             setLoading(false);
-        }
+        };
         initChainInfo();
-    }, [chainId])
+    }, [chainId]);
 
-    const updatePortfolio = async (token, updateObjIndex) => {
+    const updatePortfolio = async (token) => {
         try {
-            const tokenData = {
-                chain: chainId,
-                name: token.name || token.code,
-                symbol: token.symbol || token.code,
-                balance: 0,
-                balanceUSD: 0,
-                decimals: token.decimals,
-                contractAddress: token.address || token.issuer || '',
-                price: 0,
-                imageUrl: token.logoURI || token.icon || '',
-                active: token.active,
-            };
             const currentTokens = state.activeWalletPortFolio || [];
-            const userActiveWalletInfo= (state && state.activeWalletPortFolio && state.activeWalletPortFolio.tokens || state && state.activeWalletPortFolio)
-            const tokenAlreadyInState=userActiveWalletInfo.filter(data=>data.contractAddress.toLowerCase()===tokenData.contractAddress.toLowerCase() && data.symbol===tokenData.symbol)
-            const stracherTokenInfo = tokenAlreadyInState.length > 0 ? tokenAlreadyInState[0] : tokenData;
-            if (stracherTokenInfo.active) {
-                await dropToken({...stracherTokenInfo,active:false});
-                dispatch({
-                    type: MULTICHAIN_PORTFOLIO,
-                    payload: {
-                        activeWalletPortFolio: currentTokens.filter(
-                            item => item.contractAddress?.toLowerCase() !== stracherTokenInfo.contractAddress?.toLowerCase()
-                                || item.chain !== stracherTokenInfo.chain
-                        )
-                    }
-                });
+            const actualIndex = listData.findIndex(
+                item =>
+                    (item.symbol || item.code) === (token.symbol || token.code) &&
+                    (item.address || item.issuer || '') === (token.address || token.issuer || '')
+            );
+
+            const existingToken = currentTokens.find(
+                t => getAssetId(t) === getAssetId({
+                    symbol: token.symbol || token.code,
+                    contractAddress: token.address || token.issuer || ''
+                })
+            );
+
+            if (existingToken) {
+                const isActive = existingToken.active;
+
+                if (isActive) {
+                    await dropToken({ ...existingToken, active: false });
+                    dispatch({
+                        type: MULTICHAIN_PORTFOLIO,
+                        payload: {
+                            activeWalletPortFolio: currentTokens.map(t =>
+                                getAssetId(t) === getAssetId(existingToken)
+                                    ? { ...t, active: false }
+                                    : t
+                            )
+                        }
+                    });
+                } else {
+                    await addToken({ ...existingToken, active: true });
+                    dispatch({
+                        type: MULTICHAIN_PORTFOLIO,
+                        payload: {
+                            activeWalletPortFolio: currentTokens.map(t =>
+                                getAssetId(t) === getAssetId(existingToken)
+                                    ? { ...t, active: true }
+                                    : t
+                            )
+                        }
+                    });
+                }
+
+                if (actualIndex !== -1) {
+                    setListData(lastData => {
+                        const newData = [...lastData];
+                        newData[actualIndex] = { ...newData[actualIndex], active: !isActive };
+                        return newData;
+                    });
+                }
+
             } else {
-                await addToken({...stracherTokenInfo,active:true});
+                const tokenData = {
+                    chain: chainId,
+                    name: token.name || token.code,
+                    symbol: token.symbol || token.code,
+                    balance: 0,
+                    balanceUSD: 0,
+                    decimals: token.decimals,
+                    contractAddress: token.address || token.issuer || '',
+                    price: 0,
+                    imageUrl: token.logoURI || token.icon || '',
+                    active: true,
+                };
+
+                await addToken(tokenData);
                 dispatch({
                     type: MULTICHAIN_PORTFOLIO,
                     payload: {
-                        activeWalletPortFolio: [...currentTokens, {...stracherTokenInfo,active:true}]
+                        activeWalletPortFolio: [...currentTokens, tokenData]
                     }
                 });
+                if (actualIndex !== -1) {
+                    setListData(lastData => {
+                        const newData = [...lastData];
+                        newData[actualIndex] = { ...newData[actualIndex], active: true };
+                        return newData;
+                    });
+                }
             }
-            setListData(lastData => {
-                const newData = [...lastData];
-                newData[updateObjIndex] = { ...newData[updateObjIndex], active: !stracherTokenInfo.active };
-                return newData;
-            });
+
         } catch (error) {
             console.error("error in updatePortfolio: ", error);
         }
-    }
+    };
 
     const refineInfo = useMemo(() => {
         if (!findBar) return listData;
@@ -230,19 +271,36 @@ export const TokensManagement = () => {
 
     return (
         <View style={styles.container}>
-            <Wallet_screen_header elementestID={"tokensManagement"} title="Token Manage" onLeftIconPress={() => { navigation.goBack(); }} rightIcon={"plus"} onRightIconPress={() => { CHAINS[chainId]?.subName==="STR"?navigation.navigate("Assets_manage"):navigation.navigate("Nfts", { selectedChain: CHAINS[chainId] }) }} />
+            <Wallet_screen_header
+                elementestID={"tokensManagement"}
+                title="Token Manage"
+                onLeftIconPress={() => { navigation.goBack(); }}
+                rightIcon={"plus"}
+                onRightIconPress={() => {
+                    CHAINS[chainId]?.subName === "STR"
+                        ? navigation.navigate("Assets_manage")
+                        : navigation.navigate("Nfts", { selectedChain: CHAINS[chainId] })
+                }}
+            />
             <View style={styles.chainCon}>
                 <FlatList
                     horizontal={true}
                     data={TemporaryTokens}
-                    keyExtractor={(item, index) => index}
-                    renderItem={({ item, index }) => {
-                        return (
-                            <TouchableOpacity onPress={() => { setChainId(item.symbol) }} >
-                                <Image source={{ uri: item.imageUrl }} style={[styles.chainImg, { borderColor: chainId === item.symbol ? "#4052D6" : theme.smallCardBorderColor, borderWidth: wp(1) }]} />
-                            </TouchableOpacity>
-                        );
-                    }}
+                    keyExtractor={(item, index) => index.toString()}
+                    renderItem={({ item }) => (
+                        <TouchableOpacity onPress={() => { setChainId(item.symbol) }}>
+                            <Image
+                                source={{ uri: item.imageUrl }}
+                                style={[
+                                    styles.chainImg,
+                                    {
+                                        borderColor: chainId === item.symbol ? "#4052D6" : theme.smallCardBorderColor,
+                                        borderWidth: wp(1)
+                                    }
+                                ]}
+                            />
+                        </TouchableOpacity>
+                    )}
                 />
             </View>
             <View style={styles.searchCon}>
@@ -256,40 +314,40 @@ export const TokensManagement = () => {
                     onChangeText={(value) => { setFindBar(value) }}
                 />
             </View>
-            {loading ? <View style={styles.loadingCon}>
-                <ActivityIndicator size={"large"} color={theme.headingTx} />
-            </View> :
-                <FlatList
+            {loading
+                ? <View style={styles.loadingCon}>
+                    <ActivityIndicator size={"large"} color={theme.headingTx} />
+                </View>
+                : <FlatList
                     style={styles.listCon}
                     contentContainerStyle={{ flexGrow: 1 }}
                     data={refineInfo}
-                    keyExtractor={(item, index) => index}
-                    renderItem={({ item, index }) => {
-                        return (
-                            <View style={styles.card} onPress={() => { }}>
-                                <View style={styles.flatView}>
-                                    <Image source={{ uri: item.logoURI || item.icon }} style={styles.img} />
-                                    <View>
-                                        <Text style={styles.cardTitel}>{item.symbol || item.code}</Text>
-                                        <Text style={styles.cardSubTitel}>{item.name || item.domain}</Text>
-                                    </View>
+                    keyExtractor={(item, index) => index.toString()}
+                    renderItem={({ item }) => (
+                        <View style={styles.card}>
+                            <View style={styles.flatView}>
+                                <Image source={{ uri: item.logoURI || item.icon }} style={styles.img} />
+                                <View>
+                                    <Text style={styles.cardTitel}>{item.symbol || item.code}</Text>
+                                    <Text style={styles.cardSubTitel}>{item.name || item.domain}</Text>
                                 </View>
-                                <ToggleSwitch
-                                    isOn={item.active}
-                                    onColor="#4052D6"
-                                    offColor="gray"
-                                    size="medium"
-                                    onToggle={() => { updatePortfolio(item, index) }}
-                                />
                             </View>
-                        );
-                    }}
+                            <ToggleSwitch
+                                isOn={item.active}
+                                onColor="#4052D6"
+                                offColor="gray"
+                                size="medium"
+                                onToggle={() => { updatePortfolio(item) }}
+                            />
+                        </View>
+                    )}
                     ListEmptyComponent={
                         <View style={styles.listEmptyCom}>
                             <Text style={styles.listEmptyComTxt}>No data found.</Text>
                         </View>
                     }
-                />}
+                />
+            }
         </View>
-    )
-}
+    );
+};
