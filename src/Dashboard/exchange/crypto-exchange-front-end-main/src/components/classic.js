@@ -938,7 +938,7 @@ const classic = ({ props }) => {
             </View>
 
             <FlatList
-              data={Object.values(CHAINS)}
+              data={Object.values(CHAINS).filter(item=>item.bridgeEnable===true)}
               keyExtractor={(item,index) => index.toString()}
               renderItem={({ item }) => (
                 <TouchableOpacity

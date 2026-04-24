@@ -494,7 +494,7 @@ console.log("resQuotes-",resQuotes)
             <View style={[styles.chooseModalContent,{backgroundColor:theme.cardBg}]}>
               <Text style={{ fontSize: 20, fontWeight: "bold", marginVertical: hp(1), color: theme.headingTx }}>Choose Network</Text>
               <FlatList
-                data={Object.values(CHAINS)}
+                data={Object.values(CHAINS).filter(item=>item.bridgeEnable===true)}
                 renderItem={(t)=>{return <ChooseRenderItem item={t} type={"reciveNetwork"}/>}}
                 keyExtractor={(item,index) => index}
               />

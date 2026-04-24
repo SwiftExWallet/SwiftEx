@@ -23,6 +23,7 @@ const RecieveModal = ({ modalVisible, setModalVisible }) => {
           setAssetInfo(item);
         }}
         showOnlyEvm={false}
+        showDataType={"receiveEnable"}
         />
 
       {assetInfo !== null && <TokenQrCode
@@ -33,7 +34,7 @@ const RecieveModal = ({ modalVisible, setModalVisible }) => {
           setModalVisible(true)
         }}
         iconType={assetInfo.symbol||assetInfo.code}
-        qrvalue={assetInfo.chain === "STR" ? state?.STELLAR_PUBLICK_KEY : state?.wallet?.address}
+        qrvalue={assetInfo.chain === "STR" ? state?.STELLAR_PUBLICK_KEY : assetInfo.chain==="DYDX"?state?.DYDX_ADDRESS_KEY:state?.wallet?.address}
         isDark={state.THEME.THEME}
       />}
      </>

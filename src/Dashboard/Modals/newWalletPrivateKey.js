@@ -25,6 +25,7 @@ import { REACT_APP_HOST } from "../exchange/crypto-exchange-front-end-main/src/E
 import AccessNativeStorage from "../Wallets/AccessNativeStorage";
 import { alert } from "../reusables/Toasts";
 import { useNavigation } from "@react-navigation/native";
+import { dydxAddressDrive } from "../../dydx/dydxAddressDrive";
 
 const NewWalletPrivateKey = ({
   props,
@@ -47,7 +48,7 @@ const NewWalletPrivateKey = ({
        setTimeout(async()=>{
          const parsedWallets = await AccessNativeStorage.getAllWallets();
         let wallet = Wallet;
-        wallet.accountName = `Main-Wallet ${parsedWallets.length+1} ${Math.floor(Math.random() * 10)}`;
+        wallet.accountName = `Main-Wallet ${parsedWallets.length+1}.${Math.floor(Math.random() * 10)}`;
         await handleWallet();
        },0)
       } catch (error) {
@@ -62,6 +63,7 @@ const NewWalletPrivateKey = ({
   const handleWallet = async () => {
     try {
       setLoading(true);
+      const dydxAddress=await dydxAddressDrive(Wallet.privateKey);
       const user = await AsyncStorageLib.getItem("user");
       let wallets = [];
       const data = await AsyncStorageLib.getItem(
@@ -87,6 +89,10 @@ const NewWalletPrivateKey = ({
           },
           stellarWallet: {
             publicKey: Wallet.stellarWallet.publicKey,
+          },
+          dydx: {
+            dydxAddress: dydxAddress.dydxAddress,
+            dydxPublicKey: dydxAddress.publicKey,
           },
           wallets: wallets,
         },
@@ -126,7 +132,12 @@ const NewWalletPrivateKey = ({
                 stellarPublicKey: Wallet.stellarWallet.publicKey,
                 stellarPrivateKey: Wallet.stellarWallet.secretKey,
                 mnemonic: Wallet.mnemonic,
-                walletType: "Multi-coin"
+                walletType: "Multi-coin",
+                dydxAddress: dydxAddress.dydxAddress,
+                dydxPublicKey: dydxAddress.publicKey,
+                dydxMnemonic: dydxAddress.mnemonic,
+                dydxPrivateKey: dydxAddress.privateKey,
+                dydxWalletConnectSignature: dydxAddress.walletConnectSignature,
               })
               dispatch(
                 setCurrentWallet(

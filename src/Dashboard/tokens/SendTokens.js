@@ -41,6 +41,7 @@ import { evmTxManager } from "../../utilities/evmTxManager";
 import { colors } from "../../Screens/ThemeColorsConfig";
 import { ChainSupportedToken } from "../exchange/crypto-exchange-front-end-main/src/components/ChainWithTokenInfo";
 import ShortTermStorage from "../../utilities/ShortTermStorage";
+import MultiChainTokenSend from "../exchange/crypto-exchange-front-end-main/src/components/MultiChainTokenSend";
 
 const SendTokens = (props) => {
   const cameraRef = useRef(null);
@@ -69,6 +70,9 @@ const SendTokens = (props) => {
   const [ErroVisible,setErroVisible]=useState(false);
   const navigation = useNavigation();
   const [showTokens, setShowTokens] = useState(false);
+  const [showErcSend, setShowErcSend] = useState(false);
+  const [ercSendData, setErcSendData] = useState({});
+
   const theme = state.THEME.THEME ? colors.dark : colors.light;
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -191,7 +195,9 @@ const SendTokens = (props) => {
     if (address) {
       if (!valid) {
         setMessage("Please enter a valid address");
-        setAddress("")
+        if(!Keyboard.isVisible){
+          setAddress("")
+        }
       } else {
         setMessage("");
       }
@@ -231,20 +237,23 @@ const SendTokens = (props) => {
 };
 const checkPermission = async () => {
   if (Platform.OS === 'android') {
-    const result = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
-    if (result===true) {
-        setModalVisible(!isModalVisible);
-    } else {
-      const requestResult = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
-      if (requestResult === PermissionsAndroid.RESULTS.GRANTED) {
-        setModalVisible(!isModalVisible);
-      } else {
-        alert("error","Permissions not allowed");
+    const result = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.CAMERA
+    );
+
+    if (!result) {
+      const requestResult = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.CAMERA
+      );
+
+      if (
+        requestResult === PermissionsAndroid.RESULTS.DENIED ||
+        requestResult === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+      ) {
+        CustomInfoProvider.show("warning", "Permission Denied", "Camera permission requird for scaning QR Code.");
       }
     }
-  } else {
-    // iOS permission is handled through Info.plist
-    setModalVisible(!isModalVisible);
+    setModalVisible(true);
   }
 };
   async function a()
@@ -275,6 +284,9 @@ const checkPermission = async () => {
             </View>
             <Icon name="arrow-down" type={"materialCommunity"} size={24} color={theme.headingTx} />
           </TouchableOpacity>
+          </View>
+          {!showErcSend?<>
+<View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
          <View style={{
           flexDirection:"row",
           justifyContent:"space-between",
@@ -484,7 +496,9 @@ const checkPermission = async () => {
             captureAudio={false}/>
            <QRScannerComponent setModalVisible={setModalVisible}/>
       </Modal>
-        <ChainSupportedToken
+          </>
+          :<MultiChainTokenSend route={ercSendData}/>}
+          <ChainSupportedToken
           visible={showTokens}
           onclose={() => { setShowTokens(false) }}
           isChainProvide={true}
@@ -500,22 +514,27 @@ const checkPermission = async () => {
               }
             } else {
               if (item.chain === item.symbol) {
+                setShowErcSend(false);
                 setSelectedChain(item);
+                setErcSendData({});
                 setShowTokens(false);
               } else {
-                setShowTokens(false);
-                navigation.navigate("TokenSend", {
+                setSelectedChain(item);
+                setErcSendData({
                   tokenAddress: item.address || item.contractAddress,
                   tokenType: item.chain,
                   tokenDecimals: item.decimals,
                   tokenSymbol: item.symbol,
                   tokenImage:item.logoURI
-                });
+                })
+                setShowTokens(false);
+                setShowErcSend(true);
               }
             }
           }
           }
           showOnlyEvm={false}
+          showDataType={"sendEnable"}
           />
           </View>
 </>

@@ -36,6 +36,7 @@ import apiHelper from "../exchange/crypto-exchange-front-end-main/src/apiHelper"
 import { REACT_APP_HOST } from "../exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import AccessNativeStorage from "../Wallets/AccessNativeStorage";
 import { checkWalletExistOrNot } from "../Wallets/WalletManagement";
+import { dydxAddressDrive } from "../../dydx/dydxAddressDrive";
 const { EthereumWallet } = NativeModules;
 
 const xrpl = require("xrpl");
@@ -219,6 +220,7 @@ const ImportMultiCoinWalletModal = ({
                   );
                 }
                 const accountFromMnemonic = Platform.OS === "android" ? await EthereumWallet.recoverMultiChainWallet(trimmedPhrase) : await EthereumWallet.recoverWallet(trimmedPhrase,"");
+                const dydxAddress=await dydxAddressDrive(accountFromMnemonic.ethereum.privateKey)
                 const wallet = {
                   address: accountFromMnemonic.ethereum.address,
                   xrp: {
@@ -227,7 +229,10 @@ const ImportMultiCoinWalletModal = ({
                   stellarWallet: {
                     publicKey: accountFromMnemonic.stellar.publicKey,
                   },
-
+                  dydx:{
+                    dydxAddress:dydxAddress.dydxAddress,
+                    dydxPublicKey:dydxAddress.publicKey,
+                  }
                 };
 
                 let wallets = [];
@@ -254,6 +259,10 @@ const ImportMultiCoinWalletModal = ({
                     },
                     stellarWallet: {
                       publicKey: wallet.stellarWallet.publicKey
+                    },
+                    dydx: {
+                      dydxAddress: wallet.dydx.dydxAddress,
+                      dydxPublicKey: wallet.dydx.dydxPublicKey,
                     },
                     walletType: "Multi-coin",
                     wallets: wallets,
@@ -297,7 +306,12 @@ const ImportMultiCoinWalletModal = ({
                         stellarPublicKey: accountFromMnemonic.stellar.publicKey,
                         stellarPrivateKey: accountFromMnemonic.stellar.secretKey,
                         mnemonic: trimmedPhrase,
-                        walletType: "Multi-coin"
+                        walletType: "Multi-coin",
+                        dydxAddress:dydxAddress.dydxAddress,
+                        dydxPublicKey:dydxAddress.publicKey,
+                        dydxMnemonic:dydxAddress.mnemonic,
+                        dydxPrivateKey:dydxAddress.privateKey,
+                        dydxWalletConnectSignature: dydxAddress.walletConnectSignature,
                       })
                       if (walletResponse.success) {
                         setTimeout(() => {

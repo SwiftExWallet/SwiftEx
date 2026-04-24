@@ -13,44 +13,35 @@ import { getAssetId, useAssetManager } from "../utilities/TokenManageHook";
 export const GetCryptoList = async (chainId, state) => {
     try {
         const getListPath = await CHAINS[chainId].supportedTokenList;
-        const response = await fetch(getListPath);
-        const cryptoList = await response.json();
-
+        const response = chainId === CHAINS["DYDX"].symbol ? getListPath : await fetch(getListPath);
+        const cryptoList = chainId === CHAINS["DYDX"].symbol ? response : await response.json();
         const activeWalletTokens = (state.activeWalletPortFolio || state.activeWalletPortFolio.tokens)
             .filter(addr => addr.active)
             .map(addr => addr.contractAddress?.toLowerCase());
-        const nativeToken = {
-            ...CHAINS[chainId].nativeToken,
-            address: CHAINS[chainId].nativeToken.address?.toLowerCase(),
-            active: activeWalletTokens.includes(
-                (CHAINS[chainId].nativeToken.address || "").toLowerCase()
-            ),
-            chain: chainId
-        };
-        const tokenList = cryptoList.tokens || cryptoList.assets ||cryptoList;
-        const restTokens = tokenList
-            .filter(token => {
-                const tokenAddr = (token.address || token.issuer)?.toLowerCase();
-                const nativeAddr = CHAINS[chainId].nativeToken.address?.toLowerCase();
-                return tokenAddr !== nativeAddr;
-            })
+
+        const tokenList = cryptoList.tokens || cryptoList.assets || cryptoList;
+        const processedTokens = tokenList
             .map(token => {
                 const tokenAddr = (token.address || token.issuer)?.toLowerCase();
                 const isActive = activeWalletTokens.includes(tokenAddr);
+
                 return {
                     ...token,
                     active: isActive,
                     chain: chainId
                 };
+            })
+            .sort((a, b) => {
+                if (a.active !== b.active) {
+                    return b.active ? 1 : -1;
+                }
+                const balanceA = parseFloat(a.balance || '0');
+                const balanceB = parseFloat(b.balance || '0');
+                if (balanceA !== balanceB) {
+                    return balanceB - balanceA;
+                }
+                return a.symbol||a.code.localeCompare(b.symbol||b.code);
             });
-        const activeTokens = restTokens.filter(t => t.active).sort((a, b) => b.symbol?.localeCompare(a.symbol));
-        const inactiveTokens = restTokens.filter(t => !t.active).sort((a, b) => b.symbol?.localeCompare(a.symbol));
-
-        const processedTokens = [
-            nativeToken,
-            ...activeTokens,
-            ...inactiveTokens
-        ];
 
         return {
             status: true,
@@ -62,6 +53,66 @@ export const GetCryptoList = async (chainId, state) => {
         status: false
     };
 }
+}
+
+    export const GetCryptoListWtihFilter = async (chainId, state) => {
+        try {
+            const getListPath = await CHAINS[chainId].supportedTokenList;
+            const response = chainId === CHAINS["DYDX"].symbol ? getListPath : await fetch(getListPath);
+            const cryptoList = chainId === CHAINS["DYDX"].symbol ? response : await response.json();
+            const activeWalletTokens = (state.activeWalletPortFolio || state.activeWalletPortFolio.tokens)
+            const tokenList = cryptoList.tokens || cryptoList.assets || cryptoList;
+            const processedTokens = tokenList.map(token => {
+                const tokenAddr = (token.address || token.issuer)?.toLowerCase();
+                const isNative =
+                    token.type === 'NATIVE' ||
+                    !tokenAddr ||
+                    tokenAddr === '0x0000000000000000000000000000000000000000';
+
+                const portfolioToken = isNative
+                    ? activeWalletTokens.find(t =>
+                        t.chain === chainId &&
+                        (
+                            t.contractAddress?.toLowerCase() === 'native' ||
+                            t.contractAddress?.toLowerCase() === '0x0000000000000000000000000000000000000000' ||
+                            t.symbol?.toLowerCase() === token.symbol?.toLowerCase()
+                        )
+                    )
+                    : activeWalletTokens.find(t =>
+                        t.contractAddress?.toLowerCase() === tokenAddr
+                    );
+
+                return {
+                    ...token,
+                    balance: portfolioToken?.balance || '0',
+                    chain: chainId
+                };
+            })
+            .sort((a, b) => {
+                if (a.type !== b.type) {
+                    return a.type === 'NATIVE' ? -1 : 1;
+                }
+
+                const balanceA = parseFloat(a.balance || '0');
+                const balanceB = parseFloat(b.balance || '0');
+
+                if (balanceA > 0 || balanceB > 0) {
+                    return balanceB - balanceA;
+                }
+
+                return a.symbol||a.code.localeCompare(b.symbol||b.code);
+            });
+
+        return {
+            status: true,
+            processedTokens
+        };
+    } catch (error) {
+        console.error("error: ", error);
+        return {
+            status: false
+        };
+    }
 }
 
 export const TokensManagement = () => {
@@ -151,9 +202,11 @@ export const TokensManagement = () => {
             fontWeight: "400"
         },
         loadingCon: {
+            height: 1000,
             width: wp(100),
             alignItems: "center",
             justifyContent: "center",
+            backgroundColor: theme.bg
         }
     });
 
@@ -285,6 +338,7 @@ export const TokensManagement = () => {
             <View style={styles.chainCon}>
                 <FlatList
                     horizontal={true}
+                    showsHorizontalScrollIndicator={false}
                     data={TemporaryTokens}
                     keyExtractor={(item, index) => index.toString()}
                     renderItem={({ item }) => (

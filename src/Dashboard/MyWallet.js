@@ -49,7 +49,10 @@ const MyWallet = (props) => {
   }, [updatingLoading]);
 
   const handleWalletNameChange = (text) => {
-    const formattedUsername = text.replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu, '');
+    const formattedUsername = text?.replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu, '')
+    ?.replace(/\s+/g, ' ')
+    ?.trim()
+    ?? '';
     setWalletName(formattedUsername);
   };
 
@@ -159,7 +162,7 @@ const MyWallet = (props) => {
             <TouchableOpacity style={[styles.updateBtn, { backgroundColor: "gray" }]} disabled={updatingLoading} onPress={() => { setEditWalletName(false), setUpdatingLoading(false), setWalletName("") }}>
               <Text style={styles.updateBtnTxt}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.updateBtn} disabled={updatingLoading} onPress={()=>{handleWalletNameUpdaing()}}>
+            <TouchableOpacity style={styles.updateBtn} disabled={updatingLoading||!walletName} onPress={()=>{handleWalletNameUpdaing()}}>
               {updatingLoading ? <ActivityIndicator color={"#fff"} size={"small"} /> : <Text style={styles.updateBtnTxt}>Update</Text>}
             </TouchableOpacity>
           </View>

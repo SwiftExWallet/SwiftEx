@@ -116,6 +116,7 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
                     putString("address", wallet.optString("address"))
                     putString("stellarPublicKey", wallet.optString("stellarPublicKey"))
                     putString("walletType", wallet.optString("walletType"))
+                    putString("dydxAddress", wallet.optString("dydxAddress"))
                 }
                 filteredWallets.pushMap(filtered)
             }
@@ -149,6 +150,7 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
                 putString("name", walletJson.optString("name"))
                 putString("walletId", walletJson.optString("walletId"))
                 putString("walletType", walletJson.optString("walletType"))
+                putString("dydxAddress", walletJson.optString("dydxAddress"))
             }
 
             val result = Arguments.createMap().apply {

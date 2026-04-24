@@ -334,23 +334,25 @@ const SendXLM = (props) => {
         
             const checkPermission = async () => {
               if (Platform.OS === 'android') {
-                const result = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
-                if (result===true) {
-                    setModalVisible(!isModalVisible);
-                } else {
-                  const requestResult = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
-                  if (requestResult === PermissionsAndroid.RESULTS.GRANTED) {
-                    setModalVisible(!isModalVisible);
-                  } else {
-                    ShowErrotoast(toast,"Permissions not allowed");
+                const result = await PermissionsAndroid.check(
+                  PermissionsAndroid.PERMISSIONS.CAMERA
+                );
+
+                if (!result) {
+                  const requestResult = await PermissionsAndroid.request(
+                    PermissionsAndroid.PERMISSIONS.CAMERA
+                  );
+
+                  if (
+                    requestResult === PermissionsAndroid.RESULTS.DENIED ||
+                    requestResult === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+                  ) {
+                    CustomInfoProvider.show("warning", "Permission Denied", "Camera permission requird for scaning QR Code.");
                   }
                 }
-              } else {
-                // iOS permission is handled through Info.plist
-                setModalVisible(!isModalVisible);
               }
             };
-            
+
             const CHECK_LOGIN=async()=>{
               token ?[setACTIVATION_MODAL(false),navigation.navigate("Settings")]:[setACTIVATION_MODAL(false),navigation.navigate("exchangeLogin")]
             }

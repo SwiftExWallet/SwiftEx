@@ -128,7 +128,8 @@ class StorageModule: NSObject {
                         "name": wallet["name"] ?? NSNull(),
                         "address": wallet["address"] ?? NSNull(),
                         "stellarPublicKey": wallet["stellarPublicKey"] ?? NSNull(),
-                        "walletType": wallet["walletType"] ?? NSNull()
+                        "walletType": wallet["walletType"] ?? NSNull(),
+                        "dydxAddress": wallet["dydxAddress"] ?? NSNull()
                     ]
                 }
                 
@@ -176,7 +177,8 @@ class StorageModule: NSObject {
                   "stellarPublicKey": walletJson["stellarPublicKey"] ?? NSNull(),
                   "name": walletJson["name"] ?? NSNull(),
                   "walletId": walletJson["walletId"] ?? NSNull(),
-                  "walletType": walletJson["walletType"] ?? NSNull()
+                  "walletType": walletJson["walletType"] ?? NSNull(),
+                  "dydxAddress": walletJson["dydxAddress"] ?? NSNull()
               ]
 
               DispatchQueue.main.async {

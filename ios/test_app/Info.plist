@@ -35,8 +35,6 @@
 	<string>We need access to your camera to scan QR Code.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>We need access to Face ID for SwiftEx authentication.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>We need access to your microphone to scan QR Code.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

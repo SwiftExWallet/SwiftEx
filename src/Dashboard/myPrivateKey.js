@@ -6,6 +6,7 @@ import {
   FlatList,
   Pressable,
   NativeModules,
+  ScrollView,
 } from "react-native";
 import {
   widthPercentageToDP as wp,
@@ -24,6 +25,7 @@ const MyPrivateKey = () => {
   const navi = useNavigation()
   const state = useSelector((state) => state)
   const [walletInfo, setWalletInfo] = useState([])
+  const [dydxWalletInfo, setdydxWalletInfo] = useState([])
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const theme = state.THEME.THEME ? colors.dark : colors.light;
   const copyToClipboard = (string) => {
@@ -53,6 +55,12 @@ const MyPrivateKey = () => {
             mnemonicInWords: walletData.mnemonic
           };
           setWalletInfo(refineMnemonic);
+          const refineDydxMnemonic = {
+            ...walletData,
+            mnemonic: walletData.dydxMnemonic.match(/\b(\w+)'?(\w+)?\b/g),
+            mnemonicInWords: walletData.dydxMnemonic
+          };
+          setdydxWalletInfo(refineDydxMnemonic)
         }
       } catch (error) {
         console.log("=error=", error)
@@ -71,11 +79,9 @@ const MyPrivateKey = () => {
   };
 
   return (
-    <View style={{ backgroundColor: theme.bg, height: hp(100) }}>
+    <View style={{ backgroundColor: theme.bg,height:"100%" }}>
       <Wallet_screen_header title="Secret Key" onLeftIconPress={() => navi.goBack()} />
-      <Animated.View
-        style={{ opacity: fadeAnim }}
-      >
+    <ScrollView>
         <View style={style.Body}>
           <Text style={[style.backupText, { color: theme.headingTx }]}>Backup Mnemonic Phrase</Text>
           <Text style={[style.welcomeText1, { color: theme.headingTx }]}>
@@ -112,6 +118,32 @@ const MyPrivateKey = () => {
           >Copy</Button>
         </View>
 
+        <View style={{backgroundColor: theme.smallCardBg }}>
+          <Text style={{ color: theme.headingTx, marginLeft: wp(4.7),marginVertical:hp(1.5) }}>
+          dydx mnemonic
+        </Text>
+          {dydxWalletInfo?.mnemonic?.length > 0 &&
+            <FlatList
+              data={dydxWalletInfo?.mnemonic}
+              renderItem={RenderItem}
+              numColumns={3}
+              contentContainerStyle={{
+                alignSelf: "center",
+              }}
+            />
+          }
+        </View>
+         <View style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: 10 }}>
+          <Button
+            onPress={() => {
+                copyToClipboard(dydxWalletInfo?.mnemonicInWords)
+            }}
+            backgroundColor={"#4052D6"}
+            width={wp(90)}
+            borderRadius={10}
+            style={{ marginVertical: 15 }}
+          >Copy</Button>
+        </View>
         <Text style={{ color: theme.headingTx, marginLeft: wp(4.7), }}>
           Stellar Private Key
         </Text>
@@ -138,7 +170,8 @@ const MyPrivateKey = () => {
             Do not share it through email, photos, social media, apps, etc.
           </Text>
         </View>
-      </Animated.View>
+
+    </ScrollView>
     </View>
   );
 };

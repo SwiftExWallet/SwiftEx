@@ -157,7 +157,7 @@ async function signTransaction(publicKey, txData) {
       "eth",
       publicKey.toLowerCase(),
       JSON.stringify(nativeTxFormat),
-      meta.network.chainId
+      Number(meta.network.chainId)
     );
 
     let signedTx = result?.signedTx || "";

@@ -9,7 +9,6 @@ import {
   ScrollView,
   ActivityIndicator,
   Keyboard,
-  Alert,
   Modal,
   PermissionsAndroid,
   Linking,
@@ -26,23 +25,20 @@ import { isInteger } from "lodash";
 import { isFloat } from "validator";
 import { Camera, useCameraDevice, useCodeScanner } from "react-native-vision-camera";
 import { useToast } from "native-base";
-import { Wallet_screen_header } from "../../../../reusables/ExchangeHeader";
 import ErrorComponet from "../../../../../utilities/ErrorComponet";
 import { Paste } from "../../../../../utilities/utilities";
 import Icon from "../../../../../icon";
-import { alert, ShowErrotoast, Showsuccesstoast } from "../../../../reusables/Toasts";
+import { alert, ShowErrotoast } from "../../../../reusables/Toasts";
 import { isAddress } from "ethers/lib/utils";
 import { ethers } from "ethers";
-import { PGET, PPOST, proxyRequest } from "../api";
 import { getTokenBalancesUsingAddress } from "../utils/getWalletInfo/EtherWalletService";
 import CustomInfoProvider from "./CustomInfoProvider";
 import QRScannerComponent from "../../../../Modals/QRScannerComponent";
 import TokenTxDetails from "./TokenTxDetails";
 import LinearGradient from "react-native-linear-gradient";
 import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
-import AccessNativeStorage from "../../../../Wallets/AccessNativeStorage";
 import { CHAINS } from "../../../../../utilities/TokenUtils";
-const TokenSend = ({ route }) => {
+const MultiChainTokenSend = ({ route }) => {
   const toast = useToast();
   const FOCUSED = useIsFocused()
   const [show, setshow] = useState(false);
@@ -60,7 +56,7 @@ const TokenSend = ({ route }) => {
   const [isModalVisible, setModalVisible] = useState(false);
   const [lastScannedData, setLastScannedData] = useState(null);
   const [ErroVisible, setErroVisible] = useState(false);
-  const [showTxInfo,setShowTxInfo]=useState(false);
+  const [showTxInfo, setShowTxInfo] = useState(false);
 
 
 
@@ -72,7 +68,7 @@ const TokenSend = ({ route }) => {
     amount,
   ) => {
     try {
-      const activeWalletAddress=state && state.wallet && state.wallet.address
+      const activeWalletAddress = state && state.wallet && state.wallet.address
       const activeChain = CHAINS[chain];
       if (!activeChain) {
         alert('error', `Unsupported chain: ${chain}`);
@@ -171,19 +167,6 @@ const TokenSend = ({ route }) => {
     },
   });
 
-  const handleCameraStatus = (status) => {
-    if (status === "NOT_AUTHORIZED") {
-      setModalVisible(false);
-     CustomInfoProvider.show(
-        "Camera Permissions Required.",
-        "Please enable camera permissions in settings to scan QR code.",
-        [
-          { text: "Close", style: "cancel" },
-          { text: "Open", onPress: () => Linking?.openSettings() },
-        ]
-      );
-    }
-  };
   useEffect(() => {
     const insilize = async () => {
       try {
@@ -195,7 +178,7 @@ const TokenSend = ({ route }) => {
         setLoading(true)
         setMessage();
         setPayment_loading(false);
-        const newToken = await fetchTokenInfo(route?.params?.tokenAddress,route?.params?.tokenType?.slice(0,3));
+        const newToken = await fetchTokenInfo(route?.tokenAddress, route?.tokenType?.slice(0, 3));
         setBalance(newToken?.balance);
         setLoading(false);
       } catch (error) {
@@ -205,7 +188,7 @@ const TokenSend = ({ route }) => {
       }
     }
     insilize()
-  }, [FOCUSED])
+  }, [FOCUSED,route])
   useEffect(() => {
     const new_data = async () => {
       try {
@@ -234,26 +217,10 @@ const TokenSend = ({ route }) => {
   }, [amount]);
 
   // Fetch token details
-  const fetchTokenInfo = async (address,network) => {
+  const fetchTokenInfo = async (address, network) => {
     try {
       if (address && state?.wallet?.address) {
         const fetchedTokens = await getTokenBalancesUsingAddress(address, state?.wallet?.address, network)
-        console.log("walleetREspo--", fetchedTokens)
-        if (fetchedTokens.status) {
-          return fetchedTokens.tokenInfo[0]
-        }
-      }
-    } catch (error) {
-      console.error(`Error fetching token info for ${address}:`, error);
-      throw new Error('Invalid token address or failed to fetch data');
-    }
-  };
-
-  // Fetch BNB token details
-  const fetchBNBTokenInfo = async (address) => {
-    try {
-      if (address && state?.wallet?.address) {
-        const fetchedTokens = await getTokenBalancesUsingAddress(address, state?.wallet?.address, "BSC")
         console.log("walleetREspo--", fetchedTokens)
         if (fetchedTokens.status) {
           return fetchedTokens.tokenInfo[0]
@@ -318,35 +285,34 @@ const TokenSend = ({ route }) => {
   }, [isModalVisible]);
   return (
     <>
-      <Wallet_screen_header title={`Send `+route?.params?.tokenSymbol || 'TOKEN'} onLeftIconPress={() => navigation.goBack()} />
       <ErrorComponet
         isVisible={ErroVisible}
         onClose={() => setErroVisible(false)}
         message="The scanned QR code contains an invalid public key. Please make sure you're scanning the correct QR code and try again."
       />
-      
+
       <View style={[styles.container, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C" }]}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-          
+        <ScrollView showsVerticalScrollIndicator={false} >
+
           {/* Recipient Address Card */}
           <View style={[styles.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
-          <View style={{
-          flexDirection:"row",
-          justifyContent:"space-between",
-          alignItems:"center",
-          marginBottom:4
-         }}>
-         <Text style={[styles.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
-            Recipient Address
-          </Text>
-          <TouchableOpacity onPress={() => {
-              Paste(setAddress)
-            }} style={[styles.pasteButton]}>
-            <Icon name="content-copy" type={"materialCommunity"} size={20} color={'#5B65E1'} />
-              <Text style={styles.pasteText}>PASTE</Text>
-            </TouchableOpacity>
-         </View>
-            <View style={[styles.inputContainer, { 
+            <View style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 4
+            }}>
+              <Text style={[styles.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
+                Recipient Address
+              </Text>
+              <TouchableOpacity onPress={() => {
+                Paste(setAddress)
+              }} style={[styles.pasteButton]}>
+                <Icon name="content-copy" type={"materialCommunity"} size={20} color={'#5B65E1'} />
+                <Text style={styles.pasteText}>PASTE</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={[styles.inputContainer, {
               backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
             }]}>
               <TextInput
@@ -360,26 +326,26 @@ const TokenSend = ({ route }) => {
                 style={[styles.input, { color: state.THEME.THEME === false ? "#212529" : "#FFFFFF" }]}
               />
               <View style={styles.inputActions}>
-              <TouchableOpacity onPress={() => {
-              toggleModal()
-            }} style={[styles.iconButton,{ backgroundColor:state.THEME.THEME?"#242426":"#F4F4F8",}]}>
-              <Icon name="qr-code-scanner" type={"material"} size={20} color={state.THEME.THEME?"#fff":"#272729"} />
-            </TouchableOpacity>
+                <TouchableOpacity onPress={() => {
+                  toggleModal()
+                }} style={[styles.iconButton, { backgroundColor: state.THEME.THEME ? "#242426" : "#F4F4F8", }]}>
+                  <Icon name="qr-code-scanner" type={"material"} size={20} color={state.THEME.THEME ? "#fff" : "#272729"} />
+                </TouchableOpacity>
               </View>
             </View>
-            <View style={{borderBottomColor:"gray", borderWidth:0.5,marginVertical:15}}/>
+            <View style={{ borderBottomColor: "gray", borderWidth: 0.5, marginVertical: 15 }} />
             <View style={styles.balanceHeader}>
               <Text style={[styles.networkInfoTxt, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
                 Destination network
               </Text>
-              <View style={{flexDirection:"row",alignItems:"center"}}>
-                <Image source={{uri:CHAINS[route?.params?.tokenType]?.imageUrl}} width={wp(6.7)} height={hp(3)}/>
-               <Text style={[styles.networkInfoTxt, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
-                {CHAINS[route?.params?.tokenType]?.name}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Image source={{ uri: CHAINS[route?.tokenType]?.imageUrl }} width={wp(6.7)} height={hp(3)} />
+                <Text style={[styles.networkInfoTxt, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
+                  {CHAINS[route?.tokenType]?.name}
+                </Text>
               </View>
             </View>
-              <View style={{borderBottomColor:"gray", borderWidth:0.5,marginVertical:15}}/>
+            <View style={{ borderBottomColor: "gray", borderWidth: 0.5, marginVertical: 15 }} />
             <View style={styles.balanceHeader}>
               <Text style={[styles.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
                 Available Balance
@@ -392,11 +358,11 @@ const TokenSend = ({ route }) => {
                   {balance ? balance : show === false ? "0.00" : ""}
                 </Text>
               </ScrollView>
-              <View style={{alignItems:"center"}}>
-                <Image source={{ uri: CHAINS[route?.params?.tokenType]?.imageUrl }} width={20} height={20} style={styles.overLayImg} />
-                <Image source={{ uri: route?.params?.tokenImage }} width={40} height={40}/>
+              <View style={{ alignItems: "center" }}>
+                <Image source={{ uri: CHAINS[route?.tokenType]?.imageUrl }} width={20} height={20} style={styles.overLayImg} />
+                <Image source={{ uri: route?.tokenImage }} width={40} height={40} />
                 <Text style={[styles.currency, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
-                  {route?.params?.tokenSymbol || 'TOKEN'}
+                  {route?.tokenSymbol || 'TOKEN'}
                 </Text>
               </View>
             </View>
@@ -407,7 +373,7 @@ const TokenSend = ({ route }) => {
             <Text style={[styles.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
               Amount
             </Text>
-            <View style={[styles.inputContainer, { 
+            <View style={[styles.inputContainer, {
               backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
             }]}>
               <TextInput
@@ -510,47 +476,42 @@ const TokenSend = ({ route }) => {
             codeScanner={onBarCodeRead}
             captureAudio={false}
           />
-            <QRScannerComponent setModalVisible={setModalVisible} />
+          <QRScannerComponent setModalVisible={setModalVisible} />
         </View>
       </Modal>
 
       {/* Transaction Details Modal */}
       <TokenTxDetails
         visible={showTxInfo}
-        onClose={() => { 
+        onClose={() => {
           setShowTxInfo(false);
           setPayment_loading(false);
         }}
         params={{
           walletAddress: state?.wallet?.address,
-          tokenAddress: route?.params?.tokenAddress,
+          tokenAddress: route?.tokenAddress,
           recipientAddress: address,
           amount: amount,
-          networkName: route?.params?.tokenType?.toLowerCase(),
-          network: route?.params?.tokenType?.slice(0,3),
-          tokenDecimals:route?.params?.tokenDecimals
+          networkName: route?.tokenType?.toLowerCase(),
+          network: route?.tokenType?.slice(0, 3),
+          tokenDecimals: route?.tokenDecimals
         }}
         theme={state.THEME.THEME === false ? "light" : "dark"}
         onNextStep={() => {
           setShowTxInfo(false);
-            sendERCTokens(route?.params?.tokenType?.slice(0,3),route?.params?.tokenAddress, route?.params?.tokenDecimals,address,amount);
+          sendERCTokens(route?.tokenType?.slice(0, 3), route?.tokenAddress, route?.tokenDecimals, address, amount);
         }}
       />
     </>
   );
 };
 
-export default TokenSend;
+export default MultiChainTokenSend;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     height: hp(100),
-  },
-  scrollContent: {
-    paddingHorizontal: wp(4),
-    paddingTop: hp(2),
-    paddingBottom: hp(12),
   },
   card: {
     borderRadius: 16,
@@ -582,19 +543,19 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     padding: wp(2),
-    borderRadius:10
+    borderRadius: 10
   },
   pasteButton: {
     paddingHorizontal: wp(1),
     paddingVertical: hp(1),
     borderRadius: 8,
-    flexDirection:"row"
+    flexDirection: "row"
   },
   pasteText: {
     color: "#5B65E1",
     marginHorizontal: wp(2),
-    fontSize:16,
-    fontWeight:"500"
+    fontSize: 16,
+    fontWeight: "500"
   },
   balanceHeader: {
     flexDirection: 'row',
@@ -614,14 +575,14 @@ const styles = StyleSheet.create({
   currency: {
     fontSize: 16,
     fontWeight: '600',
-    marginTop:hp(0.5)
+    marginTop: hp(0.5)
   },
   maxButton: {
     paddingHorizontal: wp(4),
     paddingVertical: hp(1.4),
     borderRadius: 8,
     marginLeft: wp(2),
-    backgroundColor:"#4052D6"
+    backgroundColor: "#4052D6"
   },
   maxButtonText: {
     color: '#fff',
@@ -669,7 +630,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   camera: {
-     ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFillObject,
   },
   cameraOverlay: {
     flex: 1,
@@ -716,7 +677,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     letterSpacing: 0.3,
-    marginLeft:wp(1)
+    marginLeft: wp(1)
   },
   overLayImg: {
     position: "absolute",

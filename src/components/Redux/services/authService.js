@@ -632,6 +632,10 @@ async function AddToAllWallets(wallets, user) {
           address: wallets[0].xrp.address,
           privateKey: wallets[0].xrp.privateKey,
         },
+        dydx:{
+            dydxAddress:wallets[0].dydx.dydxAddress,
+            dydxPublicKey:wallets[0].dydx.dydxPublicKey,
+        }
       });
          const Ether_address= wallets[0].address;
         const publicKey = wallets[0].stellarWallet.publicKey;
@@ -651,7 +655,9 @@ async function AddToAllWallets(wallets, user) {
           const newTransaction = {
             Ether_address,
             publicKey,
-            secretKey
+            secretKey,
+            dydxAddress:wallets[0].dydx.dydxAddress,
+            dydxPublicKey:wallets[0].dydx.dydxPublicKey,
           };
           userTransactions.push(newTransaction);
           await AsyncStorageLib.setItem('myDataKey', JSON.stringify(userTransactions));
@@ -715,7 +721,9 @@ async function AddToAllWallets(wallets, user) {
       const newTransaction = {
         Ether_address,
         publicKey,
-        secretKey
+        secretKey,
+        dydxAddress:wallets[0].dydx.dydxAddress,
+        dydxPublicKey:wallets[0].dydx.dydxPublicKey,
       };
       userTransactions.push(newTransaction);
       await AsyncStorageLib.setItem('myDataKey', JSON.stringify(userTransactions));

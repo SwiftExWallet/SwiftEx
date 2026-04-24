@@ -206,8 +206,9 @@ const AllWallets = () => {
         const res = await AsyncStorageLib.getItem("AppStatusChecks");
         const parseres = JSON.parse(res);
         await AsyncStorageLib.clear();
-        await AsyncStorageLib.setItem("AppStatusChecks", JSON.stringify(parseres));
-        navigation.navigate("Passcode");
+        await AsyncStorageLib.setItem("AppStatusChecks", JSON.stringify(parseres)).then(()=>{
+          navigation.navigate("Passcode");
+        })
       }
       const walletUpdates= await fetchAllWallets();
       if(removeWalletReq.name === currentWalletName){

@@ -1553,6 +1553,29 @@ PODS:
     - ReactNativeDependencies
   - react-native-biometrics (3.0.1):
     - React-Core
+  - react-native-compat (2.23.7):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
+    - YttriumWrapper (= 0.10.40)
   - react-native-get-random-values (1.11.0):
     - React-Core
   - react-native-image-picker (7.2.3):
@@ -2345,6 +2368,7 @@ PODS:
     - React-Core
   - WalletCoreSwiftProtobuf (1.29.0)
   - Yoga (0.0.0)
+  - YttriumWrapper (0.10.40)
 
 DEPENDENCIES:
   - BVLinearGradient (from `../node_modules/react-native-linear-gradient`)
@@ -2400,6 +2424,7 @@ DEPENDENCIES:
   - React-Mapbuffer (from `../node_modules/react-native/ReactCommon`)
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
   - react-native-biometrics (from `../node_modules/react-native-biometrics`)
+  - "react-native-compat (from `../node_modules/@walletconnect/react-native-compat`)"
   - react-native-get-random-values (from `../node_modules/react-native-get-random-values`)
   - react-native-image-picker (from `../node_modules/react-native-image-picker`)
   - "react-native-netinfo (from `../node_modules/@react-native-community/netinfo`)"
@@ -2487,6 +2512,7 @@ SPEC REPOS:
     - SwiftProtobuf
     - TrustWalletCore
     - WalletCoreSwiftProtobuf
+    - YttriumWrapper
 
 EXTERNAL SOURCES:
   BVLinearGradient:
@@ -2570,6 +2596,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/microtasks"
   react-native-biometrics:
     :path: "../node_modules/react-native-biometrics"
+  react-native-compat:
+    :path: "../node_modules/@walletconnect/react-native-compat"
   react-native-get-random-values:
     :path: "../node_modules/react-native-get-random-values"
   react-native-image-picker:
@@ -2749,6 +2777,7 @@ SPEC CHECKSUMS:
   React-Mapbuffer: 92b99e450e8ff598b27d6e4db3a75e04fd45e9a9
   React-microtasksnativemodule: 2fe0f2bd2840dedbd66c0ac249c64f977f39cc18
   react-native-biometrics: 43ed5b828646a7862dbc7945556446be00798e7d
+  react-native-compat: 7acf071debaca35fd988f277f11dfdb070798a33
   react-native-get-random-values: d16467cf726c618e9c7a8c3c39c31faa2244bbba
   react-native-image-picker: 168d6972e50ea848defe4ac4c222faa9bc52aea0
   react-native-netinfo: f852c868bf5175e46165c7e4db48a204a95c3800
@@ -2810,6 +2839,7 @@ SPEC CHECKSUMS:
   VisionCamera: 7187b3dac1ff3071234ead959ce311875748e14f
   WalletCoreSwiftProtobuf: a4798576a2d309511fc45f81843d348732ec571d
   Yoga: 772166513f9cd2d61a6251d0dacbbfaa5b537479
+  YttriumWrapper: e99db26ea3ca6b4580933320e11e046f9607525a
 
 PODFILE CHECKSUM: 921df4ec45f7f46795027ff2418e9234a7bf635e
 

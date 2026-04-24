@@ -1,5 +1,5 @@
 import { useIsFocused, useNavigation } from "@react-navigation/native";
-import { ActivityIndicator, Alert, Image, Keyboard, Linking, Modal, NativeModules, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
+import { ActivityIndicator, Alert, Image, Keyboard, Linking, Modal, NativeModules, PermissionsAndroid, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 import {
     widthPercentageToDP as wp,
     heightPercentageToDP as hp,
@@ -86,9 +86,27 @@ const send_recive = ({route}) => {
     // No need to explicitly toggle modal visibility on "READY"
     // Let `toggleModal` or user actions handle visibility
   };
-    const toggleModal = () => {
-        setModalVisible(!isModalVisible);
-      };
+  const toggleModal = async() => {
+  if (Platform.OS === 'android') {
+        const result = await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.CAMERA
+        );
+  
+        if (!result) {
+          const requestResult = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.CAMERA
+          );
+  
+          if (
+            requestResult === PermissionsAndroid.RESULTS.DENIED ||
+            requestResult === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+          ) {
+            CustomInfoProvider.show("warning", "Permission Denied", "Camera permission requird for scaning QR Code.");
+          }
+        }
+        setModalVisible(true);
+      }  
+  };
 
     const get_data=async()=>{
         setLoading(true);

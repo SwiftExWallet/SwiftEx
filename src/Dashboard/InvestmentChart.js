@@ -67,7 +67,7 @@ function InvestmentChart() {
       await fetchDataDispatch();
       try {
         if (wallet && wallet.address && state && state.STELLAR_PUBLICK_KEY) {
-        const walletInfo = await GetWalletTokens(wallet?.address,state.STELLAR_PUBLICK_KEY);
+        const walletInfo = await GetWalletTokens(wallet?.address,state.STELLAR_PUBLICK_KEY,state.DYDX_ADDRESS_KEY);
         if (walletInfo.tokens.length > 1) {
           const userCustomTokens=await getCustomTokens()
           const margeArray=[...walletInfo.tokens,avilableSoonAsset,...(userCustomTokens.status ? userCustomTokens.data : [])]
@@ -129,7 +129,7 @@ function InvestmentChart() {
             const preser_backup = await AsyncStorage.getItem('wallet_backup');
             matchedData = parsedData.find((item) => item.Ether_address === preser_backup);
           }
-          const walletInfo = await GetWalletTokens(wallet?.address,matchedData?matchedData?.publicKey:state?.STELLAR_PUBLICK_KEY);
+          const walletInfo = await GetWalletTokens(wallet?.address,matchedData?matchedData?.publicKey:state?.STELLAR_PUBLICK_KEY,state.DYDX_ADDRESS_KEY);
           if (walletInfo.tokens.length > 1) {
             const userCustomTokens=await getCustomTokens()
             const margeArray=[...walletInfo.tokens,...(userCustomTokens.status ? userCustomTokens.data : []),avilableSoonAsset]
@@ -166,6 +166,8 @@ function InvestmentChart() {
           STELLAR_PUBLICK_KEY: matchedData.publicKey,
           STELLAR_SECRET_KEY: matchedData.secretKey,
           STELLAR_ADDRESS_STATUS: isActive,
+          DYDX_PUBLIC_KEY:matchedData.dydxPublicKey,
+          DYDX_ADDRESS_KEY:matchedData.dydxAddress,
         },
       });
       dispatch({
@@ -195,7 +197,6 @@ function InvestmentChart() {
     try {
       const user = await AsyncStorage.getItem("user");
       const storedData = await AsyncStorage.getItem('myDataKey');
-      console.log("---storedData--",storedData,"---------",user);
       if (!storedData) {
         console.log('No data found for key stellar keys to dispatch');
         return;

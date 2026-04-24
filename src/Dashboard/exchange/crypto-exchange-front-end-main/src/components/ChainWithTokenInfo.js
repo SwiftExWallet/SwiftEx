@@ -7,14 +7,14 @@ import { CHAINS, TemporaryTokens } from "../../../../../utilities/TokenUtils";
 import { useEffect, useMemo, useState } from "react";
 import { useIsFocused } from "@react-navigation/native";
 import Modal from "react-native-modal";
-import { GetCryptoList } from "../../../../TokensManagement";
+import { GetCryptoList, GetCryptoListWtihFilter } from "../../../../TokensManagement";
 
-export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEvm=true }) => {
+export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEvm=true,showDataType }) => {
     const focused = useIsFocused();
     const state = useSelector((state) => state);
     const theme = state.THEME.THEME ? colors.dark : colors.light;
-    const [chainId, setChainId] = useState("ETH");
-    const [headerHeading, setheaderHeading] = useState("Ethereum");
+    const [chainId, setChainId] = useState(Object.values(CHAINS)[0].symbol);
+    const [headerHeading, setheaderHeading] = useState(Object.values(CHAINS)[0].name);
     const [listData, setListData] = useState([]);
     const [findBar, setFindBar] = useState("");
     const [loading, setLoading] = useState(false);
@@ -26,6 +26,7 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
         },
         container: {
             justifyContent: "flex-end",
+            paddingBottom: hp(6.9),
             backgroundColor: theme.bg,
         },
         flatView: {
@@ -99,7 +100,7 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
             fontWeight: "400"
         },
         loadingCon: {
-            height: hp(80),
+            height: 1000,
             width: wp(100),
             alignItems: "center",
             justifyContent: "center",
@@ -114,7 +115,7 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
     useEffect(() => {
         const initChainInfo = async () => {
             setLoading(true);
-            const response = await GetCryptoList(chainId, state);
+            const response = await GetCryptoListWtihFilter(chainId, state);
             if (response.status) {
                 setListData(response.processedTokens);
             }
@@ -127,6 +128,7 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
         if (!findBar) return listData;
         return listData?.filter(item =>
             (item.symbol || item.code)?.toLowerCase()?.includes(findBar?.toLowerCase()) ||
+            (item.address)?.toLowerCase()?.includes(findBar?.toLowerCase()) ||
             (item.name || item.domain)?.toLowerCase()?.includes(findBar?.toLowerCase())
         );
     }, [listData, findBar]);
@@ -146,7 +148,8 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
                 <View style={styles.chainCon}>
                     <FlatList
                         horizontal={true}
-                        data={showOnlyEvm?TemporaryTokens.slice(1,8):TemporaryTokens}
+                        showsHorizontalScrollIndicator={false}
+                        data={Object.values(CHAINS).filter(item=>item[showDataType]===true)}
                         keyExtractor={(item, index) => index}
                         renderItem={({ item, index }) => {
                             return (
@@ -186,7 +189,10 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
                                             <Text style={styles.cardSubTitel}>{item.name || item.domain}</Text>
                                         </View>
                                     </View>
-                                    <Text style={[styles.cardSubTitel,{marginRight:wp(3)}]}>{item.chain}</Text>
+                                    <View style={{alignItems:"flex-end"}}>
+                                        <Text style={[styles.cardSubTitel, { marginRight: wp(3),maxWidth:wp(15) }]} numberOfLines={1}>{item.balance || 0.0}</Text>
+                                        <Text style={[styles.cardSubTitel, { marginRight: wp(3) }]}>{item.chain}</Text>
+                                    </View>
                                 </TouchableOpacity>
                             );
                         }}

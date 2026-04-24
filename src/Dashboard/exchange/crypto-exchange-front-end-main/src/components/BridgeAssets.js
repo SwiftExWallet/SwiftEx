@@ -674,7 +674,7 @@ const BridgeAssets = ({ props }) => {
   const isStableFeeInsufficient = selectedRelayerFee === "stablecoin" && stableFee > tokenBal;
   const isNativeFeeInsufficient = selectedRelayerFee === "native" && nativeFee > walletBal;
   const isInsufficientBalance = isTokenInsufficient || isStableFeeInsufficient || isNativeFeeInsufficient;
-  const isDisabled = walletActivationWarning || quotesLoading || swapLoading || fromAmt <= 0 || isInsufficientBalance;
+  const isDisabled = (walletActivationWarning&&selectedToNetwork.subName==="STR")||(walletActivationWarning&&selectedFromNetwork.subName==="STR") || quotesLoading || swapLoading || fromAmt <= 0 || isInsufficientBalance;
 
   return (
     <View style={styles.container}>
@@ -914,7 +914,7 @@ const BridgeAssets = ({ props }) => {
           >
             <Text style={styles.confirmButtonText}>
               {walletActivationWarning
-                ? "Stellar wallet Activation Required"
+                ? (walletActivationWarning&&selectedToNetwork.subName==="STR")||(walletActivationWarning&&selectedFromNetwork.subName==="STR")?"Stellar wallet Activation Required":"Confirm Transaction"
                 : swapLoading
                   ? "Wait transaction under process..."
                   : isInsufficientBalance
@@ -943,7 +943,7 @@ const BridgeAssets = ({ props }) => {
             </View>
 
             <FlatList
-              data={Object.values(CHAINS)}
+              data={Object.values(CHAINS).filter(item=>item.bridgeEnable===true)}
               keyExtractor={(item,index) => index.toString()}
               renderItem={({ item }) => (
                 <TouchableOpacity

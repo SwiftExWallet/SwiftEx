@@ -25,6 +25,7 @@ import Wallet_selection_bottom from "./Wallets/Wallet_selection_bottom";
 import { PORTFOLIO_CONFIG } from "../components/Redux/actions/type";
 import Modal from "react-native-modal";
 import InvestmentChart from "./InvestmentChart";
+import WalletConnect from "../Dashboard/walletConnect/WalletConnect"
 if (
   Platform.OS === "android" &&
   UIManager.setLayoutAnimationEnabledExperimental(true)
@@ -43,6 +44,7 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
   const [balanceUsd, setBalance] = useState(0.0);
   const [Wallet_modal, setWallet_modal] = useState(false);
   const [Loading_upper, setLoading_upper] = useState(true);
+  const [walletSyncShow, setWalletSyncShow] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   if (Platform.OS === "android") {
     if (UIManager.setLayoutAnimationEnabledExperimental) {
@@ -174,10 +176,10 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
                   styles.bellCon,
                   { backgroundColor: isDark ? "#18181C" : "#F4F4F8",marginRight:10 },
                 ]}
-                onPress={() => {navigation.navigate("Transactions")}}
+                onPress={() => {setWalletSyncShow(true)}}
               >
                 <Icon
-                  name="history"
+                  name="qr-code-scanner"
                   type="material"
                   size={28}
                   color={isDark ? "gray" : "#272729"}
@@ -332,6 +334,7 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
             </View>
       </Modal>
     </ScrollView>
+     <WalletConnect visible={walletSyncShow} onClose={()=>{setWalletSyncShow(false)}} isDark={true}/>
     </View>
   );
 };

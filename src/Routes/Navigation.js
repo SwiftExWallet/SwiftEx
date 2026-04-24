@@ -91,6 +91,7 @@ import BridgeAssets from "../Dashboard/exchange/crypto-exchange-front-end-main/s
 import { AppCheck } from "../Screens/AppChecks/AppCheck";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import {TokensManagement} from "../Dashboard/TokensManagement";
+import { WalletNetworkSelection } from "../Dashboard/ImportWalletModule/WalletNetworkSelection";
 
 const Stack = createNativeStackNavigator();
 
@@ -182,15 +183,7 @@ const AuthStack = () => {
       <Stack.Screen
         name="Wallet"
         component={Wallet}
-        options={{  header: () => {
-          return (
-            <WalletHeader
-              title={"Wallet"}
-              IconName="delete"
-              IconType="material"
-            />
-          );
-        },}}
+        options={{headerShown:false}}
       />
       <Stack.Screen
         name="ImportWallet"
@@ -659,6 +652,14 @@ const AuthStack = () => {
           headerShown:false
         }}
       />
+      <Stack.Screen
+        name="WalletNetworkSelection"
+        component={WalletNetworkSelection}
+        options={{
+          headerShown:false
+        }}
+      />
+
       <Stack.Screen
         name="TxDetails"
         options={{headerShown:false}}
