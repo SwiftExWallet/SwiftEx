@@ -140,8 +140,8 @@ const LockAppModal = ({ pinViewVisible, setPinViewVisible }) => {
         <View style={styles.upper_con}>
           <Image
             style={{
-              width: wp("20"),
-              height: hp("15"),
+              width: 160,
+              height: 140,
               padding: 30,
               marginTop: hp(2),
             }}
