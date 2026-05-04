@@ -30,6 +30,7 @@ import brridge_new from "../../assets/brridge_new.png";
 import TokenQrCode from "./Modals/TokensQrCode";
 import InfoComponent from "./exchange/crypto-exchange-front-end-main/src/components/InfoComponent";
 import LinearGradient from "react-native-linear-gradient";
+import { CHAINTOCHARTID } from "../utilities/TokenUtils";
 
 const Asset_info = ({ route }) => {
   const prvValue = useRef(null);
@@ -143,7 +144,7 @@ const Asset_info = ({ route }) => {
 
   const fetchBinanceData = async (symbol) => {
     try {
-      const normalizedSymbol = symbol === "USDT" ? "USDC" : symbol;
+      const normalizedSymbol = symbol === "USDT" ? "USDC" : CHAINTOCHARTID[symbol];
       const response = await fetch(
         `https://api.binance.com/api/v3/ticker/tradingDay?symbol=${normalizedSymbol}USDT`
       );
@@ -183,7 +184,7 @@ const Asset_info = ({ route }) => {
     setChartError(false);
 
     try {
-      const normalizedSymbol = symbol === "USDT" ? "USDC" : symbol;
+      const normalizedSymbol = symbol === "USDT" ? "USDC" : CHAINTOCHARTID[symbol];
       const { interval, limit } = getIntervalForTimeframe(timeframe);
       
       const response = await fetch(

@@ -34,6 +34,7 @@ import Modal from "react-native-modal";
 import CustomInfoProvider from '../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import ToggleSwitch from 'toggle-switch-react-native';
 import { swapBestRoute, swapConfirmRoute, swapPrepareTx, swapTxSign } from '../utilities/SwapRango';
+import { GetStellarUSDCAvilabelBalance } from '../utilities/StellarUtils';
 
 const EthSwap = () => {
   const state = useSelector((state) => state);
@@ -41,6 +42,8 @@ const EthSwap = () => {
   const navigation = useNavigation();
   const [btnDisable, setbtnDisable] = useState(true);
   const [swapExecuting, setSwapExecuting] = useState(false);
+  const [refreshTimer, setrefreshTimer] = useState(25);
+  const intervalRef = useRef(null);
   const styles = StyleSheet.create({
     mainCon: {
       flex: 1,
@@ -171,7 +174,7 @@ const EthSwap = () => {
       justifyContent: "center",
       alignItems: "center",
       alignSelf: "center",
-      marginTop: hp(2.5),
+      marginVertical: hp(2.5),
       paddingHorizontal: wp(2),
       paddingVertical: hp(2),
       borderRadius: 10,
@@ -340,6 +343,19 @@ const EthSwap = () => {
       fontWeight: '600',
       color: '#fff',
     },
+    timerCon: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: "space-between",
+      backgroundColor:theme.smallCardBg,
+      paddingHorizontal:wp(2.3),
+      paddingVertical:hp(0.2),
+      borderRadius:30,
+      elevation:5,
+      marginTop:-10,
+      borderColor:"#4052D6",
+      borderWidth:1
+    },
   });
   const defaultQuoteInfo = { provider: null, rate: null, feeTire: null, networkFee: null, outputAmount: null, minimumReceive: null, time: null, fromToken: null, toToken: null, fromChain: null, toChain: null, isFullNull: true }
   const [showTokenSelection, setshowTokenSelection] = useState(false);
@@ -367,93 +383,130 @@ const EthSwap = () => {
   };
 
   const handleAmount = (text) => {
+    if (fromToken.chain === CHAINS["STR"].symbol && toToken.chain === CHAINS["STR"].symbol) {
+      CustomInfoProvider.show("info", "Use Stellar Swap Instead?", "This token works on Stellar. Would you like to continue with the faster and easier AMM Swap option?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Yes", onPress: () => { navigation.navigate("newOffer_modal") } },
+      ]);
+    } else {
     const replaceComma = text.replace(',', '.');
     const payAmount = replaceComma
       .replace(/[^0-9.]/g, '')
       .replace(/(\..*?)\..*/g, '$1');
     setAmount(payAmount);
+  }
+  };
+
+  const updateQuote = async () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      setbtnDisable(true);
+      setbtnMessage("Enter Amount");
+      return;
+    }
+    try {
+      setqoutesLoading(true);
+      if (fromToken.chain === toToken.chain) {
+        const quote = await getSwapQuote(fromToken, toToken, amount, fromToken.chain);
+        if (quote) {
+          if (quote.success) {
+            setQuoteInfo(prev => ({
+              ...prev,
+              provider: "uniswap",
+              rate: `1 ${quote.data.inputToken} = ${quote.data.pricePerToken} ${quote.data.outputToken}`,
+              feeTire: `${Number(quote.data.fee) / 10000}%`,
+              networkFee: quote.data.networkFee,
+              outputAmount: quote.data.outputAmount,
+              minimumReceive: quote.data.minimumReceived,
+              fromToken: quote.data.inputToken,
+              fromChain: fromToken.chain,
+              toToken: quote.data.outputToken,
+              toChain: toToken.chain,
+              isFullNull: false
+            }));
+          }
+          const amountNum = parseFloat(amount);
+          const balanceNum = parseFloat(fromTokenBalance);
+          if (amountNum > balanceNum) {
+            setbtnDisable(true);
+            setbtnMessage("Insufficient Balance");
+          } else {
+            setbtnDisable(false);
+            setbtnMessage("Swap");
+          }
+        } else {
+          setbtnDisable(true);
+          setbtnMessage("No route found");
+        }
+      } else {
+        const getRangoSwaps=await swapBestRoute(CHAINS[fromToken.chain].chainNameInThirdParty,fromToken.symbol||fromToken.code,fromToken.address||fromToken.issuer,CHAINS[toToken.chain].chainNameInThirdParty,toToken.symbol||to.code,toToken.address||toToken.issuer,amount);
+        if(getRangoSwaps.status){
+          setQuoteInfo(getRangoSwaps.response);
+          setrangoQuoteInfo(getRangoSwaps.response.response);
+          const amountNum = parseFloat(amount);
+          const balanceNum = parseFloat(fromTokenBalance);
+          if (amountNum > balanceNum) {
+            setbtnDisable(true);
+            setbtnMessage("Insufficient Balance");
+          } else {
+            setbtnDisable(false);
+            setbtnMessage("Swap");
+          }
+        }else{
+          setQuoteInfo(defaultQuoteInfo);
+          CustomInfoProvider.show("error","!Opps",getRangoSwaps.error||"Unable to get route");
+          setbtnDisable(true);
+          setbtnMessage("No route found");
+        }
+        
+      }
+    } catch (error) {
+      setQuoteInfo(defaultQuoteInfo);
+      console.error('Update quote error:', error);
+      setbtnDisable(true);
+      setbtnMessage("Quote failed");
+    } finally {
+      setqoutesLoading(false);
+    }
   };
 
   useEffect(() => {
     let timeoutId;
-    const updateQuote = async () => {
-      if (!amount || parseFloat(amount) <= 0) {
-        setbtnDisable(true);
-        setbtnMessage("Enter Amount");
-        return;
-      }
-      try {
-        setqoutesLoading(true);
-        if (fromToken.chain === toToken.chain) {
-          const quote = await getSwapQuote(fromToken, toToken, amount, fromToken.chain);
-          if (quote) {
-            if (quote.success) {
-              setQuoteInfo(prev => ({
-                ...prev,
-                provider: "uniswap",
-                rate: `1 ${quote.data.inputToken} = ${quote.data.pricePerToken} ${quote.data.outputToken}`,
-                feeTire: `${Number(quote.data.fee) / 10000}%`,
-                networkFee: quote.data.networkFee,
-                outputAmount: quote.data.outputAmount,
-                minimumReceive: quote.data.minimumReceived,
-                fromToken: quote.data.inputToken,
-                fromChain: fromToken.chain,
-                toToken: quote.data.outputToken,
-                toChain: toToken.chain,
-                isFullNull: false
-              }));
-            }
-            const amountNum = parseFloat(amount);
-            const balanceNum = parseFloat(fromTokenBalance);
-            if (amountNum > balanceNum) {
-              setbtnDisable(true);
-              setbtnMessage("Insufficient Balance");
-            } else {
-              setbtnDisable(false);
-              setbtnMessage("Swap");
-            }
-          } else {
-            setbtnDisable(true);
-            setbtnMessage("No route found");
-          }
-        } else {
-          const getRangoSwaps=await swapBestRoute(CHAINS[fromToken.chain].chainNameInThirdParty,fromToken.symbol,fromToken.address,CHAINS[toToken.chain].chainNameInThirdParty,toToken.symbol,toToken.address,amount);
-          if(getRangoSwaps.status){
-            setQuoteInfo(getRangoSwaps.response);
-            setrangoQuoteInfo(getRangoSwaps.response.response);
-            const amountNum = parseFloat(amount);
-            const balanceNum = parseFloat(fromTokenBalance);
-            if (amountNum > balanceNum) {
-              setbtnDisable(true);
-              setbtnMessage("Insufficient Balance");
-            } else {
-              setbtnDisable(false);
-              setbtnMessage("Swap");
-            }
-          }else{
-            setQuoteInfo(defaultQuoteInfo);
-            CustomInfoProvider.show("error","!Opps",getRangoSwaps.error||"Unable to get route");
-            setbtnDisable(true);
-            setbtnMessage("No route found");
-          }
-          
-        }
-      } catch (error) {
-        setQuoteInfo(defaultQuoteInfo);
-        console.error('Update quote error:', error);
-        setbtnDisable(true);
-        setbtnMessage("Quote failed");
-      } finally {
-        setqoutesLoading(false);
-      }
-    };
-
     timeoutId = setTimeout(() => {
       updateQuote();
     }, 500);
 
     return () => clearTimeout(timeoutId);
   }, [amount, fromToken, toToken, getSwapQuote]);
+
+  useEffect(() => {
+      if (fromToken && toToken && amount && parseFloat(amount) >= 0) {
+      if (!intervalRef.current) {
+        setrefreshTimer(25);
+        intervalRef.current = setInterval(() => {
+          setrefreshTimer(lastValue => {
+            if (lastValue <= 1) {
+              updateQuote();
+              return 25;
+            }
+            return lastValue - 1;
+          });
+        }, 1000);
+      }
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      setrefreshTimer(25);
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  },  [fromToken, toToken]);
 
   const getSwapQuote = useCallback(async (tokenIn, tokenOut, amountIn, type) => {
     if (!tokenIn || !tokenOut) {
@@ -664,10 +717,10 @@ const EthSwap = () => {
         {!token ?
           <Text style={styles.tokenSymbol}>Select Network</Text> :
           <>
-            <Image source={{ uri: token?.logoURI }} style={[styles.logoImage]} />
+            <Image source={{ uri: token?.logoURI||token?.icon }} style={[styles.logoImage]} />
             <View>
               <Text style={styles.tokenSymbol}>
-                {token?.symbol}
+                {token?.symbol||token?.code}
               </Text>
               <Text style={styles.tokenChainSymbol}>
                 {token?.chain}
@@ -691,12 +744,19 @@ const EthSwap = () => {
     </TouchableOpacity>
   );
 
-  const handleTokenBalance = async (tokenAddress, walletAddress, network, fromToken) => {
+  const handleTokenBalance = async (tokenAddress, walletAddress, network, fromToken,tokenInfo) => {
     try {
       setbalanceLoading(true);
+      if (network === CHAINS["STR"].symbol) {
+        const nonEvmToken = await GetStellarUSDCAvilabelBalance(walletAddress, tokenInfo?.code, tokenInfo?.issuer);
+        if (!nonEvmToken?.status) {
+          fromToken ? setFromTokenBalance(parseFloat(nonEvmToken.availableBalance || 0)) : setToTokenBalance(parseFloat(nonEvmToken.availableBalance || 0));
+        }
+      } else {
       const responseBalance = await getTokenBalancesUsingAddress(tokenAddress, walletAddress, network);
       if (responseBalance.status) {
         fromToken ? setFromTokenBalance(parseFloat(responseBalance?.tokenInfo?.[0]?.balance || 0)) : setToTokenBalance(parseFloat(responseBalance?.tokenInfo?.[0]?.balance || 0));
+      }
       }
     } catch (error) {
       console.error("Error in handleTokenBalance:", error);
@@ -799,7 +859,7 @@ const EthSwap = () => {
     if (goWithGas === true) {
       await get1InchQoute()
     } else if (fromToken.chain !== toToken.chain) {
-      const responses= await swapConfirmRoute(rangoQuoteInfo.requestId,rangoQuoteInfo.from.blockchain,rangoQuoteInfo.to.blockchain,fromToken.symbol==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address,toToken.symbol==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address);
+      const responses= await swapConfirmRoute(rangoQuoteInfo.requestId,rangoQuoteInfo.from.blockchain,rangoQuoteInfo.to.blockchain,fromToken.chain==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address,toToken.chain==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address);
       if (responses.status) {
         // Add tx approval before prepare tx//
         const swapPreparedTxRes= await swapPrepareTx(rangoQuoteInfo.requestId,responses?.response?.result?.result?.swaps?.length || 0)
@@ -1020,7 +1080,8 @@ const EthSwap = () => {
   return (
     <View style={styles.mainCon}>
       <Wallet_screen_header title="Swap" onLeftIconPress={() => navigation.goBack()} />
-      <View style={styles.container}>
+      <ScrollView>
+        <View style={styles.container}>
         <View style={styles.card}>
           <View style={styles.networkCon}>
             <Text style={styles.label}>From</Text>
@@ -1075,9 +1136,9 @@ const EthSwap = () => {
           selectedToken={(item) => {
             if (selectingFor === "from") {
               setFromToken(item)
-              handleTokenBalance(item.address, state?.wallet?.address, item.chain, true)
+              handleTokenBalance(item.address, item.chain===CHAINS["STR"].symbol?state?.STELLAR_PUBLICK_KEY:state?.wallet?.address, item.chain, true,item)
             } else {
-              handleTokenBalance(item.address, state?.wallet?.address, item.chain, false)
+              handleTokenBalance(item.address, item.chain===CHAINS["STR"].symbol?state?.STELLAR_PUBLICK_KEY:state?.wallet?.address, item.chain, false,item)
               setToToken(item)
             }
             setshowTokenSelection(showTokenSelection ? false : true);
@@ -1094,9 +1155,13 @@ const EthSwap = () => {
       )}
       {!quoteInfo.isFullNull && (
         <View style={styles.quoteDetailsContainer}>
-          <Text style={styles.quoteTitle}>
-            Estimated Quote Details
-          </Text>
+          <View style={styles.quoteRow}>
+          <Text style={styles.quoteTitle}>Estimated Quote Details</Text>
+          <View style={styles.timerCon}>
+            <Icon name={"time"} size={18} color={theme.inactiveTx} />
+            <Text style={styles.quoteValue}> {refreshTimer}</Text>
+          </View>
+          </View>
 
           <View style={styles.quoteRow}>
             <Text style={styles.quoteLabel}>Provider</Text>
@@ -1158,6 +1223,7 @@ const EthSwap = () => {
       >
         {swapExecuting ? (<ActivityIndicator color="#fff" />) : (<Text style={styles.swapButtonConText}>{btnMessage}</Text>)}
       </TouchableOpacity>
+      </ScrollView>
 
       {providerQuoteInfo !== null && <ConfirmTx visible={visibleConfirmation}
         quote={providerQuoteInfo}
