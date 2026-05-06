@@ -29,6 +29,7 @@ import { Exchange_screen_header } from "../../../../reusables/ExchangeHeader";
 import { Charts_Loadings, Exchange_single_loading } from "../../../../reusables/Exchange_loading";
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
 import CandleStickChart from "./stellar/CommanCandleStickChart";
+import PnlOverView from "../../../../reusables/PnlOverView";
 
 
 export const HomeView = () => {
@@ -356,6 +357,7 @@ export const HomeView = () => {
             })}
           </View>
         </View>
+        <PnlOverView stellarKey={stellarKey} refresh={apiDataLoading} activeTheme={state.THEME.THEME}/>
         <View style={[styles.quickActionWrapper, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }]}>
           <View style={styles.chartTopCon}>
             <View>

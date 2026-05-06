@@ -27,13 +27,13 @@ import { PPOST, proxyRequest } from '../Dashboard/exchange/crypto-exchange-front
 import { getTokenBalancesUsingAddress } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/utils/getWalletInfo/EtherWalletService';
 import ShortTermStorage from '../utilities/ShortTermStorage';
 import { debounce } from 'lodash';
-import { CHAINS, TemporaryTokens } from "../utilities/TokenUtils";
+import { CHAINS, isNativeTokenAddress, TemporaryTokens } from "../utilities/TokenUtils";
 import { colors } from "../Screens/ThemeColorsConfig";
 import { ChainSupportedToken } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/ChainWithTokenInfo";
 import Modal from "react-native-modal";
 import CustomInfoProvider from '../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import ToggleSwitch from 'toggle-switch-react-native';
-import { swapBestRoute, swapConfirmRoute, swapPrepareTx, swapTxSign } from '../utilities/SwapRango';
+import { ensureFusionAllowance, performeRangoSwap, swapBestRoute, swapConfirmRoute, swapPrepareTx, swapTxSign } from '../utilities/SwapRango';
 import { GetStellarUSDCAvilabelBalance } from '../utilities/StellarUtils';
 
 const EthSwap = () => {
@@ -479,7 +479,7 @@ const EthSwap = () => {
   }, [amount, fromToken, toToken, getSwapQuote]);
 
   useEffect(() => {
-      if (fromToken && toToken && amount && parseFloat(amount) >= 0) {
+      if (fromToken && toToken && amount && parseFloat(amount) >= 0 && swapExecuting===false) {
       if (!intervalRef.current) {
         setrefreshTimer(25);
         intervalRef.current = setInterval(() => {
@@ -522,16 +522,17 @@ const EthSwap = () => {
         "tokenIn": {
           "address": tokenIn.address,
           "symbol": tokenIn.symbol,
-          "decimals": tokenIn.decimals
+          "decimals": tokenIn.decimals,
+          "chainId": tokenIn.chainId
         },
         "tokenOut": {
           "address": tokenOut.address,
           "symbol": tokenOut.symbol,
-          "decimals": tokenOut.decimals
+          "decimals": tokenOut.decimals,
+          "chainId": tokenOut.chainId
         },
         "amount": amountIn?.toString(),
-        "recipient": state?.wallet?.address,
-        "chainId": type
+        "recipient": state?.wallet?.address
       }
       const { res, err } = await proxyRequest(`/v1/quoter/quote`, PPOST, payload);
 
@@ -554,8 +555,8 @@ const EthSwap = () => {
     try {
       const { res, err } = await proxyRequest(`/v1/swap/1inch/getSwapQuote`, PPOST,
         {
-          tokenIn: fromToken.address,
-          tokenOut: toToken.address,
+          tokenIn: fromToken.address===isNativeTokenAddress?"0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee":fromToken.address,
+          tokenOut: toToken.address===isNativeTokenAddress?"0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee":toToken.address,
           amount: ethers.utils.parseUnits(amount, fromToken?.decimals).toString(),
           walletAddress: state?.wallet?.address,
           chain: fromToken.chain === "BNB" ? "BSC" : fromToken.chain
@@ -583,12 +584,14 @@ const EthSwap = () => {
         "tokenIn": {
           "address": fromToken.address,
           "symbol": fromToken.symbol,
-          "decimals": fromToken.decimals
+          "decimals": fromToken.decimals,
+          "chainId":fromToken.chainId
         },
         "tokenOut": {
           "address": toToken.address,
           "symbol": toToken.symbol,
-          "decimals": toToken.decimals
+          "decimals": toToken.decimals,
+          "chainId":toToken.chainId
         },
         "amount": amount?.toString(),
         "recipient": state?.wallet?.address,
@@ -795,13 +798,14 @@ const EthSwap = () => {
     try {
       const respo = await proxyRequest("/v1/swap/1inch/buildFusionOrder", PPOST, {
         quote: providerQuoteInfo,
-        tokenIn: fromToken.address,
-        tokenOut: toToken.address,
+        tokenIn: fromToken.address===isNativeTokenAddress?"0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee":fromToken.address,
+        tokenOut: toToken.address===isNativeTokenAddress?"0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee":toToken.address,
         amount: ethers.utils.parseUnits(amount, fromToken?.decimals).toString(),
         walletAddress: state?.wallet?.address,
         chain: fromToken.chain
       });
-      if (respo.err?.status) {
+      if (respo.err?.status||respo.err?.message) {
+        CustomInfoProvider.show("error", "!Opps", respo.err.message || "Failed to prepare swap");
         return {
           status: false,
           message: respo.err.message || "Failed to prepare swap",
@@ -820,7 +824,8 @@ const EthSwap = () => {
         state?.wallet?.address,
         typedDataJson,
       );
-      console.error("result", typeof (result.signature))
+      const resuleOfAllowance=await ensureFusionAllowance(fromToken.address, state?.wallet?.address, ethers.utils.parseUnits(amount, fromToken?.decimals).toString(),fromToken.chain,fromToken.chainId);
+      if(resuleOfAllowance.status===true){
       const submitResult = await proxyRequest("/v1/swap/1inch/submitOrder", PPOST, {
         "chain": fromToken.chain,
         "order": {
@@ -837,7 +842,6 @@ const EthSwap = () => {
         "extension": respo.res.extension,
         "signature": result.signature
       });
-      console.error("submitResult", submitResult)
       if (submitResult.err) {
         CustomInfoProvider.show("error", "!Opps", submitResult.err.message || "Swap failed");
       } else {
@@ -846,6 +850,9 @@ const EthSwap = () => {
           navigation.navigate("Transactions");
         }, 1000);
       }
+    }else{
+       CustomInfoProvider.show("error", "!Opps", submitResult.err.message || "Swap failed");
+    }
     } catch (error) {
       console.error('Swap error:', error);
       CustomInfoProvider.show("error", "!Opps", error.message || "Swap failed. Please try again");
@@ -859,42 +866,24 @@ const EthSwap = () => {
     if (goWithGas === true) {
       await get1InchQoute()
     } else if (fromToken.chain !== toToken.chain) {
-      const responses= await swapConfirmRoute(rangoQuoteInfo.requestId,rangoQuoteInfo.from.blockchain,rangoQuoteInfo.to.blockchain,fromToken.chain==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address,toToken.chain==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address);
-      if (responses.status) {
-        // Add tx approval before prepare tx//
-        const swapPreparedTxRes= await swapPrepareTx(rangoQuoteInfo.requestId,responses?.response?.result?.result?.swaps?.length || 0)
-        const hasError =Array.isArray(swapPreparedTxRes.response) &&swapPreparedTxRes.response.some(item => item?.ok === false);
-        if (hasError) {
-          const firstError = swapPreparedTxRes.response.find(item => item.ok === false);
-          CustomInfoProvider.show("error","!Opps",firstError.error);
-          setSwapExecuting(false);
-        }else{
-          if (swapPreparedTxRes.status) {
-            const submitTx = await swapTxSign(CHAINS[fromToken.chain], fromToken.symbol === "STR" ? state.STELLAR_PUBLICK_KEY : state?.wallet?.address, swapPreparedTxRes.response)
-            if (submitTx.status) {
-              if (Array.isArray(submitTx.response.results) && submitTx.response.results.length > 0) {
-                const validTxs = submitTx.response.results.filter(item => item.transactionHash);
-                for (const tx of validTxs) {
-                  await ShortTermStorage.saveTx(state?.wallet?.address, {
-                    chain: fromToken.chain,
-                    typeTx: "Swap",
-                    status: "Pending",
-                    hash: tx.transactionHash,
-                  });
-                }
-                setSwapExecuting(false);
-                CustomInfoProvider.show("success", "Swap Success", "Swap init successfully.");
-                navigation.navigate("Transactions");
-              }
-            } else {
-              setSwapExecuting(false);
-              CustomInfoProvider.show("error", "!Opps", "Swap faild.");
-            }
-          }
-        }
+      const rangoSwapResult = await performeRangoSwap(rangoQuoteInfo, state, fromToken, toToken,{
+        fromTokenBlockchain:CHAINS[fromToken.chain].chainNameInThirdParty,
+        fromTokenSymbol:fromToken.symbol||fromToken.code,
+        fromTokenAddress:fromToken.address||fromToken.issuer,
+        toTokenBlockchain:CHAINS[toToken.chain].chainNameInThirdParty,
+        toTokenSymbol:toToken.symbol||to.code,
+        toTokenAddress:toToken.address||toToken.issuer,
+        amount:amount,
+        state:state,
+        fromToken:fromToken,
+        toToken:toToken 
+      });
+      console.info("rangoSwapResult", rangoSwapResult);
+      if (rangoSwapResult.status === true) {
+        setSwapExecuting(false)
+        navigation.navigate("Transactions");
       } else {
-        CustomInfoProvider.show("error", "!Opps", "Unable to confirm route");
-        setSwapExecuting(false);
+        setSwapExecuting(false)
       }
     } else {
       await performeUniswap(amount, state?.wallet?.address)
