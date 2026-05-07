@@ -16,7 +16,7 @@ export const swapBestRoute = async (
             from: { blockchain: fromTokenBlockchain, symbol: fromTokenSymbol, address: fromTokenAddress },
             to: { blockchain: toTokenBlockchain, symbol: toTokenSymbol, address: toTokenAddress },
             amount,
-            slippage
+            slippage:slippage.toString()
         });
 
         if (response.err?.status) {
@@ -46,7 +46,8 @@ export const swapBestRoute = async (
                 toChain: response.res.to.blockchain,
                 isFullNull: false,
                 response: response.res
-            }
+            },
+            suggestSlippage:getAllRecommendedSlippage(response.res)
         };
     } catch (error) {
         return { status: false, error };
@@ -422,4 +423,23 @@ export async function ensureFusionAllowance(tokenAddress, walletAddress, amountB
         console.error('[ensureFusionAllowance] Error:', error);
         return { status: false, error };
     }
+}
+
+
+export function getAllRecommendedSlippage(data) {
+    const slippages = [];
+    function traverse(obj) {
+        if (!obj || typeof obj !== 'object') return;
+        if (
+            obj.recommendedSlippage &&
+            obj.recommendedSlippage !== null
+        ) {
+            slippages.push(obj.recommendedSlippage);
+        }
+        for (const key in obj) {
+            traverse(obj[key]);
+        }
+    }
+    traverse(data);
+    return slippages;
 }

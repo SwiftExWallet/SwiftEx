@@ -10,7 +10,8 @@ import {
   ScrollView,
   Keyboard,
   NativeModules,
-  Platform
+  Platform,
+  FlatList
 } from 'react-native';
 import {
   widthPercentageToDP as wp,
@@ -43,6 +44,15 @@ const EthSwap = () => {
   const [btnDisable, setbtnDisable] = useState(true);
   const [swapExecuting, setSwapExecuting] = useState(false);
   const [refreshTimer, setrefreshTimer] = useState(25);
+  const [showRecommendedSlippage, setShowRecommendedSlippage] = useState("1.0");
+  const [warningInfo, setWarningInfo] = useState(null);
+  const [visibleSlippage, setvisibleSlippage] = useState(false);
+  const slippageLine = [
+    { name: "0.5", value: "0.5" },
+    { name: "1.0", value: "1.0" },
+    { name: "1.5", value: "1.5" },
+    { name: "2.0", value: "2.0" },
+  ]
   const intervalRef = useRef(null);
   const styles = StyleSheet.create({
     mainCon: {
@@ -356,6 +366,73 @@ const EthSwap = () => {
       borderColor:"#4052D6",
       borderWidth:1
     },
+    warningCard: {
+      borderRadius: 10,
+      width:wp(93),
+      alignSelf:"center",
+      backgroundColor: theme.cardBg,
+      marginHorizontal:wp(1),
+      paddingVertical:hp(1),
+      paddingHorizontal:wp(4),
+      flexDirection:"row",
+      alignItems:"center",
+      justifyContent:"space-between"
+    },
+    warningConText: {
+      fontSize:15,
+      maxWidth:wp(66)
+    },
+    warningCardBtn:{
+      borderRadius: 10,
+      width:wp(18),
+      height:hp(3),
+      alignItems:"center",
+      justifyContent:"center",
+      backgroundColor: "#4052D6"
+    },
+    slippageCon:{
+      flexDirection:"row",
+    },
+    visibleSlippageCon: {
+      justifyContent: "flex-end",
+      margin: 0,
+    },
+    visibleSlippageContainer: {
+      backgroundColor: theme.cardBg,
+      padding: 20,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      minHeight: 250,
+    },
+    visibleSlippageModalTitle: {
+      fontSize: 21,
+      color: theme.headingTx,
+      fontWeight: "bold",
+      marginBottom: hp(1)
+    },
+    slippageChips:{
+      width:wp(19),
+      height:hp(4),
+      borderRadius:10,
+      backgroundColor:theme.smallCardBg,
+      alignItems:"center",
+      justifyContent:"center",
+      marginHorizontal:wp(1.5)
+    },
+    slippageChipslabel:{
+      fontSize:19,
+      color:theme.headingTx,
+      fontWeight:"400"
+    },
+    textInputSlippage:{
+      color:theme.headingTx,
+      fontSize:19,
+      backgroundColor:theme.bg,
+      borderRadius:10,
+      borderColor:theme.inactiveTx,
+      borderWidth:1,
+      marginTop:hp(2)
+    }
   });
   const defaultQuoteInfo = { provider: null, rate: null, feeTire: null, networkFee: null, outputAmount: null, minimumReceive: null, time: null, fromToken: null, toToken: null, fromChain: null, toChain: null, isFullNull: true }
   const [showTokenSelection, setshowTokenSelection] = useState(false);
@@ -404,6 +481,7 @@ const EthSwap = () => {
       return;
     }
     try {
+      setWarningInfo(null);
       setqoutesLoading(true);
       if (fromToken.chain === toToken.chain) {
         const quote = await getSwapQuote(fromToken, toToken, amount, fromToken.chain);
@@ -438,10 +516,16 @@ const EthSwap = () => {
           setbtnMessage("No route found");
         }
       } else {
-        const getRangoSwaps=await swapBestRoute(CHAINS[fromToken.chain].chainNameInThirdParty,fromToken.symbol||fromToken.code,fromToken.address||fromToken.issuer,CHAINS[toToken.chain].chainNameInThirdParty,toToken.symbol||to.code,toToken.address||toToken.issuer,amount);
+        const getRangoSwaps=await swapBestRoute(CHAINS[fromToken.chain].chainNameInThirdParty,fromToken.symbol||fromToken.code,fromToken.address||fromToken.issuer,CHAINS[toToken.chain].chainNameInThirdParty,toToken.symbol||to.code,toToken.address||toToken.issuer,amount,showRecommendedSlippage);
         if(getRangoSwaps.status){
           setQuoteInfo(getRangoSwaps.response);
           setrangoQuoteInfo(getRangoSwaps.response.response);
+          if(getRangoSwaps.suggestSlippage.length>0&&parseFloat(showRecommendedSlippage).toFixed(1)<parseFloat(getRangoSwaps.suggestSlippage[0].slippage).toFixed(1)){
+            setWarningInfo({
+              message: `We recommend you to increase slippage to at least ${getRangoSwaps.suggestSlippage[0].slippage} for this route.`,
+              value:getRangoSwaps.suggestSlippage[0].slippage
+            });
+          }
           const amountNum = parseFloat(amount);
           const balanceNum = parseFloat(fromTokenBalance);
           if (amountNum > balanceNum) {
@@ -476,7 +560,7 @@ const EthSwap = () => {
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [amount, fromToken, toToken, getSwapQuote]);
+  }, [amount, fromToken, toToken, getSwapQuote,showRecommendedSlippage]);
 
   useEffect(() => {
       if (fromToken && toToken && amount && parseFloat(amount) >= 0 && swapExecuting===false) {
@@ -506,7 +590,7 @@ const EthSwap = () => {
         intervalRef.current = null;
       }
     };
-  },  [fromToken, toToken]);
+  },  [fromToken, toToken,showRecommendedSlippage]);
 
   const getSwapQuote = useCallback(async (tokenIn, tokenOut, amountIn, type) => {
     if (!tokenIn || !tokenOut) {
@@ -1142,6 +1226,12 @@ const EthSwap = () => {
           <Text style={styles.loadingText}>Getting best quote...</Text>
         </View>
       )}
+        {warningInfo!==null&&<View style={styles.warningCard}>
+            <Text style={[styles.warningConText,{color: "#eec50fff",}]}>{warningInfo?.message}</Text>
+            <TouchableOpacity style={styles.warningCardBtn} onPress={()=>{setShowRecommendedSlippage(warningInfo?.value),  updateQuote();}}>
+              <Text style={[styles.warningConText,{color: "#FFF"}]}>Increase</Text>
+            </TouchableOpacity>
+        </View>}
       {!quoteInfo.isFullNull && (
         <View style={styles.quoteDetailsContainer}>
           <View style={styles.quoteRow}>
@@ -1165,6 +1255,13 @@ const EthSwap = () => {
           <View style={styles.quoteRow}>
             <Text style={styles.quoteLabel}>Fee Tier</Text>
             <Text style={styles.quoteValue}>{quoteInfo.feeTire}</Text>
+          </View>
+          <View style={styles.quoteRow}>
+            <Text style={styles.quoteLabel}>Slippage</Text>
+            <TouchableOpacity style={styles.slippageCon} onPress={()=>{setvisibleSlippage(true)}}>
+              <Text style={[styles.quoteValue,{color:"#4052D6"}]}>{Number(showRecommendedSlippage).toFixed(1)}% </Text>
+              <Icon name={"create"} size={18} color={"#4052D6"} />
+            </TouchableOpacity>
           </View>
 
           <View style={styles.quoteRow}>
@@ -1219,6 +1316,45 @@ const EthSwap = () => {
         onClose={() => { setSwapExecuting(false), setVisibleConfirmation(false) }}
         onConfirm={async () => { setVisibleConfirmation(false), await handleSwap() }}
       />}
+
+      <Modal
+        isVisible={visibleSlippage}
+        onBackdropPress={() => { setvisibleSlippage(false) }}
+        onBackButtonPress={() => { setvisibleSlippage(false) }}
+        swipeDirection={"down"}
+        onSwipeComplete={() => { setvisibleSlippage(false) }}
+        style={styles.visibleSlippageCon}
+      >
+        <View style={styles.visibleSlippageContainer}>
+          <Text style={styles.visibleSlippageModalTitle}>Select Slippage</Text>
+          <View>
+            <FlatList data={slippageLine} keyExtractor={(list,index) => index}
+            horizontal={true}
+            renderItem={({ item }) => (
+              <TouchableOpacity key={item.name} style={[styles.slippageChips,{backgroundColor:parseFloat(showRecommendedSlippage).toFixed(1)===parseFloat(item.value).toFixed(1)?"#4052D6":theme.smallCardBg}]}
+                onPress={() => { setShowRecommendedSlippage(item.value); setvisibleSlippage(false); }}
+              >
+                <Text style={styles.slippageChipslabel}>{item.name} %</Text>
+              </TouchableOpacity>
+            )
+            }
+          />
+          <TextInput
+            style={styles.textInputSlippage}
+            value={showRecommendedSlippage}
+            onChangeText={(value) => {
+              if (parseFloat(value) > 11) {
+                CustomInfoProvider.show("error", "!Opps", "Your transaction is at risk due to high slippage tolerance.");
+              } else {
+                setShowRecommendedSlippage(value)
+              }
+            }}
+            keyboardType="numeric"
+            maxLength={3}
+          />
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 
