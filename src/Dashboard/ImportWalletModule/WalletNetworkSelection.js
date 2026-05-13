@@ -40,7 +40,7 @@ export const WalletNetworkSelection = (props) => {
         { name: "Private Key", labelId: 1, iconName: "key" },
     ];
     const walletMultiChain = {
-        imageUrl: "",
+        imageUrl: "../../../assets/walletImage.png",
         name: "Muti-Chain",
         symbol: "Recommended",
         chainName: "Recommended",
@@ -749,7 +749,7 @@ export const WalletNetworkSelection = (props) => {
                     return (
                         <TouchableOpacity key={index} style={styles.card} onPress={() => { setChainInfo(item), setshowImportOptions(showImportOptions ? false : true) }}>
                             <View style={styles.cardCon}>
-                                <Image source={{ uri: item.imageUrl }} style={styles.chainImg} />
+                                <Image source={item.name === "Muti-Chain"?require('../../../assets/walletImage.png'):{ uri: item.imageUrl }} style={styles.chainImg} />
                                 <View>
                                     <Text style={styles.cardTitel}>{item.name}</Text>
                                     <Text style={styles.cardSubTitel}>{item.chainName}</Text>

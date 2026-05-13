@@ -652,7 +652,9 @@ const EthSwap = () => {
         return null;
       }
       setProviderQuoteInfo(res);
-      setVisibleConfirmation(true)
+      if (!visibleConfirmation) {
+        setVisibleConfirmation(true);
+      }
     } catch (error) {
       console.error('Quote error:', error);
       CustomInfoProvider.show("error", "!Opps", 'Failed to get quote. Please try again in some time.');
@@ -929,6 +931,12 @@ const EthSwap = () => {
       if (submitResult.err) {
         CustomInfoProvider.show("error", "!Opps", submitResult.err.message || "Swap failed");
       } else {
+        await ShortTermStorage.saveTx(state?.wallet?.address, {
+          chain: fromToken.chain,
+          typeTx: "Swap",
+          status: "Pending",
+          hash: respo?.res?.orderHash,
+        });
         CustomInfoProvider.show("success", "Hurray", "Swap successful!");
         setTimeout(() => {
           navigation.navigate("Transactions");

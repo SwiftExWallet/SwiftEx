@@ -37,6 +37,7 @@ import AccessNativeStorage from "./AccessNativeStorage";
 import apiHelper from "../exchange/crypto-exchange-front-end-main/src/apiHelper";
 import AuthRequest from "../reusables/AuthRequest";
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
+import { REACT_APP_HOST } from "../exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 
 const WALLET_ICONS = {
   BSC: Bnbimage,
@@ -202,6 +203,15 @@ const AllWallets = () => {
   const performeDeleteWalletAction=async(removeWalletReq)=>{
     const response=await AccessNativeStorage.delete(removeWalletReq.walletId);
     if(response==="wallet_removed"||response.wallet_removed==="wallet_removed"){
+      apiHelper.delete(REACT_APP_HOST + "/v1/wallet/delete",{
+        "addresses": {
+          "eth": removeWalletReq?.address,
+          "xlm": removeWalletReq?.stellarPublicKey,
+          "bnb": removeWalletReq?.address,
+          "multi": removeWalletReq?.address,
+        },
+        "isPrimary": true
+      });
       if(wallets.length===1){
         const res = await AsyncStorageLib.getItem("AppStatusChecks");
         const parseres = JSON.parse(res);

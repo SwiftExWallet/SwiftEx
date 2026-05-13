@@ -45,6 +45,7 @@ const apiRequest = async ({
       timeout: timeout,
       headers: {
         'x-auth-device-token': token,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         ...headers
       }
@@ -183,7 +184,7 @@ const apiHelper = {
   
   delete: (url, headers = {}) => {
     console.log('🗑️ DELETE request initiated');
-    return apiRequest({ url, method: 'DELETE', headers });
+    return apiRequest({ url, method: 'DELETE',body, headers });
   }
 };
 
