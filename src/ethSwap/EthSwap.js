@@ -768,12 +768,19 @@ const EthSwap = () => {
       if (Array.isArray(res) && res.length > 0) {
         const validTxs = res.filter(item => item?.txResponse?.hash);
 
-        for (const tx of validTxs) {
-          await ShortTermStorage.saveTx(state?.wallet?.address, {
-            chain: fromToken.chain,
-            typeTx: "Swap",
-            status: "Pending",
-            hash: tx.txResponse.hash,
+        for (let i = 0; i < validTxs.length; i++) {
+          const tx = validTxs[i];
+          await ShortTermStorage.syncTx({
+            txHash: tx.txResponse.hash,
+            walletAddress: state?.wallet?.address,
+            provider: "UNISWAP",
+            fromChain: fromToken.chain,
+            fromToken: fromToken.symbol,
+            toChain: toToken.chain,
+            toToken: toToken.symbol,
+            amountIn: amount?.toString(),
+            amountOut: quoteInfo?.outputAmount,
+            txType: i === validTxs.length - 1 ? "Swap" : "Token Approval"
           });
         }
         CustomInfoProvider.show('success', "Swap", "Swap completed successfully");
@@ -931,12 +938,18 @@ const EthSwap = () => {
       if (submitResult.err) {
         CustomInfoProvider.show("error", "!Opps", submitResult.err.message || "Swap failed");
       } else {
-        await ShortTermStorage.saveTx(state?.wallet?.address, {
-          chain: fromToken.chain,
-          typeTx: "Swap",
-          status: "Pending",
-          hash: respo?.res?.orderHash,
-        });
+        await ShortTermStorage.syncTx({
+          txHash: respo?.res?.orderHash,
+          walletAddress: state?.wallet?.address,
+          provider: "ONEINCH",
+          fromChain: fromToken.chain,
+          fromToken: fromToken.symbol,
+          toChain: toToken.chain,
+          toToken: toToken.symbol,
+          amountIn: amount,
+          amountOut: providerQuoteInfo?.toTokenAmount,
+          txType: "Swap" 
+        })
         CustomInfoProvider.show("success", "Hurray", "Swap successful!");
         setTimeout(() => {
           navigation.navigate("Transactions");

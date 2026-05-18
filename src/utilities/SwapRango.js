@@ -282,7 +282,19 @@ export async function performeRangoSwap(rangoQuoteInfo, state, fromToken, toToke
             if (Array.isArray(submitTx.response.results) && submitTx.response.results.length > 0) {
                 const validTxs = submitTx.response.results.filter(item => item.transactionHash);
                 for (const tx of validTxs) {
-                    await ShortTermStorage.saveTx(state?.wallet?.address, { chain: fromToken.chain, typeTx: "Swap", status: "Pending", hash: tx.transactionHash, });
+                    await ShortTermStorage.syncTx({
+                        requestId: rangoQuoteInfo.requestId,
+                        txHash:  tx.transactionHash,
+                        walletAddress: state?.wallet?.address,
+                        provider: "RANGO",
+                        fromChain: CHAINS[fromToken.chain].chainName,
+                        fromToken: fromToken.symbol,
+                        toChain: CHAINS[toToken.chain].chainName,
+                        toToken: toToken.symbol,
+                        amountIn: rangoQuoteInfo?.requestAmount,
+                        amountOut: rangoQuoteInfo?.result?.outputAmount,
+                        txType:tx?.type==="approve"?"Token Approval":"Swap"
+                    })
                 }
                 const isApprovalTx = swapPreparedTxRes.response.some(item => item?.transaction?.isApprovalTx === true);
                 if (isApprovalTx) {

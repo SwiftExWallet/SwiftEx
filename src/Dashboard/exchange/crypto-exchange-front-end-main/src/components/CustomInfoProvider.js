@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Modal,
   View,
@@ -6,10 +6,106 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
+  Easing,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 
 let internalShowFunc;
+let internalHideFunc;
+
+const LoadingBar = ({ color }) => {
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, {
+          toValue: 1,
+          duration: 1200,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: false,
+        }),
+        Animated.timing(anim, {
+          toValue: 0,
+          duration: 0,
+          useNativeDriver: false,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  const width = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0%", "100%"],
+  });
+
+  const opacity = anim.interpolate({
+    inputRange: [0, 0.85, 1],
+    outputRange: [1, 1, 0],
+  });
+
+  return (
+    <View style={loadingStyles.track}>
+      <Animated.View
+        style={[
+          loadingStyles.bar,
+          { backgroundColor: color, width, opacity },
+        ]}
+      />
+    </View>
+  );
+};
+
+const SpinningDots = ({ color }) => {
+  const dots = [0, 1, 2];
+  const anims = dots.map(() => useRef(new Animated.Value(0)).current);
+
+  useEffect(() => {
+    const animations = anims.map((anim, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 160),
+          Animated.timing(anim, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim, {
+            toValue: 0,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.delay((dots.length - i - 1) * 160),
+        ])
+      )
+    );
+    Animated.parallel(animations).start();
+  }, []);
+
+  return (
+    <View style={loadingStyles.dotsRow}>
+      {anims.map((anim, i) => {
+        const scale = anim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.6, 1],
+        });
+        const opacity = anim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.3, 1],
+        });
+        return (
+          <Animated.View
+            key={i}
+            style={[
+              loadingStyles.dot,
+              { backgroundColor: color, transform: [{ scale }], opacity },
+            ]}
+          />
+        );
+      })}
+    </View>
+  );
+};
 
 const CustomInfoProvider = () => {
   const [visible, setVisible] = useState(false);
@@ -17,9 +113,9 @@ const CustomInfoProvider = () => {
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [buttons, setButtons] = useState([]);
-  const [currentTheme, setCurrentTheme] = useState(true);
+  const [currentTheme,setCurrentTheme] = useState(true);
 
-  const scaleAnim = React.useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
@@ -36,10 +132,10 @@ const CustomInfoProvider = () => {
 
   internalShowFunc = (type, title, message, buttons) => {
     setType(type || "info");
-    setTitle(title || "Informatoin");
-  
+    setTitle(title || "Information");
     let finalButtons = [];
     if (!buttons || buttons.length === 0) {
+      if (type !== "waiting") {
       finalButtons = [
         {
           text: "OK",
@@ -47,6 +143,7 @@ const CustomInfoProvider = () => {
           onPress: () => setVisible(false),
         },
       ];
+      }
     } else {
       finalButtons = buttons;
     }
@@ -63,9 +160,13 @@ const CustomInfoProvider = () => {
     setButtons(finalButtons);
     setVisible(true);
   };
-  
+
+  internalHideFunc = () => {
+    setVisible(false);
+  };
 
   const onClose = () => {
+    if (type === "waiting") return;
     setVisible(false);
   };
 
@@ -107,6 +208,7 @@ const CustomInfoProvider = () => {
     success: { name: "checkmark-circle", color: "#10b981", bg: "#d1fae5" },
     warning: { name: "warning", color: "#f59e0b", bg: "#fed7aa" },
     error: { name: "close-circle", color: "#ef4444", bg: "#fee2e2" },
+    waiting: { name: "time-outline", color: "#3b82f6", bg: "#ede9fe" },
   };
 
   const icon = iconConfig[type] || iconConfig.info;
@@ -118,7 +220,7 @@ const CustomInfoProvider = () => {
         textColor: theme.dangerBtnText,
       };
     }
-    if (btn.style === "primary" || btns.length === 1) {
+    if (btn.style === "primary" || btns.length === 1){
       return {
         backgroundColor: theme.primaryBtn,
         textColor: theme.primaryBtnText,
@@ -129,6 +231,7 @@ const CustomInfoProvider = () => {
       textColor: theme.defaultBtnText,
     };
   };
+  const isWaiting = type === "waiting";
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
@@ -160,6 +263,14 @@ const CustomInfoProvider = () => {
             <Text style={[styles.message, { color: theme.textSecondary }]}>{message}</Text>
           )}
 
+          {isWaiting && (
+            <View style={styles.waitingContainer}>
+              <LoadingBar color={icon.color} />
+              <SpinningDots color={icon.color} />
+            </View>
+          )}
+
+          {btns.length > 0 && (
           <View
             style={[
               styles.btnContainer,
@@ -177,7 +288,7 @@ const CustomInfoProvider = () => {
                     { backgroundColor: btnStyle.backgroundColor },
                     btn.style === "cancel" && styles.buttonOutline,
                     btn.style === "cancel" && {
-                      backgroundColor: "transparent",
+backgroundColor: "transparent",
                       borderColor: theme.border,
                     },
                   ]}
@@ -200,6 +311,7 @@ const CustomInfoProvider = () => {
               );
             })}
           </View>
+        )}
         </Animated.View>
       </View>
     </Modal>
@@ -217,6 +329,10 @@ CustomInfoProvider.show = (type, title, message, buttons) => {
     title = "Invalid value";
   }
   internalShowFunc(type, title, message, buttons);
+};
+
+CustomInfoProvider.hide = () => {
+  internalHideFunc?.();
 };
 
 export default CustomInfoProvider;
@@ -262,9 +378,15 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     lineHeight: 22,
   },
+  waitingContainer: {
+    marginTop: 4,
+    marginBottom: 8,
+    gap: 12,
+  },
   btnContainer: {
     flexDirection: "row",
     gap: 12,
+    marginTop: 8,
   },
   btnContainerVertical: {
     flexDirection: "column-reverse",
@@ -288,5 +410,31 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 16,
     letterSpacing: 0.2,
+  },
+});
+
+const loadingStyles = StyleSheet.create({
+  track: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#a78bfa22",
+    overflow: "hidden",
+    width: "100%",
+  },
+  bar: {
+    height: "100%",
+    borderRadius: 3,
+  },
+  dotsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 });

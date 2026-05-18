@@ -302,3 +302,11 @@ export async function PPOST(opts) {
   const res = await axios.post(URL, body, { headers: header })
   return res.data
 }
+
+export async function PPUT(opts) {
+  const URL = REACT_PROXY_HOST + opts.url
+  const header = opts.headers ? opts.headers : HEADERS
+  const body = opts.body
+  const res = await axios.put(URL, body, { headers: header })
+  return res.data
+}

@@ -29,6 +29,7 @@ import CustomInfoProvider from './CustomInfoProvider';
 import WalletActivationComponent from '../utils/WalletActivationComponent';
 import { swap_prepare } from '../../../../../../All_bridge';
 import { CHAINS } from '../../../../../utilities/TokenUtils';
+import ShortTermStorage from '../../../../../utilities/ShortTermStorage';
 
 const classic = ({ props }) => {
   const navigation = useNavigation();
@@ -617,34 +618,36 @@ const classic = ({ props }) => {
         const { res } = resultOfBidirectional;
         const txHashes = [];
         if (res.approvalTxHash) {
-          await LocalTxManager.saveTx(
-            state && state.wallet && state.wallet.address,
-            {
-              chain: selectedFromNetwork.chainName,
-              hash: res.approvalTxHash,
-              status: "pending",
-              statusColor: "#eec14fff",
-              type: "approval",
-              timestamp: Date.now()
-            }
-          );
+          await ShortTermStorage.syncTx({
+            txHash: res.approvalTxHash,
+            walletAddress: state && state.wallet && state.wallet.address,
+            provider: "ALLBRIDGE",
+            fromChain: selectedFromNetwork.chainName,
+            fromToken: selectedFromAsset.symbol,
+            toChain: selectedToNetwork.chainName,
+            toToken: selectedToAsset.symbol,
+            amountIn: fromAmount.toString(),
+            amountOut: fromAmount.toString(),
+            txType:"Token Approval"
+          })
           txHashes.push({
             chain: selectedFromNetwork.chainName,
             hash: res.approvalTxHash,
             type: "Approval"
           });
         }
-        await LocalTxManager.saveTx(
-          state && state.wallet && state.wallet.address,
-          {
-            chain: selectedFromNetwork.chainName,
-            hash: res.transferTxHash,
-            status: "pending",
-            statusColor: "#eec14fff",
-            type: "transfer",
-            timestamp: Date.now()
-          }
-        );
+        await ShortTermStorage.syncTx({
+          txHash: res.transferTxHash,
+          walletAddress: state && state.wallet && state.wallet.address,
+          provider: "ALLBRIDGE",
+          fromChain:  selectedFromNetwork.chainName,
+          fromToken: selectedFromAsset.symbol,
+          toChain: selectedToNetwork.chainName,
+          toToken: selectedToAsset.symbol,
+          amountIn: fromAmount.toString(),
+          amountOut: fromAmount.toString(),
+          txType:"Bridge"
+        })
         txHashes.push({
           chain: selectedFromNetwork.chainName,
           hash: res.transferTxHash,

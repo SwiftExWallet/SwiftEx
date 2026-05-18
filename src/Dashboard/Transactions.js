@@ -21,13 +21,13 @@ import { useSelector } from 'react-redux';
 import { Wallet_screen_header, TransactionForStellar } from './reusables/ExchangeHeader';
 import { useIsFocused, useNavigation, useRoute, useNavigationState } from '@react-navigation/native';
 import StellarTransactionHistory from './exchange/crypto-exchange-front-end-main/src/pages/StellarTransactionHistory';
-import { PGET, PPOST, proxyRequest } from './exchange/crypto-exchange-front-end-main/src/api';
+import { PGET, PPOST, PPUT, proxyRequest } from './exchange/crypto-exchange-front-end-main/src/api';
 import CustomInfoProvider from './exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import ShortTermStorage from '../utilities/ShortTermStorage';
-import { CHAINS } from '../utilities/TokenUtils'
-
+import { CHAINS, CheckTxStatus, TXSTATUS } from '../utilities/TokenUtils'
+import { AllbridgeCoreSdk, nodeRpcUrlsDefault } from "@allbridge/bridge-core-sdk";
+const sdk = new AllbridgeCoreSdk(nodeRpcUrlsDefault);
 const ThemeContext = React.createContext();
-
 const themes = {
   light: {
     background: "#FFFFFF",
@@ -246,13 +246,14 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
     if ((tx.isPending || tx.isFailed || tx.isSuccess) && tx.typeTx) return tx.typeTx;
     if (tx.from?.toLowerCase() === walletAddress?.toLowerCase()) return 'Send';
     if (tx.to?.toLowerCase() === walletAddress?.toLowerCase()) return 'Receive';
+    if (tx.toChain && tx.fromChain) return tx.provider;
     return 'Unknown';
   };
 
   const txType = getTransactionType(item);
-  const isPending = item.isPending === true;
-  const isFailed = item.isFailed === true;
-  const isSuccess = item.isSuccess === true;
+  const isPending = item.isPending === true||item.status==="pending";
+  const isFailed = item.isFailed === true||item.status==="failed";
+  const isSuccess = item.isSuccess === true||item.status==="completed";
   const isApprove = item.isApprove === true || item.typeTx?.toLowerCase() === 'approve';
 
   const getStatusConfig = () => {
@@ -262,35 +263,93 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
     if (txType === 'Send') return { text: 'Sent', color: colors.error, icon: 'arrow-up' };
     if (txType === 'Receive') return { text: 'Received', color: colors.success, icon: 'arrow-down' };
     if (txType === 'Approve') return { text: 'Approved', color: colors.accent, icon: 'check-circle' };
+    if (txType === 'Bridge') return { text: 'Bridge', color: colors.accent, icon: 'check-circle' };
     return { text: 'Unknown', color: colors.textTertiary, icon: 'help-circle' };
   };
 
   const status = getStatusConfig();
 
-  const getExplorerUrl = () => {
-    const chain = item.chain || activeChain;
-    switch (chain) {
-      case 'ETH': return `https://etherscan.io/tx/${item.hash}`;
-      case 'BSC':
-      case 'BNB': return `https://bscscan.com/tx/${item.hash}`;
-      case "POL": return `https://polygonscan.com/tx/${item.hash}`
-      case "ARB": return `https://arbiscan.io/tx/${item.hash}`
-      case "OPT": return `https://optimistic.etherscan.io/tx/${item.hash}`
-      case "AVAX": return `https://avascan.info/blockchain/c/tx/${item.hash}`
-      case "BASE": return `https://basescan.org/tx/${item.hash}`
-      default: return null;
+  const getExplorerUrl = async () => {
+    if (item.provider) {
+      switch (item.provider) {
+        case 'RANGO': return `https://explorer.rango.exchange/swap/${item.requestId}`;
+        case "ALLBRIDGE":
+          CustomInfoProvider.show("waiting", "Please Wait", "Collecting information.");
+            const getUrl = await sdk.getTransferStatus(item.fromChain, item.txHash);
+            if(getUrl.txId){
+              CustomInfoProvider.hide();
+              return `https://core.allbridge.io/explorer/transfer/${getUrl.send.hash}`;
+            }else{
+              CustomInfoProvider.show("error","!Opps","Tx under relay.");
+            }
+        case 'UNISWAP':
+        case 'ONEINCH':
+          switch (item.fromChain) {
+            case 'ETH': return `https://etherscan.io/tx/${item.txHash}`;
+            case 'BSC':
+            case 'BNB': return `https://bscscan.com/tx/${item.txHash}`;
+            case "POL": return `https://polygonscan.com/tx/${item.txHash}`
+            case "ARB": return `https://arbiscan.io/tx/${item.txHash}`
+            case "OPT": return `https://optimistic.etherscan.io/tx/${item.txHash}`
+            case "AVAX": return `https://avascan.info/blockchain/c/tx/${item.txHash}`
+            case "BASE": return `https://basescan.org/tx/${item.txHash}`
+            default: return null;
+          }
+        default: return null;
+      }
+    } else {
+      const chain = item.chain || activeChain;
+      switch (chain) {
+        case 'ETH': return `https://etherscan.io/tx/${item.hash}`;
+        case 'BSC':
+        case 'BNB': return `https://bscscan.com/tx/${item.hash}`;
+        case "POL": return `https://polygonscan.com/tx/${item.hash}`
+        case "ARB": return `https://arbiscan.io/tx/${item.hash}`
+        case "OPT": return `https://optimistic.etherscan.io/tx/${item.hash}`
+        case "AVAX": return `https://avascan.info/blockchain/c/tx/${item.hash}`
+        case "BASE": return `https://basescan.org/tx/${item.hash}`
+        default: return null;
+      }
     }
   };
 
-  const handlePress = () => {
+  const handlePress = async() => {
     Animated.sequence([
       Animated.timing(scaleAnim, { toValue: 0.97, duration: 100, useNativeDriver: true }),
       Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true })
     ]).start();
-
-    const explorerUrl = getExplorerUrl();
-    if (explorerUrl) {
-     Linking.openURL(explorerUrl);
+    if ((item.provider === "UNISWAP" || item.provider === "TX") && item.status === "pending") {
+      CustomInfoProvider.show("waiting", "Please Wait", "Collecting information.");
+      const updatedStaus = await CheckTxStatus(item.txHash, item.fromChain);
+      if (updatedStaus.status === true && updatedStaus.message === TXSTATUS["processed"]) {
+        await proxyRequest('/v1/swapOrders/updateStatus', PPUT, {
+          txHash: item.txHash,
+          orderStatus: TXSTATUS["success"]
+        });
+        CustomInfoProvider.hide()
+        const explorerUrl = await getExplorerUrl();
+        if (explorerUrl) {
+          Linking.openURL(explorerUrl);
+        }
+      } else {
+        if (updatedStaus.status === false && updatedStaus.reqStatus === TXSTATUS["error"]) {
+          await proxyRequest('/v1/swapOrders/updateStatus', PPUT, {
+            txHash: item.txHash,
+            orderStatus: TXSTATUS["failed"]
+          });
+          CustomInfoProvider.hide();
+        }
+        const explorerUrl = await getExplorerUrl();
+        if (explorerUrl) {
+          Linking.openURL(explorerUrl);
+        }
+      }
+    } else {
+      CustomInfoProvider.hide();
+      const explorerUrl = await getExplorerUrl();
+      if (explorerUrl) {
+        Linking.openURL(explorerUrl);
+      }
     }
   };
 
@@ -338,7 +397,7 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
           <View style={styles.cardRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={[styles.assetText, { color: colors.textPrimary }]}>
-                {item.asset || activeChain}
+                {item.fromChain&&item.toChain?`Swap`:item.asset || activeChain}
               </Text>
               {/* Show chain badge if transaction is from different chain */}
               {item.chain && item.chain !== activeChain && (
@@ -353,7 +412,7 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
 
           <Text style={[styles.addressText, { color: colors.textSecondary }]}>
             {isPending || isFailed || isApprove || isSuccess
-              ? shortenAddress(item.hash, 6)
+              ? item.fromChain&&item.toChain?`${item.fromChain} (${item.fromToken}) to ${item.toChain} (${item.toToken})`:shortenAddress(item.hash, 6)
               : txType === 'Send'
                 ? `To: ${shortenAddress(item.to)}`
                 : `From: ${shortenAddress(item.from)}`
@@ -392,7 +451,7 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
               { color: isFailed ? colors.textTertiary : status.color }
             ]}>
               {txType === 'Send' ? '-' : txType === 'Receive' ? '+' : ''}
-              {formatNumber(item.value || item.formattedAmount || 0)}
+              {formatNumber(item.value || item.formattedAmount || item.amountIn || 0)}
             </Text>
           )}
           
@@ -454,6 +513,13 @@ const TransactionHistory = () => {
   const [hasNextPage, setHasNextPage] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const [hasNext, setHasNext] = useState(true);
+  const [transactions, setTransactions] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
   // Get previous screen name from navigation state
   const previousScreen = useNavigationState(state => {
     const routes = state?.routes || [];
@@ -490,41 +556,52 @@ const TransactionHistory = () => {
     }
   }, [activeFilter]);
 
-  const fetchRecentTransactions = async () => {
-    try {
-      // Get all recent transactions from storage
-      const recentResponse = await ShortTermStorage.getWalletTx(walletAddress);
-      const allRecentTxs = recentResponse.status ? recentResponse.data : [];
+  const fetchRecentTransactions = async (isLoadMore = false) => {
+  try {
+    if (!isLoadMore) {
+      setIsLoading(true);
+      setError(null);
+      setPage(1);
+      setTransactions([]);
+    } else {
+      setIsLoadingMore(true);
+    }
 
-      // Format recent transactions
-      const formattedRecentTxs = allRecentTxs.map(tx => ({
-        hash: tx.hash,
-        from: tx.typeTx === 'Send' ? walletAddress : 'Unknown',
-        to: tx.typeTx === 'Receive' ? walletAddress : 'Unknown',
-        value: tx.amount || 0,
-        asset: tx.asset || tx.chain,
-        isPending: tx.status?.toLowerCase() === 'pending',
-        isFailed: tx.status?.toLowerCase() === 'failed',
-        isSuccess: tx.status?.toLowerCase() === 'success',
-        isApprove: tx.typeTx?.toLowerCase() === 'approve',
-        timestamp: tx.createdAt,
-        typeTx: tx.typeTx,
-        chain: tx.chain,
-        formattedAmount: tx.amount || 0,
+    const currentPage = isLoadMore ? page : 1;
+
+    const params = new URLSearchParams();
+    params.append('limit', limit);
+    params.append('page', currentPage);
+
+    const { res, err } = await proxyRequest(
+      `/v1/swapOrders/orderByWallet?address=${walletAddress}&${params.toString()}`, 
+      PGET
+    );
+
+    if (err?.status) {
+      setError('Failed to fetch transactions');
+      return;
+    }
+
+    if (res?.ok === true) {
+      const formattedTxs = res.data.data.map(tx => ({
+        ...tx,
+        timestamp: tx.confirmedAt || tx.createdAt
       }));
 
-      // Sort by timestamp
-      formattedRecentTxs.sort((a, b) => {
-        const dateA = new Date(a.timestamp || 0);
-        const dateB = new Date(b.timestamp || 0);
-        return dateB - dateA;
-      });
-
-      setRecentTransactions(formattedRecentTxs);
-    } catch (error) {
-      console.error('Error fetching recent transactions:', error);
+      setTransactions(prev => isLoadMore ? [...prev, ...formattedTxs] : formattedTxs);
+      setHasNext(res.data.hasNext);
+      if (res.data.hasNext) setPage(prev => prev + 1);
     }
-  };
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    setError('Something went wrong');
+  } finally {
+    setIsLoading(false);
+    setIsLoadingMore(false);
+    setRefreshing(false);
+  }
+};
 
   const fetchTransactions = async (isLoadMore = false) => {
     if (activeChain === 'STR') return;
@@ -585,25 +662,29 @@ const TransactionHistory = () => {
   };
 
   const handleLoadMore = () => {
-    if (!hasNextPage || loadingMore || loading) return;
-    fetchTransactions(true);
+    if (activeFilter === 'Recent') {
+      if (!hasNext || isLoadingMore || isLoading) return;
+      fetchRecentTransactions(true);
+    } else {
+      if (!hasNextPage || loadingMore || loading) return;
+      fetchTransactions(true);
+    }
   };
 
   // Updated filteredTransactions logic
   const filteredTransactions = useMemo(() => {
     if (activeFilter === 'Recent') {
-      return recentTransactions;
+      return transactions;
     }
     if (activeFilter === 'All') {
       return apiTransactions;
     }
-    
     return apiTransactions.filter(tx => {
       if (tx.from?.toLowerCase() === walletAddress?.toLowerCase()) return activeFilter === 'Send';
       if (tx.to?.toLowerCase() === walletAddress?.toLowerCase()) return activeFilter === 'Receive';
       return false;
     });
-  }, [apiTransactions, recentTransactions, activeFilter, walletAddress]);
+  }, [apiTransactions, recentTransactions, activeFilter, walletAddress,isLoading,transactions]);
 
   // // Auto-switch to 'All' if Recent filter is empty
   // useEffect(() => {
@@ -620,7 +701,6 @@ const TransactionHistory = () => {
     setRefreshing(true);
     if (activeFilter === 'Recent') {
       fetchRecentTransactions();
-      setRefreshing(false);
     } else {
       fetchTransactions(false);
     }
@@ -692,9 +772,9 @@ const TransactionHistory = () => {
       </View>
 
       {/* Loading State */}
-      {loading && !refreshing ? (
+      {loading || isLoading ? (
         <View style={styles.loadingContainer}>
-          {[1, 2, 3, 4].map((i) => (
+          {[1, 2, 3, 4, 5, 6].map((i) => (
             <TransactionSkeleton key={i} colors={colors} />
           ))}
         </View>

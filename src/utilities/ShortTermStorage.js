@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ARB, AVAX, BASE, OPT, POL, RPC } from '../Dashboard/constants';
 import Web3 from 'web3';
+import { PPOST, proxyRequest } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/api';
 
 const ShortTermStorage = {
   async saveTx(activeWalletPublicKey, data) {
@@ -197,7 +198,23 @@ const ShortTermStorage = {
 
     const web3 = new Web3(rpcUrl);
     return await web3.eth.getTransactionReceipt(txHash);
-  }
+  },
+
+  async syncTx(payload) {
+    try {
+      const response = await proxyRequest('/v1/swapOrders/store', PPOST, payload);
+      if (response.err?.status) {
+        return { status: false, error: response.err.message };
+      }
+      return { status: true, response: response.res };
+    } catch (error) {
+      console.error('sync tx error', error);
+      return {
+        status: false,
+        data: [],
+      };
+    }
+  },
 
 };
 
