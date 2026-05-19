@@ -622,7 +622,7 @@ const BridgeAssets = ({ props }) => {
           await ShortTermStorage.syncTx({
           txHash: res.approvalTxHash,
           walletAddress: state && state.wallet && state.wallet.address,
-          provider: "ALLBRIDGE",
+          provider: "EVMTX",
           fromChain:  selectedFromNetwork.chainName,
           fromToken: selectedFromAsset.symbol,
           toChain: selectedToNetwork.chainName,

@@ -130,7 +130,18 @@ const TokenSend = ({ route }) => {
       const txResponse = await provider.sendTransaction(rawTx);
       if (txResponse?.hash) {
         CustomInfoProvider.show("success", "Transaction successful!");
-        await ShortTermStorage.saveTx(activeWalletAddress, { chain: chain, typeTx: "Token Send", status: "Pending", hash: txResponse.hash });
+        await ShortTermStorage.syncTx({
+          txHash: txResponse.hash,
+          walletAddress: activeWalletAddress,
+          provider: "EVMTX",
+          fromChain: chain,
+          fromToken: route?.params?.tokenSymbol || 'TOKEN',
+          toChain: chain,
+          toToken: route?.params?.tokenSymbol || 'TOKEN',
+          amountIn: amount?.toString(),
+          amountOut: amount?.toString(),
+          txType: "Token Transfer"
+        });
         navigation.navigate("Transactions");
       } else {
         CustomInfoProvider.show("error", "Transaction failed try again.");

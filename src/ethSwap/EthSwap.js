@@ -773,7 +773,7 @@ const EthSwap = () => {
           await ShortTermStorage.syncTx({
             txHash: tx.txResponse.hash,
             walletAddress: state?.wallet?.address,
-            provider: "UNISWAP",
+            provider: i === validTxs.length - 1 ? "UNISWAP" : "EVMTX",
             fromChain: fromToken.chain,
             fromToken: fromToken.symbol,
             toChain: toToken.chain,

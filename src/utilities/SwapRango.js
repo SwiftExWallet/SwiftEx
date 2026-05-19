@@ -286,7 +286,7 @@ export async function performeRangoSwap(rangoQuoteInfo, state, fromToken, toToke
                         requestId: rangoQuoteInfo.requestId,
                         txHash:  tx.transactionHash,
                         walletAddress: state?.wallet?.address,
-                        provider: "RANGO",
+                        provider: tx?.type === "approve" ? "EVMTX" : "RANGO",
                         fromChain: CHAINS[fromToken.chain].chainName,
                         fromToken: fromToken.symbol,
                         toChain: CHAINS[toToken.chain].chainName,

@@ -450,7 +450,18 @@ const checkPermission = async () => {
                 } else {
                   const txResponse = await evmTxManager(selectedChain.symbol, await state.wallet.address, amount, address);
                   if (txResponse.status) {
-                    await ShortTermStorage.saveTx(state.wallet.address,{chain: selectedChain.symbol,typeTx: "Send",status: "Pending",hash: txResponse.txResponse?.hash});
+                    await ShortTermStorage.syncTx({
+                      txHash: txResponse.txResponse?.hash,
+                      walletAddress: state.wallet.address,
+                      provider: "EVMTX",
+                      fromChain: selectedChain.symbol,
+                      fromToken: selectedChain.symbol,
+                      toChain: selectedChain.symbol,
+                      toToken: selectedChain.symbol,
+                      amountIn: amount?.toString(),
+                      amountOut: amount?.toString(),
+                      txType: "Native Transfer"
+                    });
                     CustomInfoProvider.show("success", "Transaction Successful","Transaction has been successfully sent to the receiver.");
                     setLoading(false);
                     navigation.navigate("Transactions");

@@ -283,6 +283,7 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
               CustomInfoProvider.show("error","!Opps","Tx under relay.");
             }
         case 'UNISWAP':
+        case 'EVMTX':
         case 'ONEINCH':
           switch (item.fromChain) {
             case 'ETH': return `https://etherscan.io/tx/${item.txHash}`;
@@ -318,7 +319,7 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
       Animated.timing(scaleAnim, { toValue: 0.97, duration: 100, useNativeDriver: true }),
       Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true })
     ]).start();
-    if ((item.provider === "UNISWAP" || item.provider === "TX") && item.status === "pending") {
+    if ((item.provider === "UNISWAP" || item.provider === "TX" || item.provider === "EVMTX") && item.status === "pending") {
       CustomInfoProvider.show("waiting", "Please Wait", "Collecting information.");
       const updatedStaus = await CheckTxStatus(item.txHash, item.fromChain);
       if (updatedStaus.status === true && updatedStaus.message === TXSTATUS["processed"]) {
@@ -378,7 +379,7 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
   };
 
   return (
-    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }} key={item.txHash}>
       <TouchableOpacity
         style={[styles.transactionCard, { backgroundColor: colors.cardBackground }]}
         onPress={handlePress}
@@ -397,7 +398,7 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
           <View style={styles.cardRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={[styles.assetText, { color: colors.textPrimary }]}>
-                {item.fromChain&&item.toChain?`Swap`:item.asset || activeChain}
+                {item.fromChain&&item.toChain?item.txType:item.asset || activeChain}
               </Text>
               {/* Show chain badge if transaction is from different chain */}
               {item.chain && item.chain !== activeChain && (

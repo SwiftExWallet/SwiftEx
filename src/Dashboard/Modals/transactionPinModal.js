@@ -153,7 +153,18 @@ const TransactionPinModal = ({
   
             if (res.txHash) {
               try {
-                await ShortTermStorage.saveTx(state && state.wallet && state.wallet.address,{chain: "ETH",typeTx: "Send",status: "Pending",hash: res?.txHash});
+                await ShortTermStorage.syncTx({
+                  txHash: res?.txHash,
+                  walletAddress: state && state.wallet && state.wallet.address,
+                  provider: "EVMTX",
+                  fromChain: "ETH",
+                  fromToken: "ETH",
+                  toChain: "ETH",
+                  toToken: "ETH",
+                  amountIn: "0.0",
+                  amountOut: "0.0",
+                  txType: "Native Transfer"
+                });
                 // ShowToast(toast, "Transaction Successful");
   
                 setLoading(false);
@@ -226,7 +237,18 @@ const TransactionPinModal = ({
          if (res.txHash) {
               try {
                 // ShowToast(toast, "Transaction Successful");
-                await ShortTermStorage.saveTx(state && state.wallet && state.wallet.address,{chain: "BSC",typeTx: "Send",status: "Pending",hash: res?.txHash});
+                await ShortTermStorage.syncTx({
+                  txHash: res?.txHash,
+                  walletAddress: state && state.wallet && state.wallet.address,
+                  provider: "EVMTX",
+                  fromChain: "BSC",
+                  fromToken: "BSC",
+                  toChain: "BSC",
+                  toToken: "BSC",
+                  amountIn: "0.0",
+                  amountOut: "0.0",
+                  txType: "Native Transfer"
+                });
                 setLoading(false);
                 setLoader(false);
                 setDisable(false);
