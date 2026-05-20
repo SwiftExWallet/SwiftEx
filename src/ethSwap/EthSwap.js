@@ -460,24 +460,38 @@ const EthSwap = () => {
   };
 
   const handleAmount = (text) => {
+     if (!fromToken || !toToken) {
+      setbtnDisable(true);
+      setbtnMessage("Select Token");
+      return;
+    }
     if (fromToken.chain === CHAINS["STR"].symbol && toToken.chain === CHAINS["STR"].symbol) {
       CustomInfoProvider.show("info", "Use Stellar Swap Instead?", "This token works on Stellar. Would you like to continue with the faster and easier AMM Swap option?", [
         { text: "Cancel", style: "cancel" },
         { text: "Yes", onPress: () => { navigation.navigate("newOffer_modal") } },
       ]);
     } else {
-    const replaceComma = text.replace(',', '.');
-    const payAmount = replaceComma
-      .replace(/[^0-9.]/g, '')
-      .replace(/(\..*?)\..*/g, '$1');
-    setAmount(payAmount);
-  }
+      const replaceComma = text.replace(',', '.');
+      let value = replaceComma.replace(/[^0-9.]/g, '');
+      const firstDot = value.indexOf('.');
+      if (firstDot !== -1) {
+        value =
+          value.slice(0, firstDot + 1) +
+          value.slice(firstDot + 1).replace(/\./g, '');
+      }
+      setAmount(value);
+    }
   };
 
   const updateQuote = async () => {
     if (!amount || parseFloat(amount) <= 0) {
       setbtnDisable(true);
       setbtnMessage("Enter Amount");
+      return;
+    }
+    if (!fromToken || !toToken) {
+      setbtnDisable(true);
+      setbtnMessage("Select Token");
       return;
     }
     try {
@@ -1273,10 +1287,10 @@ const EthSwap = () => {
             <Text style={styles.quoteValue}>{quoteInfo.rate}</Text>
           </View>
 
-          <View style={styles.quoteRow}>
+          {/* <View style={styles.quoteRow}>
             <Text style={styles.quoteLabel}>Fee Tier</Text>
             <Text style={styles.quoteValue}>{quoteInfo.feeTire}</Text>
-          </View>
+          </View> */}
           <View style={styles.quoteRow}>
             <Text style={styles.quoteLabel}>Slippage</Text>
             <TouchableOpacity style={styles.slippageCon} onPress={()=>{setvisibleSlippage(true)}}>
@@ -1364,12 +1378,14 @@ const EthSwap = () => {
             style={styles.textInputSlippage}
             value={showRecommendedSlippage}
             onChangeText={(value) => {
-              if (parseFloat(value) > 11) {
+              const data=value.replace(/[^0-9.]/g, '');
+              if (parseFloat(data) > 11) {
                 CustomInfoProvider.show("error", "!Opps", "Your transaction is at risk due to high slippage tolerance.");
               } else {
-                setShowRecommendedSlippage(value)
+                setShowRecommendedSlippage(data)
               }
             }}
+            contextMenuHidden={true}
             keyboardType="numeric"
             maxLength={3}
           />

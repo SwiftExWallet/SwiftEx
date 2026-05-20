@@ -765,11 +765,15 @@ export const WalletNetworkSelection = (props) => {
                     <TextInput
                         value={accountName}
                         maxLength={20}
-                        onChangeText={(text) => { setaccountName(text) }}
+                        onChangeText={(text) => {
+                          const formattedUsername = text.replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu, '').replace(/\s+/g, ' ').trim();
+                          setaccountName(formattedUsername)
+                        }}
                         style={styles.inputContainer}
                         placeholder={"Wallet 1"}
                         placeholderTextColor={"gray"}
                         autoFocus={true}
+                        editable={!loading}
                     />
                 </View>
                 {chainInfo.symbol !== "STR" ?
@@ -793,12 +797,14 @@ export const WalletNetworkSelection = (props) => {
                                 style={styles.inputContainer}
                                 placeholder={"Mnemonic"}
                                 placeholderTextColor={"gray"}
+                                editable={!loading}
                             /> : <TextInput
                                 value={keys}
                                 onChangeText={(text) => { setKeys(text) }}
                                 style={styles.inputContainer}
                                 placeholder={"Private Key"}
                                 placeholderTextColor={"gray"}
+                                editable={!loading}
                             />}
                     </View> : <View style={styles.txtCard}>
                         <Text style={styles.txtLabel}>Secret Key</Text>
@@ -810,6 +816,7 @@ export const WalletNetworkSelection = (props) => {
                             style={styles.inputContainer}
                             placeholder={"Secret Key"}
                             placeholderTextColor={"gray"}
+                            editable={!loading}
                         />
                     </View>}
 

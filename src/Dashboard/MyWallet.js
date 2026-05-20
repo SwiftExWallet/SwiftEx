@@ -147,6 +147,7 @@ const MyWallet = (props) => {
               color: state.THEME.THEME === false ? "black" : "#FFFFFF",
               fontSize: 19, width: editWalletName?wp(90):wp(74.3)
             }}
+            maxLength={25}
             value={walletName}
             editable={editWalletName}
             onChangeText={(text) => {handleWalletNameChange(text)}}

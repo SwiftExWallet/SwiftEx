@@ -84,10 +84,15 @@ const useTheme = () => useContext(ThemeContext);
 
 // Utility Functions
 const formatNumber = (num) => {
-  if (num === 0) return "0";
-  if (Math.abs(num) < 0.0001) return num.toExponential(2);
-  if (Math.abs(num) > 1000000) return (num / 1000000).toFixed(2) + 'M';
-  return num.toLocaleString(undefined, { maximumFractionDigits: 6 });
+  const value = Number(num);
+  if (!Number.isFinite(value)) return "0";
+  if (value === 0) return "0";
+  if (Math.abs(value) < 0.0001) return value.toExponential(2);
+  if (Math.abs(value) > 1000000) return (value / 1000000).toFixed(2) + "M";
+
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 6,
+  }).format(value);
 };
 
 const formatDate = (timestamp) => {
@@ -360,15 +365,16 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
   };
 
   const handleLongPress = () => {
-    Alert.alert(
+    CustomInfoProvider.show(
+      'info',
       'Transaction Options',
       'What would you like to do?',
       [
-        { text: 'Copy Hash', onPress: () => copyToClipboard(item.hash, 'Transaction hash') },
+        { text: 'Copy Hash', onPress: () => copyToClipboard(item.hash||item.txHash, 'Transaction hash') },
         { 
           text: 'Copy Address', 
           onPress: () => {
-            const address = txType === 'Send' ? item.to : item.from;
+            const address = txType === 'Send' ? item.to : item.from || item.walletAddress;
             copyToClipboard(address, 'Address');
           }
         },

@@ -318,7 +318,9 @@ export const TokensManagement = () => {
         if (!findBar) return listData;
         return listData?.filter(item =>
             (item.symbol || item.code)?.toLowerCase()?.includes(findBar?.toLowerCase()) ||
-            (item.name || item.domain)?.toLowerCase()?.includes(findBar?.toLowerCase())
+            (item.name || item.domain)?.toLowerCase()?.includes(findBar?.toLowerCase()) ||
+            (item.address)?.toLowerCase()?.includes(findBar?.toLowerCase())||
+            (item.issuer)?.toLowerCase()?.includes(findBar?.toLowerCase())
         );
     }, [listData, findBar]);
 

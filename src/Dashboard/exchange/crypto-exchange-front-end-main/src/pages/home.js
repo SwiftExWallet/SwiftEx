@@ -330,7 +330,7 @@ export const HomeView = () => {
               <TouchableOpacity onPress={() => copyToClipboard(stellarKey)} accessibilityLabel="Copy Stellar Public Key">
                 <Icon name="content-copy" type="materialCommunity" color="#4052D6" size={24} style={{ marginLeft: wp(1) }} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setVisibleSelectWallet(true)} accessibilityLabel="Import Wallet" style={styles.copyCon}>
+              <TouchableOpacity onPress={() => {navigation.navigate("WalletNetworkSelection",{selectionType:"importForSetupedApp",backScreenName:"ExchangeHome"})}} accessibilityLabel="Import Wallet" style={styles.copyCon}>
                 <Text style={[styles.copyTx]}>Import</Text>
               </TouchableOpacity>
             </View>

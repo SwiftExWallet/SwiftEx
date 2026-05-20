@@ -589,8 +589,7 @@ const Market = (props) => {
             onChangeText={(input) => {
               let UpdatedData = []
               updatedData.filter((item) => {
-                console.log(item.name.toLowerCase().includes(input.toLowerCase()))
-                if (item.name.toLowerCase().includes(input.toLowerCase())) {
+                if (item.name.toLowerCase().includes(input.toLowerCase()) || item.symbol.toLowerCase().includes(input.toLowerCase())) {
                   UpdatedData.push(item)
                 }
 

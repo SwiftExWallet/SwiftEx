@@ -291,7 +291,7 @@ const Assets_manage = ({ route }) => {
                     <FlatList
                         data={fillteredAssets}
                         keyExtractor={(item, index) => index.toString()}
-                        style={{ marginBottom: hp(5) }}
+                        style={{ marginBottom: hp(1) }}
                         renderItem={({ item, index }) => {
                         return (
                             <View key={index} style={[styles.search_bar, { flexDirection: "row", justifyContent: "space-between", alignItems: "center",backgroundColor:theme.bg }]}>
