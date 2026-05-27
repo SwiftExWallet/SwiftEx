@@ -484,6 +484,13 @@ const EthSwap = () => {
   };
 
   const updateQuote = async () => {
+    if (fromToken.chain === CHAINS["STR"].symbol && toToken.chain === CHAINS["STR"].symbol) {
+      CustomInfoProvider.show("info", "Use Stellar Swap Instead?", "This token works on Stellar. Would you like to continue with the faster and easier AMM Swap option?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Yes", onPress: () => { navigation.navigate("newOffer_modal") } },
+      ]);
+      return;
+    }
     if (!amount || parseFloat(amount) <= 0) {
       setbtnDisable(true);
       setbtnMessage("Enter Amount");
@@ -551,7 +558,7 @@ const EthSwap = () => {
           }
         }else{
           setQuoteInfo(defaultQuoteInfo);
-          CustomInfoProvider.show("error","!Opps",getRangoSwaps.error||"Unable to get route");
+          CustomInfoProvider.show("error","!Opps",getRangoSwaps.error||getRangoSwaps.error.message==="Cannot read property 'swaps' of null"?"Unable to get route":"Unable to get route"||"Unable to get route");
           setbtnDisable(true);
           setbtnMessage("No route found");
         }
@@ -953,6 +960,7 @@ const EthSwap = () => {
         CustomInfoProvider.show("error", "!Opps", submitResult.err.message || "Swap failed");
       } else {
         await ShortTermStorage.syncTx({
+          quoteId: providerQuoteInfo.quoteId,
           txHash: respo?.res?.orderHash,
           walletAddress: state?.wallet?.address,
           provider: "ONEINCH",

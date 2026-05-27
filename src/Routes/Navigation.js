@@ -92,6 +92,7 @@ import { AppCheck } from "../Screens/AppChecks/AppCheck";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import {TokensManagement} from "../Dashboard/TokensManagement";
 import { WalletNetworkSelection } from "../Dashboard/ImportWalletModule/WalletNetworkSelection";
+import RampProvider from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/RampProvider";
 
 const Stack = createNativeStackNavigator();
 
@@ -521,6 +522,18 @@ const AuthStack = () => {
         options={{
           headerShown: false,
     // statusBarHidden:true,
+          headerStyle: { backgroundColor: "#4CA6EA" },
+          headerTintColor: "white",
+          headerTitleStyle: {
+            fontWeight: "bold",
+          },
+        }}
+      />
+      <Stack.Screen
+        name="RampProvider"
+        component={RampProvider}
+        options={{
+          headerShown: false,
           headerStyle: { backgroundColor: "#4CA6EA" },
           headerTintColor: "white",
           headerTitleStyle: {

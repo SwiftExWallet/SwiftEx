@@ -389,7 +389,7 @@ console.log("resQuotes-",resQuotes)
             <Image source={{ uri: selectedReciveAssetDetils.logoURI }} style={styles.iconCon} />
             <View>
               <Text style={[styles.networkSubHeading,{color:theme.inactiveTx}]}>Asset</Text>
-              <Text style={[styles.networkHeading,{color:theme.headingTx}]}>{selectedReciveAssetDetils.name}</Text>
+              <Text style={[styles.networkHeading,{color:theme.headingTx}]}>{selectedReciveAssetDetils.name?.slice(0,8)}..</Text>
             </View>
           </View>
           <Icon name={"chevron-down"} type={"materialCommunity"} color={theme.headingTx} size={30} />

@@ -247,7 +247,7 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
                 icon: "credit-card",
                 type: "entypo",
                 action: () =>
-                  navigation.navigate("KycComponent", { tabName: "Buy" }),
+                  navigation.navigate("payout"),
               },
             ].map((item, idx) => (
               <TouchableOpacity key={idx} style={styles.featureCard} onPress={item.action}>
