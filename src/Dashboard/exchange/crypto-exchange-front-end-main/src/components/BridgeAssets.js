@@ -29,6 +29,8 @@ import CustomInfoProvider from './CustomInfoProvider';
 import WalletActivationComponent from '../utils/WalletActivationComponent';
 import { swap_prepare } from '../../../../../../All_bridge';
 import { SwapPepare } from '../../../../../utilities/AllbridgeBscUtil';
+import { CHAINS } from '../../../../../utilities/TokenUtils';
+import ShortTermStorage from '../../../../../utilities/ShortTermStorage';
 
 const BridgeAssets = ({ props }) => {
   const navigation = useNavigation();
@@ -403,59 +405,6 @@ const BridgeAssets = ({ props }) => {
       fontWeight: '500',
     }
   });
-  const chooseItemList = [
-    { id: 1, chainName: "ETH", subName: "ETH", name: "Ethereum", url: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2/logo.png", walletAddress: state?.wallet?.address },
-    { id: 2, chainName: "BSC", subName: "BNB", name: "BNB", url: "https://tokens.pancakeswap.finance/images/0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c.png", walletAddress: state?.wallet?.address },
-    { id: 3, chainName: "SRB", subName: "STR", name: "Stellar", url: "https://stellar.myfilebase.com/ipfs/QmSTXU2wn1USnmd5ZypA5zMze259wEPSDP3i8wivyr9qiq", walletAddress: state?.STELLAR_PUBLICK_KEY },
-  ];
-
-  const bscSupportTokens = [
-    {
-      "name": "Binance USDT",
-      "symbol": "USDT",
-      "address": "0x55d398326f99059fF775485246999027B3197955",
-      "chainId": 56,
-      "decimals": 18,
-      "logoURI": "https://tokens.pancakeswap.finance/images/0x55d398326f99059fF775485246999027B3197955.png"
-    },
-    {
-      "name": "Binance USDC",
-      "symbol": "USDC",
-      "address": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-      "chainId": 56,
-      "decimals": 18,
-      "logoURI": "https://tokens.pancakeswap.finance/images/0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d.png"
-    }
-  ];
-
-  const ethSupportTokens = [
-    {
-      "name": "Tether USD",
-      "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-      "symbol": "USDT",
-      "decimals": 6,
-      "chainId": 1,
-      "logoURI": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png"
-    },
-    {
-      "name": "USDCoin",
-      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      "symbol": "USDC",
-      "decimals": 6,
-      "chainId": 1,
-      "logoURI": "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png"
-    }
-  ];
-
-  const stellarSupportTokens = [
-    {
-      name: "USDC (Centre)",
-      symbol: "USDC",
-      address: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-      decimals: 6,
-      logoURI: "https://tokens.pancakeswap.finance/images/0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d.png"
-    }
-  ];
 
   const [fromAmount, setFromAmount] = useState(0.0);
   const [selectedRelayerFee, setSelectedRelayerFee] = useState('native');
@@ -463,10 +412,10 @@ const BridgeAssets = ({ props }) => {
   const [showFromAssetModal, setShowFromAssetModal] = useState(false);
   const [showToAssetModal, setShowToAssetModal] = useState(false);
   const [modalType, setModalType] = useState('from');
-  const [selectedFromNetwork, setSelectedFromNetwork] = useState(chooseItemList[1]);
-  const [selectedToNetwork, setSelectedToNetwork] = useState(chooseItemList[2]);
-  const [selectedFromAsset, setSelectedFromAsset] = useState(bscSupportTokens[0]);
-  const [selectedToAsset, setSelectedToAsset] = useState(stellarSupportTokens[0]);
+  const [selectedFromNetwork, setSelectedFromNetwork] = useState(Object.values(CHAINS)[1]);
+  const [selectedToNetwork, setSelectedToNetwork] = useState(Object.values(CHAINS)[2]);
+  const [selectedFromAsset, setSelectedFromAsset] = useState(Object.values(CHAINS)[1].bridgeSupportTokens[0]);
+  const [selectedToAsset, setSelectedToAsset] = useState(Object.values(CHAINS)[2].bridgeSupportTokens[0]);
   const [showOption, setShowOption] = useState(false);
   const [balanceLoading, setbalanceLoading] = useState(false);
   const [fromBalance, setFromBalance] = useState(0.0);
@@ -477,39 +426,18 @@ const BridgeAssets = ({ props }) => {
   const [walletActivationWarning,setWalletActivationWarning] = useState(false);
 
   const getFromNetworkTokens = () => {
-    if (selectedFromNetwork.subName === 'BNB') {
-      return bscSupportTokens;
-    } else if (selectedFromNetwork.subName === 'ETH') {
-      return ethSupportTokens;
-    } else if (selectedFromNetwork.subName === 'STR') {
-      return stellarSupportTokens;
-    }
-    return [];
+    return CHAINS[selectedFromNetwork.symbol].bridgeSupportTokens;
   };
 
 
   const getToNetworkTokens = () => {
-    if (selectedToNetwork.subName === 'BNB') {
-      return bscSupportTokens;
-    } else if (selectedToNetwork.subName === 'ETH') {
-      return ethSupportTokens;
-    } else if (selectedToNetwork.subName === 'STR') {
-      return stellarSupportTokens;
-    }
-    return [];
+    return CHAINS[selectedToNetwork.symbol].bridgeSupportTokens;
   };
 
 
   useEffect(() => {
-    let toAsset = null;
-    if (selectedToNetwork.subName === 'BNB') {
-      toAsset = bscSupportTokens[0];
-    } else if (selectedToNetwork.subName === 'ETH') {
-      toAsset = ethSupportTokens[0];
-    } else if (selectedToNetwork.subName === 'STR') {
-      toAsset = stellarSupportTokens[0];
-    }
-    setSelectedToAsset(toAsset);
+    setSelectedFromAsset(CHAINS[selectedFromNetwork.symbol].bridgeSupportTokens[0])
+    setSelectedToAsset(CHAINS[selectedToNetwork.symbol].bridgeSupportTokens[0]);
   }, [selectedToNetwork]);
 
   useEffect(() => {
@@ -533,16 +461,11 @@ const BridgeAssets = ({ props }) => {
 
   const handleNetworkSelect = (network) => {
     if (modalType === 'from') {
-      setSelectedFromNetwork(network);
-      if (network.subName === 'BNB') {
-        setSelectedFromAsset(bscSupportTokens[0]);
-      } else if (network.subName === 'ETH') {
-        setSelectedFromAsset(ethSupportTokens[0]);
-      } else if (network.subName === 'STR') {
-        setSelectedFromAsset(stellarSupportTokens[0]);
-      }
+      setSelectedFromNetwork(CHAINS[network.symbol]);
+      setSelectedFromAsset(CHAINS[network.symbol].bridgeSupportTokens[0]);
     } else {
-      setSelectedToNetwork(network);
+      setSelectedToNetwork(CHAINS[network.symbol]);
+      setSelectedToAsset(CHAINS[network.symbol].bridgeSupportTokens[0]);
     }
     setShowNetworkModal(false);
   };
@@ -566,21 +489,20 @@ const BridgeAssets = ({ props }) => {
     try {
       setbalanceLoading(true);
       switch (selectedFromNetwork.subName) {
-        case "ETH":
-        case "BNB":
-          const evmBalance = await getTokenBalancesUsingAddress(selectedFromAsset.address, selectedFromNetwork.walletAddress, selectedFromNetwork.subName === "ETH" ? selectedFromNetwork.subName : "BSC");
-          setFromBalance(evmBalance.status ? evmBalance.tokenInfo[0] : 0.0);
-          setbalanceLoading(false);
-          break;
         case "STR":
-          const nativeBalance = await GetStellarAvilabelBalance(selectedFromNetwork.walletAddress);
-          const tokenBalance = await GetStellarUSDCAvilabelBalance(selectedFromNetwork.walletAddress, selectedFromAsset.symbol, selectedFromAsset.address);
+          const nativeBalance = await GetStellarAvilabelBalance(state && state.STELLAR_PUBLICK_KEY);
+          const tokenBalance = await GetStellarUSDCAvilabelBalance(state && state.STELLAR_PUBLICK_KEY, selectedFromAsset.symbol, selectedFromAsset.address);
           if (nativeBalance.availableBalance && tokenBalance.availableBalance) {
             setFromBalance({
               walletBalance: nativeBalance.availableBalance ? parseFloat(nativeBalance.availableBalance) : 0.0,
               tokenBalance: tokenBalance.availableBalance ? parseFloat(tokenBalance.availableBalance) : 0.0
             });
           }
+          setbalanceLoading(false);
+         break;
+         case selectedFromNetwork.subName:
+          const evmBalance = await getTokenBalancesUsingAddress(selectedFromAsset.address, state?.wallet?.address, selectedFromNetwork.subName);
+          setFromBalance(evmBalance.status ? evmBalance.tokenInfo[0] : 0.0);
           setbalanceLoading(false);
           break;
         default:
@@ -644,7 +566,7 @@ const BridgeAssets = ({ props }) => {
   }
 
   const executeNonEvmSwap=async()=>{
-    console.debug("executeNonEvmSwap");
+    console.info("executeNonEvmSwap");
     setSwapLoading(true);
      try {
       const stellarWallet = {
@@ -656,11 +578,11 @@ const BridgeAssets = ({ props }) => {
         selectedFromAsset.symbol,
         selectedToAsset.symbol,
         fromAmount,
-        selectedToNetwork.walletAddress,
+        selectedToNetwork.subName==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address,
         stellarWallet,
         selectedRelayerFee
       );
-      console.debug("swap-result->", result)
+      console.info("swap-result->", result)
       if (result.success) {
         setSwapLoading(false);
         CustomInfoProvider.show("success", "Bridge Successfull.", [
@@ -669,7 +591,7 @@ const BridgeAssets = ({ props }) => {
       } else {
         setSwapLoading(false);
         CustomInfoProvider.show("error", result.error||"Bridge Faild.");
-        console.debug("Bridge Faild:-", result);
+        console.info("Bridge Faild:-", result);
       }
     } catch (error) {
       setSwapLoading(false);
@@ -679,63 +601,63 @@ const BridgeAssets = ({ props }) => {
   }
 
   const executeSwap = async () => {
-    console.debug("executeSwap");
     setSwapLoading(true);
     try {
-      const resultOfBidirectional = selectedFromNetwork.chainName === "ETH" ? await swap_prepare(
+      const resultOfBidirectional = await swap_prepare(
         state?.wallet?.address,
-        selectedFromNetwork.walletAddress,
-        selectedToNetwork.walletAddress,
+        state?.wallet?.address,
+        selectedToNetwork.subName==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address,
         fromAmount.toString(),
         selectedFromAsset.symbol,
         selectedToAsset.symbol,
-        selectedFromNetwork.chainName === "BSC" ? "BNB" : selectedFromNetwork.chainName,
+        selectedFromNetwork.chainName,
         selectedRelayerFee,
-        selectedToNetwork.chainName === "BSC" ? "BNB" : selectedToNetwork.chainName,
-      ) : await SwapPepare(
-        state?.wallet?.address,
-        state?.wallet?.address,
-        selectedToNetwork.walletAddress,
-        fromAmount.toString(),
-        selectedFromAsset.symbol,
-        selectedToAsset.symbol,
-        selectedFromNetwork.chainName === "BSC" ? "BNB" : selectedFromNetwork.chainName,
-        selectedRelayerFee,
-        selectedToNetwork.chainName === "BSC" ? "BNB" : selectedToNetwork.chainName,
-      );
-      console.debug("swap bidirectional response:", resultOfBidirectional);
+        selectedToNetwork.chainName,
+      )
+      console.info("swap bidirectional response:", resultOfBidirectional);
       if (resultOfBidirectional?.status_task) {
         const { res } = resultOfBidirectional;
         const txHashes = [];
         if (res.approvalTxHash) {
-          await LocalTxManager.saveTx(
-            state && state.wallet && state.wallet.address,
-            {
-              chain: selectedFromNetwork.chainName,
-              hash: res.approvalTxHash,
-              status: "pending",
-              statusColor: "#eec14fff",
-              type: "approval",
-              timestamp: Date.now()
-            }
-          );
+          await ShortTermStorage.syncTx({
+          txHash: res.approvalTxHash,
+          walletAddress: state && state.wallet && state.wallet.address,
+          provider: "EVMTX",
+          fromChain:  selectedFromNetwork.chainName,
+          fromToken: selectedFromAsset.symbol,
+          toChain: selectedToNetwork.chainName,
+          toToken: selectedToAsset.symbol,
+          amountIn: fromAmount.toString(),
+          amountOut: fromAmount.toString(),
+          txType:"Token Approval"
+        })
           txHashes.push({
             chain: selectedFromNetwork.chainName,
             hash: res.approvalTxHash,
             type: "Approval"
           });
         }
-        await LocalTxManager.saveTx(
-          state && state.wallet && state.wallet.address,
-          {
-            chain: selectedFromNetwork.chainName,
-            hash: res.transferTxHash,
-            status: "pending",
-            statusColor: "#eec14fff",
-            type: "transfer",
-            timestamp: Date.now()
-          }
-        );
+        await ShortTermStorage.syncTx({
+          txHash: res.transferTxHash,
+          walletAddress: state && state.wallet && state.wallet.address,
+          provider: "ALLBRIDGE",
+          fromChain:  selectedFromNetwork.chainName,
+          fromToken: selectedFromAsset.symbol,
+          toChain: selectedToNetwork.chainName,
+          toToken: selectedToAsset.symbol,
+          amountIn: fromAmount.toString(),
+          amountOut: fromAmount.toString(),
+          txType:"Bridge"
+        })
+        await LocalTxManager.saveTx(state && state.wallet && state.wallet.address, {
+          chain: selectedFromNetwork.chainName,
+          hash: res.transferTxHash,
+          status: "pending",
+          statusColor: "#eec14fff",
+          timestamp: Date.now(),
+          symbol: selectedFromAsset.symbol,
+          amount: fromAmount.toString(),
+        });
         txHashes.push({
           chain: selectedFromNetwork.chainName,
           hash: res.transferTxHash,
@@ -764,7 +686,7 @@ const BridgeAssets = ({ props }) => {
   const isStableFeeInsufficient = selectedRelayerFee === "stablecoin" && stableFee > tokenBal;
   const isNativeFeeInsufficient = selectedRelayerFee === "native" && nativeFee > walletBal;
   const isInsufficientBalance = isTokenInsufficient || isStableFeeInsufficient || isNativeFeeInsufficient;
-  const isDisabled = walletActivationWarning || quotesLoading || swapLoading || fromAmt <= 0 || isInsufficientBalance;
+  const isDisabled = (walletActivationWarning&&selectedToNetwork.subName==="STR")||(walletActivationWarning&&selectedFromNetwork.subName==="STR") || quotesLoading || swapLoading || fromAmt <= 0 || isInsufficientBalance;
 
   return (
     <View style={styles.container}>
@@ -808,7 +730,7 @@ const BridgeAssets = ({ props }) => {
                 onPress={() => openNetworkModal('from')}
               >
                 <Image
-                  source={{ uri: selectedFromNetwork.url }}
+                  source={{ uri: selectedFromNetwork?.imageUrl }}
                   style={styles.networkIcon}
                 />
                 <Text style={styles.networkName}>{selectedFromNetwork.subName}</Text>
@@ -884,7 +806,7 @@ const BridgeAssets = ({ props }) => {
                 onPress={() => openNetworkModal('to')}
               >
                 <Image
-                  source={{ uri: selectedToNetwork.url }}
+                  source={{ uri: selectedToNetwork?.imageUrl }}
                   style={styles.networkIcon}
                 />
                 <Text style={styles.networkName}>{selectedToNetwork.subName}</Text>
@@ -921,7 +843,7 @@ const BridgeAssets = ({ props }) => {
                       onPress={() => setSelectedRelayerFee('native')}
                     >
                       <Image
-                        source={{ uri: selectedFromNetwork.url }}
+                        source={{ uri: selectedFromNetwork?.imageUrl }}
                         style={styles.feeIconSmall}
                       />
                       <Text style={[
@@ -1004,7 +926,7 @@ const BridgeAssets = ({ props }) => {
           >
             <Text style={styles.confirmButtonText}>
               {walletActivationWarning
-                ? "Stellar wallet Activation Required"
+                ? (walletActivationWarning&&selectedToNetwork.subName==="STR")||(walletActivationWarning&&selectedFromNetwork.subName==="STR")?"Stellar wallet Activation Required":"Confirm Transaction"
                 : swapLoading
                   ? "Wait transaction under process..."
                   : isInsufficientBalance
@@ -1033,17 +955,17 @@ const BridgeAssets = ({ props }) => {
             </View>
 
             <FlatList
-              data={chooseItemList}
-              keyExtractor={(item) => item.id.toString()}
+              data={Object.values(CHAINS).filter(item=>item.bridgeEnable===true)}
+              keyExtractor={(item,index) => index.toString()}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.modalItem}
                   onPress={() => handleNetworkSelect(item)}
                 >
-                  <Image source={{ uri: item.url }} style={styles.modalItemIcon} />
+                  <Image source={{ uri: item?.imageUrl }} style={styles.modalItemIcon} />
                   <Text style={styles.modalItemText}>{item.name}</Text>
-                  {((modalType === 'from' && selectedFromNetwork.id === item.id) ||
-                    (modalType === 'to' && selectedToNetwork.id === item.id)) && (
+                  {((modalType === 'from' && selectedFromNetwork.chainId === item.chainId) ||
+                    (modalType === 'to' && selectedToNetwork.chainId === item.chainId)) && (
                       <Icon type="ionicon" name="checkmark-circle" size={24} color="#4F46E5" />
                     )}
                 </TouchableOpacity>

@@ -65,8 +65,18 @@ const ConfirmTransaction = (props) => {
 
       if (res.txHash) {
         try {
-          ShowToast(toast, "Transaction Successful");
-          await ShortTermStorage.saveTx(state && state.wallet && state.wallet.address,{chain: "ETH",typeTx: "Send",status: "Pending",hash: res?.txHash});
+          await ShortTermStorage.syncTx({
+            txHash: res?.txHash,
+            walletAddress: state && state.wallet && state.wallet.address,
+            provider: "EVMTX",
+            fromChain: "ETH",
+            fromToken: "ETH",
+            toChain: "ETH",
+            toToken: "ETH",
+            amountIn: props?.route?.params?.info?.amount,
+            amountOut: props?.route?.params?.info?.amount,
+            txType: "Native Transfer"
+          });
           setLoading(false);
           setDisable(false);
           Navigate();
@@ -90,8 +100,18 @@ const ConfirmTransaction = (props) => {
 
       if (res.txHash) {
         try {
-          ShowToast(toast, "Transaction Successful");
-          await ShortTermStorage.saveTx(state && state.wallet && state.wallet.address,{chain: "BSC",typeTx: "Send",status: "Pending",hash: res?.txHash});
+          await ShortTermStorage.syncTx({
+            txHash: res?.txHash,
+            walletAddress: state && state.wallet && state.wallet.address,
+            provider: "EVMTX",
+            fromChain: "BSC",
+            fromToken: "BSC",
+            toChain: "BSC",
+            toToken: "BSC",
+            amountIn: props?.route?.params?.info?.amount,
+            amountOut: props?.route?.params?.info?.amount,
+            txType: "Native Transfer"
+          });
           setLoading(false);
           setDisable(false);
           Navigate();

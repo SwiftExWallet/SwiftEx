@@ -32,7 +32,7 @@ import darkBlue from "../../../assets/darkBlue.png"
 import { delay, isInteger } from "lodash";
 import { ShowErrotoast, Showsuccesstoast, alert } from "../reusables/Toasts";
 import { isFloat } from "validator";
-import { RNCamera } from 'react-native-camera';
+import { Camera, useCameraDevice, useCameraPermission, useCodeScanner } from "react-native-vision-camera";
 import { REACT_APP_LOCAL_TOKEN } from "../exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import { useToast } from "native-base";
 import { STELLAR_URL } from "../constants";
@@ -48,6 +48,7 @@ import QRScannerComponent from "../Modals/QRScannerComponent";
 import LinearGradient from "react-native-linear-gradient";
 StellarSdk.Networks.PUBLIC
 const SendXLM = (props) => {
+    const { hasPermission, requestPermission } = useCameraPermission();
     const toast=useToast();
     const FOCUSED = useIsFocused()
     const [show, setshow] = useState(false);
@@ -64,6 +65,7 @@ const SendXLM = (props) => {
     const [Message, setMessage] = useState("");
     const [Payment_loading,setPayment_loading]=useState(false);
     const cameraRef = useRef(null);
+    const device = useCameraDevice('back');
     const [qrData, setQrData] = useState('');
     const state = useSelector((state) => state);
     const navigation = useNavigation();
@@ -76,23 +78,25 @@ const SendXLM = (props) => {
         checkPermission();
     };
 
-    const onBarCodeRead = (e) => {
-      if (e?.data && e?.data !== lastScannedData) {
-        setLastScannedData(e?.data); // Update the last scanned data
-        setErroVisible(false)
-        alert("success", "QR Code Decoded successfully..");
-        setAddress("");
-        setAddress(e?.data);
-        setModalVisible(false);
-    
-        if (!validateStellarAddress(e?.data)) {
-        setModalVisible(false);
+     const onBarCodeRead = useCodeScanner({
+      codeTypes: ['qr'],
+      onCodeScanned: (codes) => {
+        for (const code of codes) {
+          setLastScannedData(code.value);
           setErroVisible(false)
+          alert("success", "QR Code Decoded successfully..");
           setAddress("");
-          setErroVisible(true)
+          setAddress(code.value);
+          setModalVisible(false);
+          if (!validateStellarAddress(code.value)) {
+            setModalVisible(false);
+            setErroVisible(false)
+            setAddress("");
+            setErroVisible(true)
+          }
         }
-      }
-    };
+      },
+    });
     
     const handleCameraStatus = (status) => {
       if (status === "NOT_AUTHORIZED") {
@@ -331,23 +335,31 @@ const SendXLM = (props) => {
         
             const checkPermission = async () => {
               if (Platform.OS === 'android') {
-                const result = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
-                if (result===true) {
-                    setModalVisible(!isModalVisible);
-                } else {
-                  const requestResult = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
-                  if (requestResult === PermissionsAndroid.RESULTS.GRANTED) {
-                    setModalVisible(!isModalVisible);
-                  } else {
-                    ShowErrotoast(toast,"Permissions not allowed");
+                const result = await PermissionsAndroid.check(
+                  PermissionsAndroid.PERMISSIONS.CAMERA
+                );
+
+                if (!result) {
+                  const requestResult = await PermissionsAndroid.request(
+                    PermissionsAndroid.PERMISSIONS.CAMERA
+                  );
+
+                  if (
+                    requestResult === PermissionsAndroid.RESULTS.DENIED ||
+                    requestResult === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+                  ) {
+                    CustomInfoProvider.show("warning", "Permission Denied", "Camera permission requird for scaning QR Code.");
                   }
                 }
               } else {
-                // iOS permission is handled through Info.plist
-                setModalVisible(!isModalVisible);
+                if (!hasPermission) {
+                  requestPermission()
+                } else {
+                  setModalVisible(true);
+                }
               }
             };
-            
+
             const CHECK_LOGIN=async()=>{
               token ?[setACTIVATION_MODAL(false),navigation.navigate("Settings")]:[setACTIVATION_MODAL(false),navigation.navigate("exchangeLogin")]
             }
@@ -426,15 +438,15 @@ useEffect(() => {
                 Available Balance
               </Text>
              <View style={{alignSelf:"flex-end",justifyContent:"center",alignContent:"center"}}>
-             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+             {Loading?<ActivityIndicator color={"#5B65E1"} size={"small"}/>:<ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <Text style={[style.balanceAmount, { color: state.THEME.THEME === false ? "#212529" : "#FFFFFF" }]}>
                   {balance ? balance : show === false ? "0.00" : ""}
                 </Text>
               <Text style={[style.balanceAmount, { color: state.THEME.THEME === false ? "#212529" : "#FFFFFF" }]}> XLM</Text>
-              </ScrollView>
+              </ScrollView>}
              </View>
             </View>
-            <TouchableOpacity style={style.extraInfoCon} onPress={() => {setreservedError(!reservedError)}}>
+            {Loading?<ActivityIndicator color={"#5B65E1"} size={"small"}/>:<TouchableOpacity style={style.extraInfoCon} onPress={() => {setreservedError(!reservedError)}}>
             <Icon
               name={"information-outline"}
               type={"materialCommunity"}
@@ -442,7 +454,7 @@ useEffect(() => {
               size={21}
             />
             <Text style={[{ color: state.THEME.THEME === false ? "black" : "#fff" }]}> {!reservedBalance?"":reservedBalance+" XLM are reserved"}</Text>
-          </TouchableOpacity>
+          </TouchableOpacity>}
           </View>
         <View>
         <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
@@ -537,15 +549,16 @@ useEffect(() => {
         visible={isModalVisible}
         onRequestClose={toggleModal}
       >
-          <RNCamera
+          <Camera
             ref={cameraRef}
             style={style.preview}
-            onBarCodeRead={onBarCodeRead}
+            device={device}
+            isActive={true}
+            audio={false}
+            codeScanner={onBarCodeRead}
             captureAudio={false}
-            onStatusChange={({ status }) => handleCameraStatus(status)} // Use onStatusChange
-          >
+          />
             <QRScannerComponent setModalVisible={setModalVisible}/>
-          </RNCamera>
       </Modal>
         <Modal
           animationType="fade"
@@ -650,7 +663,7 @@ const style = StyleSheet.create({
         alignItems:"center"
       },
       preview: {
-        flex:1
+        ...StyleSheet.absoluteFillObject,
       },
       rectangleContainer: {
         flex: 1,
@@ -733,9 +746,6 @@ const style = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
-  },
-  preview: {
-    flex:1
   },
   pasteButton: {
     paddingHorizontal: wp(1),
@@ -823,7 +833,7 @@ const style = StyleSheet.create({
     elevation: 6,
   },
   gradientButton: {
-    paddingVertical: hp(2),
+    height: hp(6),
     alignItems: 'center',
     justifyContent: 'center',
   },

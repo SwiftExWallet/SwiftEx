@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { RPC } from '../Dashboard/constants';
+import { ARB, AVAX, BASE, OPT, POL, RPC } from '../Dashboard/constants';
 import Web3 from 'web3';
+import { PPOST, proxyRequest } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/api';
 
 const ShortTermStorage = {
   async saveTx(activeWalletPublicKey, data) {
@@ -52,7 +53,7 @@ const ShortTermStorage = {
           const oneMinuteAgo = Date.now() - (60 * 1000);
         if (createdAt < oneMinuteAgo) {
           const receipt = await this.getTxReceiptByChain(tx.chain, tx.hash);
-          if (receipt?.status === true || receipt?.status === 1) {
+          if (receipt?.status === true || receipt?.status === 1 || receipt?.status === 1n) {
             updatedTxList.push({
               ...tx,
               status: "success",
@@ -176,14 +177,44 @@ const ShortTermStorage = {
       case "BSC":
         rpcUrl = RPC.BSCRPC;
         break;
-
+      case "POL":
+        rpcUrl = POL.RPC;
+        break;
+      case "ARB":
+        rpcUrl = ARB.RPC;
+        break;
+      case "OPT":
+        rpcUrl = OPT.RPC;
+        break;
+      case "AVAX":
+        rpcUrl = AVAX.RPC;
+        break;
+      case "BASE":
+        rpcUrl = BASE.RPC;
+        break; 
       default:
         return null;
     }
 
     const web3 = new Web3(rpcUrl);
     return await web3.eth.getTransactionReceipt(txHash);
-  }
+  },
+
+  async syncTx(payload) {
+    try {
+      const response = await proxyRequest('/v1/swapOrders/store', PPOST, payload);
+      if (response.err?.status) {
+        return { status: false, error: response.err.message };
+      }
+      return { status: true, response: response.res };
+    } catch (error) {
+      console.error('sync tx error', error);
+      return {
+        status: false,
+        data: [],
+      };
+    }
+  },
 
 };
 

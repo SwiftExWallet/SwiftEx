@@ -1,5 +1,5 @@
 import { useIsFocused, useNavigation } from "@react-navigation/native";
-import { ActivityIndicator, Alert, Image, Keyboard, Linking, Modal, NativeModules, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
+import { ActivityIndicator, Alert, Image, Keyboard, Linking, Modal, NativeModules, PermissionsAndroid, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 import {
     widthPercentageToDP as wp,
     heightPercentageToDP as hp,
@@ -13,7 +13,7 @@ import Bridge from "../../../../../../../assets/Bridge.png";
 import QRCode from "react-native-qrcode-svg";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { useSelector } from "react-redux";
-import { RNCamera } from 'react-native-camera';
+import { Camera, useCameraDevice, useCodeScanner, useCameraPermission } from "react-native-vision-camera";
 import { Exchange_screen_header } from "../../../../../reusables/ExchangeHeader";
 import { alert } from "../../../../../reusables/Toasts";
 import { STELLAR_URL } from "../../../../../constants";
@@ -30,10 +30,12 @@ import { colors } from "../../../../../../Screens/ThemeColorsConfig";
 StellarSdk.Networks.PUBLIC
 
 const send_recive = ({route}) => {
+  const { hasPermission, requestPermission } = useCameraPermission()
     const {bala,asset_name,assetIssuer}=route.params;
     console.log("----------------usdtAsse-----------------",bala,asset_name,assetIssuer)
     const usdtAsset = asset_name==="native"?StellarSdk.Asset.native():new StellarSdk.Asset(asset_name, assetIssuer);
   const cameraRef = useRef(null);
+    const device = useCameraDevice('back');
     const state = useSelector((state) => state);
     const FOCUSED = useIsFocused();
     const navigation = useNavigation();
@@ -51,23 +53,25 @@ const send_recive = ({route}) => {
     const [Loading, setLoading] = useState(false);
     const [ACTIVATION_MODAL_PROD, setACTIVATION_MODAL_PROD] = useState(false);
 
-
-  const onBarCodeRead = (e) => {
-    if (e?.data && e?.data !== lastScannedData) {
-      setLastScannedData(e?.data); // Update the last scanned data
-      setErroVisible(false)
-      alert("success", "QR Code Decoded successfully..");
-      setrecepi_address(e?.data);
-      setModalVisible(false);
-  
-      if (!validateStellarAddress(e?.data)) {
-        setModalVisible(false);
-        setErroVisible(false)
-        setrecepi_address("");
-        setErroVisible(true)
-      }
-    }
-  };
+  const onBarCodeRead = useCodeScanner({
+      codeTypes: ['qr'],
+      onCodeScanned: (codes) => {
+        for (const code of codes) {
+          setLastScannedData(code.value);
+          setErroVisible(false)
+          alert("success", "QR Code Decoded successfully..");
+          setrecepi_address("");
+          setrecepi_address(code.value);
+          setModalVisible(false);
+          if (!validateStellarAddress(code.value)) {
+            setModalVisible(false);
+            setErroVisible(false)
+            setrecepi_address("");
+            setErroVisible(true)
+          }
+        }
+      },
+    });
   const handleCameraStatus = (status) => {
     if (status === "NOT_AUTHORIZED") {
       setModalVisible(false);
@@ -83,35 +87,79 @@ const send_recive = ({route}) => {
     // No need to explicitly toggle modal visibility on "READY"
     // Let `toggleModal` or user actions handle visibility
   };
-    const toggleModal = () => {
-        setModalVisible(!isModalVisible);
-      };
+  const toggleModal = async() => {
+  if (Platform.OS === 'android') {
+        const result = await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.CAMERA
+        );
+  
+        if (!result) {
+          const requestResult = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.CAMERA
+          );
+  
+          if (
+            requestResult === PermissionsAndroid.RESULTS.DENIED ||
+            requestResult === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+          ) {
+            CustomInfoProvider.show("warning", "Permission Denied", "Camera permission requird for scaning QR Code.");
+          }
+        }
+        setModalVisible(true);
+      }else{
+        if(!hasPermission){
+          requestPermission()
+        }else{
+          setModalVisible(true);
+        }
+      }
+  };
 
-    const get_data=async()=>{
-        setLoading(true);
-            setqrvalue(state?.STELLAR_PUBLICK_KEY)
-            if(asset_name==="native")
-            {
-              GetStellarAvilabelBalance(state?.STELLAR_PUBLICK_KEY).then((result) => {
-                setresStellarbal(result?.availableBalance)
-                setLoading(false);
-              }).catch(error => {
-                console.log('Error loading account:', error);
-                setLoading(false);
-              });
-            }
-            if(asset_name!=="native")
-            {
-              GetStellarUSDCAvilabelBalance(state?.STELLAR_PUBLICK_KEY,asset_name,assetIssuer).then((result) => {
-                console.log("-------jhdkjas",result)
-                setresStellarbal(result?.availableBalance)
-                setLoading(false);
-              }).catch(error => {
-                console.log('Error loading account:', error);
-                setLoading(false);
-              });
-            }
+  const get_data = async () => {
+    setLoading(true);
+    setqrvalue(state?.STELLAR_PUBLICK_KEY)
+    if (asset_name === "native") {
+      GetStellarAvilabelBalance(state?.STELLAR_PUBLICK_KEY).then((result) => {
+        setresStellarbal(result?.availableBalance)
+        setLoading(false);
+      }).catch(error => {
+        console.log('Error loading account:', error);
+        setLoading(false);
+      });
     }
+    if (asset_name !== "native") {
+      const result = await GetStellarUSDCAvilabelBalance(state?.STELLAR_PUBLICK_KEY, asset_name, assetIssuer)
+      if (result.error) {
+        setresStellarbal("0.0")
+        setLoading(false);
+        if (Platform.OS === "ios") {
+          Alert.alert(
+            "warning",
+            result.error,
+            [
+              { text: "Close", style: "cancel" },
+              { text: "Trust", onPress: () => navigation.navigate("Assets_manage", { openAssetModal: true }) },
+            ]
+          );
+        }
+        if (Platform.OS === "android") {
+          CustomInfoProvider.show(
+            "warning",
+            result.error,
+            [
+              { text: "Close", style: "cancel" },
+              { text: "Trust", onPress: () => {CustomInfoProvider.hide(),setTimeout(()=>{
+                navigation.navigate("Assets_manage", { openAssetModal: true })
+              },1000)} },
+            ]
+          );
+        }
+      } else {
+        setresStellarbal(result?.availableBalance)
+        setLoading(false);
+      }
+    }
+  }
     function validateStellarAddress(address) {
       if (address.length !== 56 || address[0] !== 'G') {
           return false;
@@ -434,15 +482,15 @@ const send_recive = ({route}) => {
         visible={isModalVisible}
         onRequestClose={toggleModal}
       >
-         <RNCamera
-            ref={cameraRef}
-            style={styles.preview}
-            onBarCodeRead={onBarCodeRead}
-            captureAudio={false}
-            onStatusChange={({ status }) => handleCameraStatus(status)} // Use onStatusChange
-          >
+        <Camera
+          ref={cameraRef}
+          style={styles.preview}
+          device={device}
+          isActive={true}
+          audio={false}
+          codeScanner={onBarCodeRead}
+          captureAudio={false}/>
              <QRScannerComponent setModalVisible={setModalVisible}/>
-          </RNCamera>
     </Modal>
             </View>
         <TokenQrCode
@@ -570,7 +618,7 @@ const styles = StyleSheet.create({
         alignItems:"center"
       },
       preview: {
-        flex:1
+         ...StyleSheet.absoluteFillObject,
       },
       rectangleContainer: {
         flex: 1,

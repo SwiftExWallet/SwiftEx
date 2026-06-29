@@ -1,7 +1,8 @@
 const { ERC20_ABI } = require("./MultiChainABIS");
 const { ethers } = require("ethers");
-const { RPC, ETHRPC1, ETHRPC0 } = require("../../../../../constants");
+const { RPC, ETHRPC1, ETHRPC0, POL, ARB, OPT, AVAX, BASE } = require("../../../../../constants");
 const { proxyRequest, PGET, PPOST } = require("../../api");
+const { CHAINS } = require("../../../../../../utilities/TokenUtils");
 
 const RPC_ENDPOINTS = {
     ETH: [
@@ -13,7 +14,33 @@ const RPC_ENDPOINTS = {
         RPC.BSCRPC,
         RPC.BSCRPC,
         RPC.BSCRPC,
-    ]
+    ],
+    BNB: [
+        RPC.BSCRPC,
+        RPC.BSCRPC,
+        RPC.BSCRPC,
+    ],
+    POL:[
+        POL.RPC
+    ],
+    ARB:[
+        ARB.RPC
+    ],
+    OPT:[
+        OPT.RPC
+    ],
+    AVAX:[
+        AVAX.RPC
+    ],
+    BASE:[
+        BASE.RPC
+    ],
+    BAS:[
+        BASE.RPC
+    ],
+    AVA:[
+        AVAX.RPC
+    ],
 };
 
 async function handleRPCFallBack(network, type, params) {
@@ -105,9 +132,9 @@ async function getWalletBalance(address, network) {
     }
 }
 
-async function getTokenBalancesUsingAddress(tokenAddresses, walletAddress, network) {
+async function getTokenBalancesUsingAddress(tokenAddresses, walletAddress, typeNetwork) {
     let walletBalance = "0";
-
+    const network=typeNetwork.toUpperCase();
     try {
         if (!RPC_ENDPOINTS[network]) throw new Error(`Unsupported network: ${network}`);
 
@@ -119,10 +146,6 @@ async function getTokenBalancesUsingAddress(tokenAddresses, walletAddress, netwo
         const tokens = Array.isArray(tokenAddresses) ? tokenAddresses : [tokenAddresses];
         const results = [];
 
-        const nativeTokenInfo = {
-            ETH: { symbol: "ETH", name: "Ethereum" },
-            BSC: { symbol: "BNB", name: "Binance Coin" }
-        };
 
         for (const tokenAddress of tokens) {
             try {
@@ -130,7 +153,7 @@ async function getTokenBalancesUsingAddress(tokenAddresses, walletAddress, netwo
                     tokenAddress.toLowerCase() === "0x0000000000000000000000000000000000000000";
 
                 if (isNative) {
-                    const nativeInfo = nativeTokenInfo[network];
+                    const nativeInfo = CHAINS[network];
                     results.push({
                         name: nativeInfo.name,
                         symbol: nativeInfo.symbol,
@@ -179,7 +202,7 @@ async function getTokenBalancesUsingAddress(tokenAddresses, walletAddress, netwo
         return { status: true, tokenInfo: results };
 
     } catch (err) {
-        console.debug(`All RPCs failed for getTokenBalancesUsingAddress [${network}]:`, err.message);
+        console.error(`All RPCs failed for getTokenBalancesUsingAddress [${network}]:`, err.message);
 
         try {
             return await handleRPCFallBack(network, "tokenBalances", {

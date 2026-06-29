@@ -128,7 +128,8 @@ class StorageModule: NSObject {
                         "name": wallet["name"] ?? NSNull(),
                         "address": wallet["address"] ?? NSNull(),
                         "stellarPublicKey": wallet["stellarPublicKey"] ?? NSNull(),
-                        "walletType": wallet["walletType"] ?? NSNull()
+                        "walletType": wallet["walletType"] ?? NSNull(),
+                        "dydxAddress": wallet["dydxAddress"] ?? NSNull()
                     ]
                 }
                 
@@ -176,7 +177,8 @@ class StorageModule: NSObject {
                   "stellarPublicKey": walletJson["stellarPublicKey"] ?? NSNull(),
                   "name": walletJson["name"] ?? NSNull(),
                   "walletId": walletJson["walletId"] ?? NSNull(),
-                  "walletType": walletJson["walletType"] ?? NSNull()
+                  "walletType": walletJson["walletType"] ?? NSNull(),
+                  "dydxAddress": walletJson["dydxAddress"] ?? NSNull()
               ]
 
               DispatchQueue.main.async {
@@ -235,22 +237,46 @@ class StorageModule: NSObject {
 
 
     @objc
-    func delete(_ key: String,
-                resolver resolve: @escaping RCTPromiseResolveBlock,
-                rejecter reject: @escaping RCTPromiseRejectBlock) {
-        
+    func delete(_ id: String,
+                   resolver resolve: @escaping RCTPromiseResolveBlock,
+                   rejecter reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                try self.deleteFromKeychain(key: key)
+                guard let walletDataString = try self.getFromKeychain(key: "appAllWallet") else {
+                    throw SecureStorageError.decodingError
+                }
+                
+                guard let data = walletDataString.data(using: .utf8),
+                      var walletArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                    throw SecureStorageError.decodingError
+                }
+                
+                guard walletArray.contains(where: { ($0["walletId"] as? String) == id }) else {
+                    DispatchQueue.main.async {
+                        reject("WALLET_ID_NOT_FOUND", "wallet with \(id) not found.", nil)
+                    }
+                    return
+                }
+                
+                walletArray.removeAll { ($0["walletId"] as? String) == id }
+                
+                let updatedData = try JSONSerialization.data(withJSONObject: walletArray)
+                guard let updatedString = String(data: updatedData, encoding: .utf8) else {
+                    throw SecureStorageError.encodingError
+                }
+                
+                try self.saveToKeychain(key: "appAllWallet", value: updatedString)
                 
                 DispatchQueue.main.async {
                     resolve([
-                        "success": true
+                        "success": true,
+                        "mode": "remove",
+                        "wallet_removed":"wallet_removed"
                     ])
                 }
             } catch {
                 DispatchQueue.main.async {
-                    reject("DELETE_ERROR", error.localizedDescription, error)
+                    reject("REMOVE_WALLET_ERROR", error.localizedDescription, error)
                 }
             }
         }
@@ -298,6 +324,51 @@ class StorageModule: NSObject {
             }
         }
     }
+
+  @objc
+  func renameWallet(_ id: String, name: String,
+                 resolver resolve: @escaping RCTPromiseResolveBlock,
+                 rejecter reject: @escaping RCTPromiseRejectBlock) {
+      DispatchQueue.global(qos: .userInitiated).async {
+          do {
+              guard let walletDataString = try self.getFromKeychain(key: "appAllWallet") else {
+                  throw SecureStorageError.decodingError
+              }
+              
+              guard let data = walletDataString.data(using: .utf8),
+                    var walletArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                  throw SecureStorageError.decodingError
+              }
+              
+              guard let matchedIndex = walletArray.firstIndex(where: { ($0["walletId"] as? String) == id }) else {
+                  DispatchQueue.main.async {
+                      reject("WALLET_ID_NOT_FOUND", "wallet with \(id) not found.", nil)
+                  }
+                  return
+              }
+              
+              walletArray[matchedIndex]["name"] = name
+              
+              let updatedData = try JSONSerialization.data(withJSONObject: walletArray)
+              guard let updatedString = String(data: updatedData, encoding: .utf8) else {
+                  throw SecureStorageError.encodingError
+              }
+              
+              try self.saveToKeychain(key: "appAllWallet", value: updatedString)
+              
+              DispatchQueue.main.async {
+                  resolve([
+                      "success": true,
+                      "mode": "replace"
+                  ])
+              }
+          } catch {
+              DispatchQueue.main.async {
+                  reject("UPDATE_WALLET_ERROR", error.localizedDescription, error)
+              }
+          }
+      }
+  }
     
     private func saveToKeychain(key: String, value: String) throws {
         guard let data = value.data(using: .utf8) else {

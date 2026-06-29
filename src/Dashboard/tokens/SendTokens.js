@@ -12,7 +12,8 @@ import {
   Platform,
   PermissionsAndroid,
   Linking,
-  Keyboard
+  Keyboard,
+  Image
 } from "react-native";
 import {
   widthPercentageToDP as wp,
@@ -22,12 +23,7 @@ import { Animated } from "react-native";
 import { useDispatch, useSelector } from "react-redux";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
-import { RNCamera } from 'react-native-camera';
-import {
-  getBalance,
-  getEthBalance,
-  getMaticBalance,
-} from "../../components/Redux/actions/auth";
+import { Camera, useCameraDevice, useCameraPermission, useCodeScanner } from "react-native-vision-camera";
 import { SendCrypto } from "./sendFunctions";
 import "react-native-get-random-values";
 import "@ethersproject/shims";
@@ -40,15 +36,27 @@ import ErrorComponet from "../../utilities/ErrorComponet";
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import QRScannerComponent from "../Modals/QRScannerComponent";
 import LinearGradient from "react-native-linear-gradient";
-var ethers = require("ethers");
-const xrpl = require("xrpl");
-//'https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png?1644979850'
+import { getWalletBalance } from "../exchange/crypto-exchange-front-end-main/src/utils/getWalletInfo/EtherWalletService";
+import { evmTxManager } from "../../utilities/evmTxManager";
+import { colors } from "../../Screens/ThemeColorsConfig";
+import { ChainSupportedToken } from "../exchange/crypto-exchange-front-end-main/src/components/ChainWithTokenInfo";
+import ShortTermStorage from "../../utilities/ShortTermStorage";
+import MultiChainTokenSend from "../exchange/crypto-exchange-front-end-main/src/components/MultiChainTokenSend";
+import { UI_CHAIN_NAME } from "../../utilities/TokenUtils";
+
 const SendTokens = (props) => {
+  const { hasPermission, requestPermission } = useCameraPermission();
   const cameraRef = useRef(null);
-  const [qrData, setQrData] = useState('');
-  const EthBalance = useSelector((state) => state.EthBalance);
-  const MaticBalance = useSelector((state) => state.MaticBalance);
-  const type = useSelector((state) => state.walletType);
+  const device = useCameraDevice('back');
+  const [selectedChain, setSelectedChain] = useState({
+    "name": "Ethereum",
+    "address": "0x0000000000000000000000000000000000000000",
+    "symbol": "ETH",
+    "decimals": 18,
+    "type": "ETHEREUM",
+    "logoURI": "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png?1696501628",
+    "chain": "ETH"
+});
   const [address, setAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [Loading, setLoading] = useState(false);
@@ -58,32 +66,37 @@ const SendTokens = (props) => {
   const [disable, setDisable] = useState(true);
   const [message, setMessage] = useState("");
   const state = useSelector((state) => state);
-  const dispatch = useDispatch();
   const isFocused=useIsFocused();
   const [show,setshow]=useState(false);
   const [lastScannedData, setLastScannedData] = useState(null);
   const [ErroVisible,setErroVisible]=useState(false);
   const navigation = useNavigation();
+  const [showTokens, setShowTokens] = useState(false);
+  const [showErcSend, setShowErcSend] = useState(false);
+  const [ercSendData, setErcSendData] = useState({});
+
+  const theme = state.THEME.THEME ? colors.dark : colors.light;
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  
-  const onBarCodeRead = (e) => {
-    if (e?.data && e?.data !== lastScannedData) {
-      setLastScannedData(e?.data); // Update the last scanned data
-      setErroVisible(false)
-      alert("success", "QR Code Decoded successfully..");
-      setAddress("");
-      setAddress(e?.data);
-      setModalVisible(false);
-  
-      if (!checkAddressValidity(e?.data)) {
-        setModalVisible(false);
+  const onBarCodeRead = useCodeScanner({
+    codeTypes: ['qr'],
+    onCodeScanned: (codes) => {
+      for (const code of codes) {
+        setLastScannedData(code.value);
         setErroVisible(false)
+        alert("success", "QR Code Decoded successfully..");
         setAddress("");
-        setErroVisible(true)
+        setAddress(code.value);
+        setModalVisible(false);
+        if (!checkAddressValidity(code.value)) {
+          setModalVisible(false);
+          setErroVisible(false)
+          setAddress("");
+          setErroVisible(true)
+        }
       }
-    }
-  };
+    },
+  });
 
 
   const handleCameraStatus = (status) => {
@@ -112,52 +125,18 @@ const SendTokens = (props) => {
 
         alert("error", "please select a wallet first");
       } else {
-        if (Type) {
-          if (Type == "Ethereum") {
-            setLoadingBal(true)
-            // setBalance(EthBalance._z?EthBalance._z:EthBalance);
-            await dispatch(
-              getEthBalance(
-                state.wallet.address ? state.wallet.address : address
-              )
-            ).then((res) => {
-              console.log(res.EthBalance);
-              setBalance(res.EthBalance);
-              setLoadingBal(false)
-            }).catch((error) => {
-              console.log(error);
-              setLoadingBal(false)
-            });
-          } else if (Type == "Matic") {
-            console.log(MaticBalance);
-            await dispatch(
-              getMaticBalance(
-                state.wallet.address ? state.wallet.address : address
-              )
-            ).then(async (res) => {
-              let bal = await AsyncStorageLib.getItem("MaticBalance");
-              console.log(bal);
-              console.log(res.MaticBalance);
-              setBalance(bal);
-            });
-          }  else if (Type === "BNB") {
-            setLoadingBal(true)
-            await dispatch(getBalance(state.wallet.address))
-              .then(async (response) => {
-                console.log(response);
-                const res = await response;
-                if (res.status == "success") {
-                  console.log(res);
-                  setBalance(res.walletBalance);
-                  console.log("success");
-                  setLoadingBal(false)
-                }
-              })
-              .catch((error) => {
-                console.log(error);
-                setLoadingBal(false)
-              });
+        if (!Type) return;
+        setLoadingBal(true);
+        try {
+          const walletAddress = state.wallet.address || address;
+          const balanceResponse = await getWalletBalance(walletAddress, Type);
+          if (balanceResponse?.status) {
+            setBalance(balanceResponse.balance);
           }
+        } catch (error) {
+          console.error(error);
+        } finally {
+          setLoadingBal(false);
         }
       }
     } catch (e) {
@@ -170,11 +149,9 @@ const SendTokens = (props) => {
     const new_data=async()=>{
       try {
           setErroVisible(false)
-          console.log(props?.route?.params?.token);
           const Type = await AsyncStorageLib.getItem("walletType");
           setWallettype(JSON.parse(Type));
-    
-          await Balance(props?.route?.params?.token).catch((e) => {
+          await Balance(selectedChain.symbol).catch((e) => {
             console.log(e);
           });
         } catch (e) {
@@ -189,7 +166,7 @@ const SendTokens = (props) => {
       duration: 1000,
     }).start();
     setshow(false);
-  }, [isFocused]);
+  }, [isFocused,selectedChain]);
 
   useEffect(() => {
     const data_fetch=async()=>{
@@ -198,7 +175,6 @@ const SendTokens = (props) => {
     let inputValidation1;
     let valid
     let xrpInvalid
-    console.log(props?.route?.params?.token)
     valid = checkAddressValidity(address);
     inputValidation = isFloat(amount);
     inputValidation1 = isInteger(amount);
@@ -221,7 +197,9 @@ const SendTokens = (props) => {
     if (address) {
       if (!valid) {
         setMessage("Please enter a valid address");
-        setAddress("")
+        if(!Keyboard.isVisible){
+          setAddress("")
+        }
       } else {
         setMessage("");
       }
@@ -261,20 +239,29 @@ const SendTokens = (props) => {
 };
 const checkPermission = async () => {
   if (Platform.OS === 'android') {
-    const result = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
-    if (result===true) {
-        setModalVisible(!isModalVisible);
-    } else {
-      const requestResult = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
-      if (requestResult === PermissionsAndroid.RESULTS.GRANTED) {
-        setModalVisible(!isModalVisible);
-      } else {
-        alert("error","Permissions not allowed");
+    const result = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.CAMERA
+    );
+
+    if (!result) {
+      const requestResult = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.CAMERA
+      );
+
+      if (
+        requestResult === PermissionsAndroid.RESULTS.DENIED ||
+        requestResult === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+      ) {
+        CustomInfoProvider.show("warning", "Permission Denied", "Camera permission requird for scaning QR Code.");
       }
     }
+    setModalVisible(true);
   } else {
-    // iOS permission is handled through Info.plist
-    setModalVisible(!isModalVisible);
+    if (!hasPermission) {
+      requestPermission()
+    } else {
+      setModalVisible(true);
+    }
   }
 };
   async function a()
@@ -290,7 +277,7 @@ const checkPermission = async () => {
     }, [isModalVisible]);
   return (
 <>
-    <Wallet_screen_header title="Send" onLeftIconPress={() => navigation.goBack()} />
+    <Wallet_screen_header title={`Send `+selectedChain?.name || selectedChain.domain} onLeftIconPress={() => navigation.goBack()} />
       <View style={[style.Body,{ backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C"}]}>
     <ErrorComponet
           isVisible={ErroVisible}
@@ -298,6 +285,16 @@ const checkPermission = async () => {
           message="The scanned QR code contains an invalid public key. Please make sure you're scanning the correct QR code and try again."
         />
         <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
+          <TouchableOpacity style={[style.inputContainer, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C", paddingVertical: hp(1.5), justifyContent: "space-between",paddingHorizontal:wp(3) }]} onPress={() => { setShowTokens(true) }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Image source={{ uri: selectedChain.logoURI }} width={30} height={30} />
+              <Text style={[style.txtHeading, { color: theme.headingTx }]}>{selectedChain?.name || selectedChain.domain}</Text>
+            </View>
+            <Icon name="arrow-down" type={"materialCommunity"} size={24} color={theme.headingTx} />
+          </TouchableOpacity>
+          </View>
+          {!showErcSend?<>
+<View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
          <View style={{
           flexDirection:"row",
           justifyContent:"space-between",
@@ -340,22 +337,37 @@ const checkPermission = async () => {
             </TouchableOpacity>
           </View>
           </View>
+          <View style={{borderBottomColor:"gray", borderWidth:0.5,marginVertical:15}}/>
+          <View style={style.balanceHeader}>
+              <Text style={[style.networkInfoTxt, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
+                Destination network
+              </Text>
+              <View style={{flexDirection:"row",alignItems:"center"}}>
+                <Image source={{uri:selectedChain.logoURI}} width={wp(6.7)} height={hp(3)}/>
+               <Text style={[style.networkInfoTxt, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
+                {selectedChain.name}
+              </Text>
+              </View>
+            </View>
             <View style={{borderBottomColor:"gray", borderWidth:0.5,marginVertical:15}}/>
             <View style={style.balanceHeader}>
               <Text style={[style.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
                 Available Balance
               </Text>
-              {LoadingBal && <ActivityIndicator color="#4A90E2" size="small" />}
+              
             </View>
             <View style={style.balanceDisplay}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <Text style={[style.balanceAmount, { color: state.THEME.THEME === false ? "#212529" : "#FFFFFF" }]}>
+                {LoadingBal ?<ActivityIndicator color="#4A90E2" size="small" />:<Text style={[style.balanceAmount, { color: state.THEME.THEME === false ? "#212529" : "#FFFFFF" }]}>
                   {balance ? balance : show === false ? "0.00" : ""}
-                </Text>
+                </Text>}
               </ScrollView>
+            <View style={{alignItems:"center"}}>
+              <Image source={{uri:selectedChain.logoURI}} width={wp(6.7)} height={hp(3)}/>
               <Text style={[style.currency, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
-                {props?.route?.params?.tokenSymbol || 'Native'}
+                {UI_CHAIN_NAME[selectedChain.symbol]||selectedChain.symbol || 'Native'}
               </Text>
+            </View>
             </View>
           </View>
 
@@ -411,17 +423,10 @@ const checkPermission = async () => {
             disabled={disable||LoadingBal||Loading}
             style={[style.sendButton, { opacity: disable||LoadingBal ? 0.5 : 1 }]}
             onPress={async () => {
-              setLoading(true)
+             try {
+               setLoading(true)
               Keyboard.dismiss();
-              let privateKey;
               const myAddress = await state.wallet.address;
-              const token = props.route.params.token;
-              const wallet = await AsyncStorageLib.getItem("Wallet");
-              // if(address== myAddress)
-              // {
-              //   setLoading(false);
-              //   return alert('error','address cannot be same as your address')
-              // }
               if (amount && balance && Number(amount) > Number(balance)) {
                 setLoading(false);
                 return alert(
@@ -429,17 +434,15 @@ const checkPermission = async () => {
                   "You don't have enough balance to do this transaction "
                 );
               }
-                // privateKey = (await state.wallet.privateKey)
-                //   ? await state.wallet.privateKey
-                //   : JSON.parse(wallet).privateKey;
 
               if (
                 walletType &&
-                token &&
+                selectedChain.symbol &&
                 myAddress &&
                 amount &&
                 address
               ) {
+                if(selectedChain.symbol==="ETH"||selectedChain.symbol==="BNB"||selectedChain.symbol==="BSC"){
                 await SendCrypto(
                   address,
                   amount,
@@ -449,10 +452,36 @@ const checkPermission = async () => {
                   walletType,
                   setDisable,
                   myAddress,
-                  token,
+                  selectedChain.symbol,
                   navigation
                 );
+                } else {
+                  const txResponse = await evmTxManager(selectedChain.symbol, await state.wallet.address, amount, address);
+                  if (txResponse.status) {
+                    await ShortTermStorage.syncTx({
+                      txHash: txResponse.txResponse?.hash,
+                      walletAddress: state.wallet.address,
+                      provider: "EVMTX",
+                      fromChain: selectedChain.symbol,
+                      fromToken: selectedChain.symbol,
+                      toChain: selectedChain.symbol,
+                      toToken: selectedChain.symbol,
+                      amountIn: amount?.toString(),
+                      amountOut: amount?.toString(),
+                      txType: "Native Transfer"
+                    });
+                    CustomInfoProvider.show("success", "Transaction Successful","Transaction has been successfully sent to the receiver.");
+                    setLoading(false);
+                    navigation.navigate("Transactions");
+                  }else{
+                    CustomInfoProvider.show("error", "!Opps",txResponse.error||"Transaction failed to send please check and try again.");
+                    setLoading(false);
+                  }
+                }
               }
+             } catch (error) {
+              console.error("--error--",error)
+             }
             }}
           >
             <LinearGradient
@@ -476,16 +505,57 @@ const checkPermission = async () => {
         visible={isModalVisible}
         onRequestClose={toggleModal}
       >
-          <RNCamera
+          <Camera
             ref={cameraRef}
             style={style.preview}
-            onBarCodeRead={onBarCodeRead}
-            captureAudio={false}
-            onStatusChange={({ status }) => handleCameraStatus(status)}
-          >
+            device={device}
+            isActive={true}
+            audio={false}
+            codeScanner={onBarCodeRead}
+            captureAudio={false}/>
            <QRScannerComponent setModalVisible={setModalVisible}/>
-          </RNCamera>
       </Modal>
+          </>
+          :<MultiChainTokenSend route={ercSendData}/>}
+          <ChainSupportedToken
+          visible={showTokens}
+          onclose={() => { setShowTokens(false) }}
+          isChainProvide={true}
+          chain={selectedChain.symbol}
+          selectedToken={(item) => {
+            if (item.chain === "STR") {
+              if (item.symbol === "XLM" || item.code === "XLM") {
+                setShowTokens(false);
+                navigation.navigate("SendXLM");
+              } else {
+                setShowTokens(false);
+                navigation.navigate("send_recive", { bala: 0, assetIssuer: item?.issuer, asset_name: item.code });
+              }
+            } else {
+              if (item.chain === item.symbol) {
+                setShowErcSend(false);
+                setSelectedChain(item);
+                setErcSendData({});
+                setShowTokens(false);
+              } else {
+                setSelectedChain(item);
+                setErcSendData({
+                  tokenAddress: item.address || item.contractAddress,
+                  tokenType: item.chain,
+                  tokenDecimals: item.decimals,
+                  tokenSymbol: item.symbol,
+                  tokenImage:item.logoURI
+                })
+                setShowTokens(false);
+                setShowErcSend(true);
+              }
+            }
+          }
+          }
+          showOnlyEvm={false}
+          showDataType={"sendEnable"}
+          selectedAsset={selectedChain}
+          />
           </View>
 </>
   );
@@ -516,7 +586,7 @@ const style = StyleSheet.create({
     elevation: 6,
   },
   preview: {
-    flex:1
+    ...StyleSheet.absoluteFillObject,
   },
   pasteButton: {
     paddingHorizontal: wp(1),
@@ -562,7 +632,6 @@ const style = StyleSheet.create({
   },
   balanceDisplay: {
     flexDirection: 'row',
-    alignItems: 'baseline',
     gap: wp(2),
   },
   balanceAmount: {
@@ -603,9 +672,9 @@ const style = StyleSheet.create({
     elevation: 6,
   },
   gradientButton: {
-    paddingVertical: hp(2),
     alignItems: 'center',
     justifyContent: 'center',
+    height:hp(6)
   },
   buttonContent: {
     flexDirection: 'row',
@@ -617,5 +686,16 @@ const style = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  txtHeading:{
+    fontSize:17,
+    fontWeight:"500",
+    marginLeft:wp(1)
+  },
+  networkInfoTxt: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    marginLeft:wp(1)
   },
 });

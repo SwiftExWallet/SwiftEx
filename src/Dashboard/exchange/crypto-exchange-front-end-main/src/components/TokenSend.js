@@ -13,7 +13,8 @@ import {
   Modal,
   PermissionsAndroid,
   Linking,
-  NativeModules
+  NativeModules,
+  Image
 } from "react-native";
 import {
   widthPercentageToDP as wp,
@@ -23,7 +24,7 @@ import { useSelector } from "react-redux";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { isInteger } from "lodash";
 import { isFloat } from "validator";
-import { RNCamera } from 'react-native-camera';
+import { Camera, useCameraDevice, useCameraPermission, useCodeScanner } from "react-native-vision-camera";
 import { useToast } from "native-base";
 import { Wallet_screen_header } from "../../../../reusables/ExchangeHeader";
 import ErrorComponet from "../../../../../utilities/ErrorComponet";
@@ -40,7 +41,9 @@ import TokenTxDetails from "./TokenTxDetails";
 import LinearGradient from "react-native-linear-gradient";
 import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
 import AccessNativeStorage from "../../../../Wallets/AccessNativeStorage";
+import { CHAINS } from "../../../../../utilities/TokenUtils";
 const TokenSend = ({ route }) => {
+  const { hasPermission, requestPermission } = useCameraPermission();
   const toast = useToast();
   const FOCUSED = useIsFocused()
   const [show, setshow] = useState(false);
@@ -52,6 +55,7 @@ const TokenSend = ({ route }) => {
   const [Message, setMessage] = useState("");
   const [Payment_loading, setPayment_loading] = useState(false);
   const cameraRef = useRef(null);
+  const device = useCameraDevice('back');
   const state = useSelector((state) => state);
   const navigation = useNavigation();
   const [isModalVisible, setModalVisible] = useState(false);
@@ -61,156 +65,91 @@ const TokenSend = ({ route }) => {
 
 
 
-
-  const sendBNBToken = async (tokenAddress,tokenDecimals) => {
+  const sendERCTokens = async (
+    chain,
+    tokenAddress,
+    tokenDecimals,
+    toAddress,
+    amount,
+  ) => {
     try {
-      const BNBERC20ABI = [
-        "function transfer(address to, uint256 value) public returns (bool)"
+      const activeWalletAddress=state && state.wallet && state.wallet.address
+      const activeChain = CHAINS[chain];
+      if (!activeChain) {
+        alert('error', `Unsupported chain: ${chain}`);
+        return;
+      }
+
+      const ERC20_ABI = [
+        'function balanceOf(address) view returns (uint256)',
+        'function decimals() view returns (uint8)',
+        'function transfer(address to, uint256 amount) returns (bool)',
       ];
-      // Load wallet with private key
-      const wallet = state?.wallet?.address;
-      // Load ERC-20 contract
-      const tokenInterface = new ethers.utils.Interface(BNBERC20ABI);
+
+      const provider = new ethers.providers.JsonRpcProvider(activeChain.rpcUrl);
+
+      const tokenInterface = new ethers.utils.Interface(ERC20_ABI);
       const formattedAmount = ethers.utils.parseUnits(amount, tokenDecimals);
-      const data = tokenInterface.encodeFunctionData("transfer", [address, formattedAmount]);
-      const unsignedTx = {
+      const data = tokenInterface.encodeFunctionData('transfer', [toAddress, formattedAmount]);
+
+      const [nonce, feeData, estimatedGas] = await Promise.all([
+        provider.getTransactionCount(activeWalletAddress, 'pending'),
+        provider.getFeeData(),
+        provider.estimateGas({
+          from: activeWalletAddress,
+          to: tokenAddress,
+          data: data,
+        }).then(g => g.mul(120).div(100))
+          .catch(() => ethers.BigNumber.from(activeChain.gasLimit || 100000)),
+      ]);
+
+      const gasPrice = feeData.maxFeePerGas
+        ? feeData.maxFeePerGas.mul(120).div(100)
+        : feeData.gasPrice.mul(120).div(100);
+
+      const tx = {
+        nonce: ethers.utils.hexlify(nonce),
+        gasPrice: ethers.utils.hexlify(gasPrice),
+        gasLimit: ethers.utils.hexlify(estimatedGas),
         to: tokenAddress,
+        value: '0x0',
         data: data,
-        from: wallet
-      };
-      const { res, err } = await proxyRequest(
-        "/v1/bsc/transaction/prepare",
-        PPOST,
-        {
-          unsignedTx: unsignedTx,
-          walletAddress: wallet
-        }
-      );
-      if (err) {
-        CustomInfoProvider.show("error", err.message || "Transaction failed try again.");
-        return;
-      }
-      if (!res) {
-        CustomInfoProvider.show("error", "Transaction failed try again.");
-        return;
-      }
-      const upgradedTx = {
-        to: res.unsignedTx?.to || tokenAddress,
-        data: res.unsignedTx?.data || data,
-        gasLimit: ethers.BigNumber.from(res.gasLimit),
-        gasPrice: ethers.BigNumber.from(res.gasPrice),
-        nonce: res.nonce,
-        chainId: parseInt(res.chainId) || 56,
-        value: res.value ? ethers.BigNumber.from(res.value) : ethers.BigNumber.from(0),
+        chainId: activeChain.chainId,
       };
 
       const { TransactionSigner } = NativeModules;
-      const tx = {
-        chainId: parseInt(res.chainId) || 56,
-        nonce: ethers.utils.hexlify(res.nonce),
-        gasPrice: ethers.utils.hexlify(
-          ethers.BigNumber.from(res.gasPrice)
-        ),
-        gasLimit: ethers.utils.hexlify(
-          ethers.BigNumber.from(res.gasLimit)
-        ),
-        to: res.unsignedTx?.to || tokenAddress,
-        value: ethers.utils.hexlify(
-          res.value ? ethers.BigNumber.from(res.value) : 0
-        ),
-        data: (res.unsignedTx?.data || data).startsWith("0x")
-          ? (res.unsignedTx?.data || data)
-          : "0x" + (res.unsignedTx?.data || data),
-      };
       const signedTx = await TransactionSigner.signTransaction(
-        "bsc",
-        address,
+        chain,
+        activeWalletAddress,
         JSON.stringify(tx),
-        tx.chainId
+        activeChain.chainId,
       );
       let rawTx = signedTx.signedTx;
-      
-      if (rawTx.startsWith("0x0x")) {
-        rawTx = rawTx.replace(/^0x/, "");
+      if (rawTx.startsWith('0x0x')) {
+        rawTx = rawTx.replace(/^0x/, '');
       }
-
-      const respoExe = await proxyRequest(
-        "/v1/bsc/transaction/broadcast",
-        PPOST,
-        { signedTx: rawTx }
-      );
-      console.log("Broadcast response:", respoExe);
-      if (respoExe?.err) {
-        CustomInfoProvider.show("error", respoExe.err.message || "Transaction failed try again.");
-        return;
-      }
-      if (respoExe?.res?.txHash) {
+      const txResponse = await provider.sendTransaction(rawTx);
+      if (txResponse?.hash) {
         CustomInfoProvider.show("success", "Transaction successful!");
-        await ShortTermStorage.saveTx(state && state.wallet && state.wallet.address,{chain: "BSC",typeTx: "Token Send",status: "Pending",hash: respoExe?.res?.txHash});
+        await ShortTermStorage.syncTx({
+          txHash: txResponse.hash,
+          walletAddress: activeWalletAddress,
+          provider: "EVMTX",
+          fromChain: chain,
+          fromToken: route?.params?.tokenSymbol || 'TOKEN',
+          toChain: chain,
+          toToken: route?.params?.tokenSymbol || 'TOKEN',
+          amountIn: amount?.toString(),
+          amountOut: amount?.toString(),
+          txType: "Token Transfer"
+        });
         navigation.navigate("Transactions");
       } else {
-             CustomInfoProvider.show("error", "Transaction failed try again.");
+        CustomInfoProvider.show("error", "Transaction failed try again.");
       }
     } catch (error) {
       console.error("Transaction Error:", error);
       CustomInfoProvider.show("error", "Transaction failed try again.");
-    } finally {
-      setAddress();
-      setAmount();
-      setdisable(false);
-      setPayment_loading(false);
-    }
-  };
-  // send Ether tokens
-  const sendEthTokens = async (tokenAddress,tokenDecimals) => {
-    try {
-      const usdtAbi = [
-        "function balanceOf(address) view returns (uint256)",
-        "function decimals() view returns (uint8)",
-        "function transfer(address to, uint256 amount) returns (bool)"
-      ];
-        // Load wallet with private key
-        const wallet = state?.wallet?.address;
-        // Load ERC-20 contract
-        const tokenInterface = new ethers.utils.Interface(usdtAbi);
-        const formattedAmount = ethers.utils.parseUnits(amount, tokenDecimals);
-        const data = tokenInterface.encodeFunctionData("transfer", [address, formattedAmount]);
-      const preInfo = await proxyRequest(`/v1/eth/wallet-address/${wallet}/info`, PGET);
-      if (preInfo.err) {
-        alert("error", preInfo.err.message||"Something went wrong...")
-      }
-      const { TransactionSigner } = NativeModules;
-      const gasPriceBN = ethers.BigNumber.from(preInfo.res.gasFeeData.gasPrice);
-      const tx = {
-        nonce: ethers.utils.hexlify(preInfo.res.transactionCount),
-        gasPrice: ethers.utils.hexlify(gasPriceBN),
-        gasLimit: ethers.utils.hexlify(100000),
-        to: tokenAddress,
-        value: "0x0",
-        data: data,
-      };
-      
-      const signedTx = await TransactionSigner.signTransaction(
-        "eth",
-        wallet,
-        JSON.stringify(tx),
-        1
-      );
-      let rawTx = signedTx.signedTx;
-      if (rawTx.startsWith("0x0x")) {
-        rawTx = rawTx.replace(/^0x/, "");
-      }
-      const respoExe = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, { signedTx: rawTx });
-      if (respoExe?.res?.txHash) {
-        alert("success", `Transaction successful!`);
-        await ShortTermStorage.saveTx(state && state.wallet && state.wallet.address,{chain: "ETH",typeTx: "Token Send",status: "Pending",hash: respoExe?.res?.txHash});
-        navigation.navigate("Transactions");
-      }else{
-        CustomInfoProvider.show("Error", respoExe.err.message||"Transaction failed. Check logs.");
-      }
-    } catch (error) {
-      console.error("Transaction Error:", error);
-     CustomInfoProvider.show("Error", "Transaction failed. Check logs.");
     } finally {
       setAddress();
       setAmount();
@@ -224,23 +163,26 @@ const TokenSend = ({ route }) => {
     checkPermission();
   };
 
-  const onBarCodeRead = (e) => {
-    if (e?.data && e?.data !== lastScannedData) {
-      setLastScannedData(e?.data);
-      setErroVisible(false)
-      alert("success", "QR Code Decoded successfully..");
-      setAddress("");
-      setAddress(e?.data);
-      setModalVisible(false);
-
-      if (!validateTokenAddress(e?.data)) {
-        setModalVisible(false);
+  const onBarCodeRead = useCodeScanner({
+    codeTypes: ['qr'],
+    onCodeScanned: (codes) => {
+      for (const code of codes) {
+        setLastScannedData(code.value);
         setErroVisible(false)
+        alert("success", "QR Code Decoded successfully..");
         setAddress("");
-        setErroVisible(true)
+        setAddress(code.value);
+        setModalVisible(false);
+        if (!validateTokenAddress(code.value)) {
+          setModalVisible(false);
+          setErroVisible(false)
+          setAddress("");
+          setErroVisible(true)
+        }
       }
-    }
-  };
+    },
+  });
+
   const handleCameraStatus = (status) => {
     if (status === "NOT_AUTHORIZED") {
       setModalVisible(false);
@@ -265,16 +207,9 @@ const TokenSend = ({ route }) => {
         setLoading(true)
         setMessage();
         setPayment_loading(false);
-        if (route?.params?.tokenType === "Ethereum") {
-          const newToken = await fetchTokenInfo(route?.params?.tokenAddress);
-          setBalance(newToken?.balance);
-          setLoading(false);
-        }
-        else {
-          const newToken = await fetchBNBTokenInfo(route?.params?.tokenAddress);
-          setBalance(newToken?.balance);
-          setLoading(false);
-        }
+        const newToken = await fetchTokenInfo(route?.params?.tokenAddress,route?.params?.tokenType?.slice(0,3));
+        setBalance(newToken?.balance);
+        setLoading(false);
       } catch (error) {
         console.log("-TokenEffect---", error)
         setBalance(0.00);
@@ -311,10 +246,10 @@ const TokenSend = ({ route }) => {
   }, [amount]);
 
   // Fetch token details
-  const fetchTokenInfo = async (address) => {
+  const fetchTokenInfo = async (address,network) => {
     try {
       if (address && state?.wallet?.address) {
-        const fetchedTokens = await getTokenBalancesUsingAddress(address, state?.wallet?.address, "ETH")
+        const fetchedTokens = await getTokenBalancesUsingAddress(address, state?.wallet?.address, network)
         console.log("walleetREspo--", fetchedTokens)
         if (fetchedTokens.status) {
           return fetchedTokens.tokenInfo[0]
@@ -367,23 +302,31 @@ const TokenSend = ({ route }) => {
 
   const checkPermission = async () => {
     if (Platform.OS === 'android') {
-      const result = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
-      if (result === true) {
-        setModalVisible(!isModalVisible);
-      } else {
-        const requestResult = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
-        if (requestResult === PermissionsAndroid.RESULTS.GRANTED) {
-          setModalVisible(!isModalVisible);
-        } else {
-          ShowErrotoast(toast, "Permissions not allowed");
+      const result = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.CAMERA
+      );
+
+      if (!result) {
+        const requestResult = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.CAMERA
+        );
+
+        if (
+          requestResult === PermissionsAndroid.RESULTS.DENIED ||
+          requestResult === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+        ) {
+          CustomInfoProvider.show("warning", "Permission Denied", "Camera permission requird for scaning QR Code.");
         }
       }
+      setModalVisible(true);
     } else {
-      // iOS permission is handled through Info.plist
-      setModalVisible(!isModalVisible);
+      if (!hasPermission) {
+        requestPermission()
+      } else {
+        setModalVisible(true);
+      }
     }
   };
-
 
   // Reset lastScannedData when modal is closed
   useEffect(() => {
@@ -393,7 +336,7 @@ const TokenSend = ({ route }) => {
   }, [isModalVisible]);
   return (
     <>
-      <Wallet_screen_header title="Send" onLeftIconPress={() => navigation.goBack()} />
+      <Wallet_screen_header title={`Send `+route?.params?.tokenSymbol || 'TOKEN'} onLeftIconPress={() => navigation.goBack()} />
       <ErrorComponet
         isVisible={ErroVisible}
         onClose={() => setErroVisible(false)}
@@ -442,6 +385,18 @@ const TokenSend = ({ route }) => {
             </TouchableOpacity>
               </View>
             </View>
+            <View style={{borderBottomColor:"gray", borderWidth:0.5,marginVertical:15}}/>
+            <View style={styles.balanceHeader}>
+              <Text style={[styles.networkInfoTxt, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
+                Destination network
+              </Text>
+              <View style={{flexDirection:"row",alignItems:"center"}}>
+                <Image source={{uri:CHAINS[route?.params?.tokenType]?.imageUrl}} width={wp(6.7)} height={hp(3)}/>
+               <Text style={[styles.networkInfoTxt, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
+                {CHAINS[route?.params?.tokenType]?.name}
+              </Text>
+              </View>
+            </View>
               <View style={{borderBottomColor:"gray", borderWidth:0.5,marginVertical:15}}/>
             <View style={styles.balanceHeader}>
               <Text style={[styles.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
@@ -455,9 +410,13 @@ const TokenSend = ({ route }) => {
                   {balance ? balance : show === false ? "0.00" : ""}
                 </Text>
               </ScrollView>
-              <Text style={[styles.currency, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
-                {route?.params?.tokenSymbol || 'TOKEN'}
-              </Text>
+              <View style={{alignItems:"center"}}>
+                <Image source={{ uri: CHAINS[route?.params?.tokenType]?.imageUrl }} width={20} height={20} style={styles.overLayImg} />
+                <Image source={{ uri: route?.params?.tokenImage }} width={40} height={40}/>
+                <Text style={[styles.currency, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
+                  {route?.params?.tokenSymbol || 'TOKEN'}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -560,15 +519,16 @@ const TokenSend = ({ route }) => {
         onRequestClose={toggleModal}
       >
         <View style={styles.modalContainer}>
-          <RNCamera
+          <Camera
             ref={cameraRef}
             style={styles.camera}
-            onBarCodeRead={onBarCodeRead}
+            device={device}
+            isActive={true}
+            audio={false}
+            codeScanner={onBarCodeRead}
             captureAudio={false}
-            onStatusChange={({ status }) => handleCameraStatus(status)}
-          >
-            <QRScannerComponent setModalVisible={setModalVisible}/>
-          </RNCamera>
+          />
+            <QRScannerComponent setModalVisible={setModalVisible} />
         </View>
       </Modal>
 
@@ -584,17 +544,14 @@ const TokenSend = ({ route }) => {
           tokenAddress: route?.params?.tokenAddress,
           recipientAddress: address,
           amount: amount,
-          network: route?.params?.tokenType === "Binance" ? "bsc" : "ethereum"
+          networkName: route?.params?.tokenType?.toLowerCase(),
+          network: route?.params?.tokenType?.slice(0,3),
+          tokenDecimals:route?.params?.tokenDecimals
         }}
         theme={state.THEME.THEME === false ? "light" : "dark"}
         onNextStep={() => {
           setShowTxInfo(false);
-          if (route?.params?.tokenType === "Binance") {
-            sendBNBToken(route?.params?.tokenAddress, route?.params?.tokenDecimals);
-          }
-          if (route?.params?.tokenType === "Ethereum") {
-            sendEthTokens(route?.params?.tokenAddress, route?.params?.tokenDecimals);
-          }
+            sendERCTokens(route?.params?.tokenType?.slice(0,3),route?.params?.tokenAddress, route?.params?.tokenDecimals,address,amount);
         }}
       />
     </>
@@ -675,6 +632,7 @@ const styles = StyleSheet.create({
   currency: {
     fontSize: 16,
     fontWeight: '600',
+    marginTop:hp(0.5)
   },
   maxButton: {
     paddingHorizontal: wp(4),
@@ -709,7 +667,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   gradientButton: {
-    paddingVertical: hp(2),
+    height: hp(6),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -729,7 +687,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   camera: {
-    flex: 1,
+     ...StyleSheet.absoluteFillObject,
   },
   cameraOverlay: {
     flex: 1,
@@ -772,4 +730,16 @@ const styles = StyleSheet.create({
     paddingVertical: hp(4),
     paddingHorizontal: wp(8),
   },
+  networkInfoTxt: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    marginLeft:wp(1)
+  },
+  overLayImg: {
+    position: "absolute",
+    zIndex: 30,
+    bottom: 19,
+    left: 1
+  }
 });

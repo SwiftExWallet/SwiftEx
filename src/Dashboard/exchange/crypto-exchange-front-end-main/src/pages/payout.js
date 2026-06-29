@@ -11,7 +11,9 @@ import { colors } from "../../../../../Screens/ThemeColorsConfig";
 const Payout = () => {
   const state = useSelector((state) => state);
   const Anchors = [
-    { name: "Alchemy Pay", image: require('../../../../../../assets/AlcamyPay.jpg'), domain: "alchemypay.org" },
+    { name: "Alchemy Pay", image: require('../../../../../../assets/AlcamyPay.jpg'), domain: "alchemypay.org",screenPath:"KycComponent" },
+    { name: "MoonPay", image: require('../../../../../../assets/MoonPay.png'), domain: "moonpay.com",screenPath:"RampProvider" },
+    { name: "Banxa", image: require('../../../../../../assets/BANXA.png'), domain: "banxa.com",screenPath:"BanxaRampProvider" },
   ];
   const navigation = useNavigation();
 
@@ -22,10 +24,10 @@ const Payout = () => {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <Exchange_screen_header title="Select Anchor" onLeftIconPress={() => navigation.goBack()} onRightIconPress={() => console.log('Pressed')} />
       <View style={[styles.listCon, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }]}>
-        <Text style={[styles.headingTx, { color: theme.headingTx }]}>Anchors</Text>
+        <Text style={[styles.headingTx, { color: theme.headingTx }]}>Select Anchors</Text>
         {Anchors.map((list, index) => {
           return (
-            <TouchableOpacity style={[styles.card, { backgroundColor: theme.bg }]} key={index} onPress={() => { navigation.navigate("KycComponent") }}>
+            <TouchableOpacity style={[styles.card, { backgroundColor: theme.bg }]} key={index} onPress={() => { navigation.navigate(list.screenPath, { tabName: "Buy" })}}>
               <Image source={list.image} style={styles.image} resizeMode="cover" />
               <View style={styles.subCon}>
                 <Text style={[styles.cardHeading, { color: theme.headingTx }]}>{list.name}</Text>
@@ -52,17 +54,17 @@ const styles = StyleSheet.create({
   },
   headingTx: {
     fontSize: 19,
-    marginBottom: hp(1)
+    marginVertical: hp(0.5)
   },
   image: {
-    width: wp(19),
-    height: hp(8),
+    width: wp(17),
+    height: hp(6.5),
     alignSelf: "center",
     borderRadius: 15,
   },
   subCon: {
     marginLeft: 10,
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "center"
   },
   cardHeading: {
@@ -74,6 +76,7 @@ const styles = StyleSheet.create({
     fontWeight: "500"
   },
   card: {
+    marginTop:hp(1),
     borderRadius: 20,
     flexDirection: "row",
     alignContent: "center",

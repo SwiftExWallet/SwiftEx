@@ -11,6 +11,7 @@ import {rpc,TransactionBuilder} from '@stellar/stellar-sdk';
 import LocalTxManager from './LocalTxManager';
 import { SRBRPC } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/ExchangeConstants';
 import { NativeModules } from 'react-native';
+import ShortTermStorage from '../utilities/ShortTermStorage';
 
 export async function getChainTokenData(sourceChain, destChain, sourceToken, destToken, amount) {
   console.log("Allbridge-Info--", sourceChain, destChain, sourceToken, destToken, amount);
@@ -177,14 +178,26 @@ export async function swapPepare(
 
     if (sent.status === "PENDING") {
       await LocalTxManager.saveTx(recipientAddress, {
-        chain: "SRB",
+        chain: sourceChain,
         hash: sent.hash,
         status: "pending",
         statusColor: "#eec14fff",
         timestamp: Date.now(),
-        symbol: srcToken.symbol,
-        amount: amount,
+        symbol: sourceTokenSymbol,
+        amount: amount?.toString(),
       });
+       await ShortTermStorage.syncTx({
+          txHash: sent.hash,
+          walletAddress: stellarWallet.publicKey,
+          provider: "ALLBRIDGE",
+          fromChain: sourceChain,
+          fromToken: sourceTokenSymbol,
+          toChain: destChain,
+          toToken: destTokenSymbol,
+          amountIn: amount?.toString(),
+          amountOut: amount?.toString(),
+          txType:"Bridge"
+        })
 
       return { success: true, txHash: sent.hash };
     }

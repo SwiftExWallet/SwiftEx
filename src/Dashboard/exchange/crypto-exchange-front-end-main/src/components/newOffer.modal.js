@@ -58,8 +58,8 @@ const ERROR_MESSAGES = {
   TRUSTLINE_FAILED: "Trustline failed to update",
   UNABLE_TO_GET_MARKET_PRICE: "Unable to get market price.",
   INSUFFICIENT_FUNDS: "Insufficient funds",
-  CREATE_OFFER: "Swap",
-  MULTIOP_OFFER: "Trust & Swap",
+  CREATE_OFFER: "Place Order",
+  MULTIOP_OFFER: "Trust & Place Order",
 };
 
 // Success messages configuration
@@ -71,7 +71,7 @@ const SUCCESS_MESSAGES = {
 // Tab configuration
 const TAB_CONFIG = {
   INSTANT_TRADE: { id: 1, label: "Instant Swap", iconName:"lightning-bolt" },
-  LARGE_ORDER_TRADE: { id: 0, label: "Advance Swap", iconName:"chart-timeline-variant" },
+  LARGE_ORDER_TRADE: { id: 0, label: " Trade", iconName:"chart-timeline-variant" },
 };
 
 const SUB_TAB_CONFIG = {
@@ -850,7 +850,7 @@ const selectTradingPair = useCallback((item) => {
               {activeTab === SUB_TAB_CONFIG.TRADE.id && (
                 showOneTap?<CrossChainTx />:
                 activeTradeType === TAB_CONFIG.INSTANT_TRADE.id ? (
-                  <AMMSwap />
+                  <AMMSwap FROM_TOKEN={back_data?.params?.fromToken} TO_TOKEN={back_data?.params?.toToken}/>
                 ) : (
                   <>
                     {/* Pair selection container */}
@@ -1072,7 +1072,7 @@ const selectTradingPair = useCallback((item) => {
                                 styles.pairSelectionSubCon.pairSelectionName,
                                 { color: priceType === 0 ? "#fff" : theme.headingTx }
                               ]}>
-                                Network Rate
+                                Market Rate
                               </Text>
                             </TouchableOpacity>
                             
@@ -1095,7 +1095,7 @@ const selectTradingPair = useCallback((item) => {
                                 styles.pairSelectionSubCon.pairSelectionName,
                                 { color: priceType === 1 ? "#fff" : theme.headingTx }
                               ]}>
-                                 Preferred Rate
+                                 Limit Rate
                               </Text>
                             </TouchableOpacity>
                           </View>

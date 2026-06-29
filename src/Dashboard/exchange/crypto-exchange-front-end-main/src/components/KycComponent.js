@@ -171,6 +171,8 @@ const KycComponent = ({ route }) => {
     if (!valpayAmount || valpayAmount === "0" || parseFloat(valpayAmount) === 0) {
       setamountSend("");
       setoperationError("Invalid amount");
+      setQoutesRes(null);
+      setqoutesLoading(false);
       if (valselectedCrypto === null || valselectedfiat === null) {
         setamountSend("");
         setoperationError("fiat & crypto both selection requird.");
@@ -191,7 +193,9 @@ const KycComponent = ({ route }) => {
 
   const handleChange = (text) => {
     const replaceComma = text.replace(',', '.');
-    const payAmount=replaceComma.replace(/[^0-9.]/g, '')
+    const payAmount=replaceComma
+      .replace(/[^0-9.]/g, '')
+      .replace(/(\..*?)\..*/g, '$1');
     setamountSend(payAmount)
     waitAndQoutesFetch(payAmount,operationType,selectedCrypto,selectedfiat)
   };
@@ -389,8 +393,8 @@ const KycComponent = ({ route }) => {
         <Text style={[styles.tokenName,{color:theme.inactiveTx}]}>{tokenModalType===0?`${item.countryName} (${item.currency})`:item.network}</Text>
       </View>
       <View>
-        <Text style={[styles.tokenName,{color:theme.inactiveTx}]}>Max Buy</Text>
-        <Text style={[styles.tokenName,{color:theme.inactiveTx}]}>{tokenModalType === 0 ? item.payMax : item.maxPurchaseAmount}</Text>
+        {/* <Text style={[styles.tokenName,{color:theme.inactiveTx}]}>Max Buy</Text> */}
+        {/* <Text style={[styles.tokenName,{color:theme.inactiveTx}]}>{tokenModalType === 0 ? item.payMax : item.maxPurchaseAmount}</Text> */}
       </View>
     </TouchableOpacity>
   );
@@ -590,17 +594,23 @@ const KycComponent = ({ route }) => {
                   {operationType==="BUY"?
                   <>
                   <Text style={[styles.infoText,{color:theme.headingTx}]}>Your Order </Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxWidth: wp(20), paddingVertical: 1, borderRadius: 5}}>
                   <Text style={[styles.infoText,{color:theme.headingTx}]}>{amountSend} {QoutesRes?.fiat||"USD"} for {operationType==="BUY"?QoutesRes?.cryptoQuantity:QoutesRes?.fiatQuantity||0.0} {QoutesRes?.crypto|| selectedCrypto?.crypto}</Text>
+                   </ScrollView>
                   </>
                   :
                   <>
                   <Text style={[styles.infoText,{color:theme.headingTx}]}>Your Order </Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxWidth: wp(20), paddingVertical: 1, borderRadius: 5 }}>
                   <Text style={[styles.infoText,{color:theme.headingTx}]}>{QoutesRes?.fiatQuantity||0.0} {QoutesRes?.fiat||"USD"} for {amountSend} {selectedCrypto?.crypto}</Text>
+                  </ScrollView>
                   </>}
                 </View>
                 <View style={styles.infoRow}>
                   <Text style={[styles.infoText,{color:theme.headingTx}]}>Processing fee</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxWidth: wp(10), paddingVertical: 1, borderRadius: 5 }}>
                   <Text style={[styles.infoText,{color:theme.headingTx}]}>{QoutesRes?.rampFee||0.0} {QoutesRes?.fiat||"USD"}</Text>
+                  </ScrollView>
                 </View>
                 <View style={styles.infoRow}>
                   <Text style={[styles.infoText,{color:theme.headingTx}]}>Estimation rate </Text>

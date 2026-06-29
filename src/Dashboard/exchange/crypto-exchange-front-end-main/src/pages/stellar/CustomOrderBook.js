@@ -5,7 +5,7 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeEventSource, EventSourcePolyfill } from 'event-source-polyfill';
-import { Area, Chart, HorizontalAxis, Line, Tooltip, VerticalAxis } from "react-native-responsive-linechart";
+import { LineChart } from "react-native-gifted-charts";
 const { width } = Dimensions.get('window');
 import {
   widthPercentageToDP as wp,
@@ -108,13 +108,16 @@ const CustomOrderBook = ({ visibleTabs = ['chart', 'trades', 'bids', 'asks'] }) 
     outputRange: ['0deg', '360deg']
   });
 
-  const chartData = priceHistory
+  const chartData1 = priceHistory
   ?.map(point => ({
     x: new Date(`1970-01-01T${point?.timestamp}Z`)?.getTime(), // Convert HH:mm:ss to timestamp
     y: isNaN(point?.close) ? 0 : point?.close // Ensure y is a valid number
   }))
   .filter(point => !isNaN(point?.x) && !isNaN(point?.y)); // Remove NaN values
-
+  const chartData = chartData1.map((d) => ({
+    value: d.y,
+    label: '',
+  }));
 const minY = Math.min(...chartData?.map(d => d?.y)?.filter(y => !isNaN(y)));
 const maxY = Math.max(...chartData?.map(d => d?.y)?.filter(y => !isNaN(y)));
   
@@ -447,42 +450,25 @@ const connectEventSource = useCallback(() => {
             </View>
             
             {priceHistory.length >= 2 ? (
-      <Chart
-      style={{ width: width - 40, height: 220 }}
-      data={chartData}
-      padding={{ left: 10, bottom: 30, right: 20, top: 30 }}
-      xDomain={{
-        min: Math.min(...chartData.map(d => d.x)),
-        max: Math.max(...chartData.map(d => d.x))
-      }}
-      yDomain={{
-        min: minY - (0.1 * (maxY - minY)), // 10% padding
-        max: maxY + (0.1 * (maxY - minY))
-      }}
-    >
-      <Line
-      tooltipComponent={
-        <Tooltip 
-          theme={{
-            formatter: handleTooltipFormat,
-            shape: {
-              width: 0, // Adjust tooltip size for visibility
-              height: 0,
-              dx: 5,
-              dy: -10,
-              color: 'black',
-            }
-          }} 
-        />
-      }
-  
-        theme={{
-          stroke: { color: '#44bd32', width: 2 },
-          scatter: { selected: { width: 10, height: 11, rx: 5, color: '#2F7DFF' } }
-        }}
-        smoothing="bezier"
-      />
-    </Chart>
+              <LineChart
+                data={chartData}
+                width={350}
+                height={200}
+                color={"#44bd32"}
+                thickness={2}
+                curved
+                areaChart
+                startFillColor={"#44bd32"}
+                startOpacity={0.4}
+                endFillColor={"#44bd32"}
+                endOpacity={0}
+                hideDataPoints
+                hideYAxisText
+                hideXAxisText
+                hideAxesAndRules
+                initialSpacing={0}
+                endSpacing={0}
+              />
             ) : (
               <View style={styles.noChartContainer}>
                 <ActivityIndicator size="small" color="#007AFF" />

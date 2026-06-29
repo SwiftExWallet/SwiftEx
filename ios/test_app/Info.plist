@@ -35,12 +35,20 @@
 	<string>We need access to your camera to scan QR Code.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>We need access to Face ID for SwiftEx authentication.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>We need access to your microphone to scan QR Code.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>We need access to your photo library.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>Notifications may include alerts, sounds and icon badges.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location access is included as part of the QR scanning features.</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>RCTNewArchEnabled</key>
+	<true/>
 	<key>UIAppFonts</key>
 	<array>
 		<string>FontAwesome.ttf</string>
@@ -63,6 +71,10 @@
 		<string>fetch</string>
 		<string>remote-notification</string>
 	</array>
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>1</integer>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen.storyboard</string>
 	<key>UIRequiredDeviceCapabilities</key>
@@ -75,11 +87,5 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
-	<key>UIDeviceFamily</key>
-	<array>
-    	<integer>1</integer>
-	</array>
-	<key>NSUserNotificationsUsageDescription</key>
-	<string>Notifications may include alerts, sounds and icon badges.</string>
 </dict>
 </plist>

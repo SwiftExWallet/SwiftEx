@@ -45,6 +45,7 @@ const apiRequest = async ({
       timeout: timeout,
       headers: {
         'x-auth-device-token': token,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         ...headers
       }
@@ -117,7 +118,7 @@ const apiRequest = async ({
         data: error.response.data
       };
       console.log('🔴 Returning server error result:', serverErrorResult);
-      if(serverErrorResult.status===403&&serverErrorResult.success===false){
+      if(serverErrorResult.status===403&&serverErrorResult.success===false||serverErrorResult.status===401&&serverErrorResult.success===false){
         const guestUserResponse = await createGuestUser();
         if (guestUserResponse.status) {
           alert("Success","Session recovery complete.")
@@ -183,7 +184,7 @@ const apiHelper = {
   
   delete: (url, headers = {}) => {
     console.log('🗑️ DELETE request initiated');
-    return apiRequest({ url, method: 'DELETE', headers });
+    return apiRequest({ url, method: 'DELETE',body, headers });
   }
 };
 

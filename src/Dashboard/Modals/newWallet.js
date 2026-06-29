@@ -217,6 +217,7 @@ const NewWalletModal = ({ props,onCrossPress, visible, setVisible, setModalVisib
           
         </View>
         </Animated.View>
+        {newWalletPrivateKey&&
         <NewWalletPrivateKey
           Wallet={Wallet}
           onCrossPress={()=>{setNewWalletPrivateKey(false)}}
@@ -224,7 +225,7 @@ const NewWalletModal = ({ props,onCrossPress, visible, setVisible, setModalVisib
           Visible={newWalletPrivateKey}
           setModalVisible={setModalVisible}
           setNewWalletVisible={setVisible}
-        />
+        />}
       </Modal>
     </Animated.View>
   );

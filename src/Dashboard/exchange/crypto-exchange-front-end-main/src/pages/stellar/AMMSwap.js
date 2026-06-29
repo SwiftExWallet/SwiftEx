@@ -32,7 +32,7 @@ import {
 } from "react-native-responsive-screen";
 import { colors } from '../../../../../../Screens/ThemeColorsConfig';
 
-const AMMSwap = () => {
+const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   const state=useSelector((state)=>state);
   const [assetTrustRequired,setassetTrustRequired]=useState([]);
   const [fromToken, setFromToken] = useState({
@@ -77,6 +77,13 @@ const AMMSwap = () => {
   },[isFocused,fromToken,toToken])
 
   useEffect(()=>{
+    if (FROM_TOKEN && TO_TOKEN) {
+      setFromToken(FROM_TOKEN);
+      setToToken(TO_TOKEN);
+    }
+  },[isFocused])
+
+  useEffect(()=>{
     settokenBurn(false)
     setshowReverse(false)
     setFromAmount('');
@@ -93,14 +100,14 @@ const AMMSwap = () => {
 
   const handleInitBal=async(asset,asset1,assetIssuer,asset1Issuer)=>{
     const res= await BridgeUSDCValidation(asset==="XLM"?"native":asset,assetIssuer);
-    if(res!==null)
+    if(res!=null)
     {
       setFromBal(parseFloat(res?.balance));
     }else{
       setFromBal(0.00);
     }
     const res1= await BridgeUSDCValidation(asset1==="XLM"?"native":asset1,asset1Issuer);
-    if(res1!==null)
+    if(res1!=null)
       {
         setToBal(parseFloat(res1?.balance));
       }else{

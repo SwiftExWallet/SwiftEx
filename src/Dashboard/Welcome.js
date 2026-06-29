@@ -32,6 +32,7 @@ import { REACT_APP_HOST } from "./exchange/crypto-exchange-front-end-main/src/Ex
 import * as StellarSdk from '@stellar/stellar-sdk';
 import AccessNativeStorage from "./Wallets/AccessNativeStorage";
 import crashlytics from '@react-native-firebase/crashlytics';
+import { dydxAddressDrive } from "../dydx/dydxAddressDrive";
 
 const Welcome = (props) => {
   const [Loading,setLoading]=useState(false)
@@ -135,6 +136,7 @@ const Welcome = (props) => {
 
   const dispatChingData=async(wallet)=>{
     try {
+      const dydxAddress=await dydxAddressDrive(wallet.privateKey)
       const pin = await AsyncStorageLib.getItem("pin");
             const body = {
               accountName: "Main",
@@ -151,6 +153,10 @@ const Welcome = (props) => {
               stellarWallet: {
                 publicKey: wallet.stellarWallet.publicKey,
               },
+              dydx: {
+                dydxAddress: dydxAddress.dydxAddress,
+                dydxPublicKey: dydxAddress.publicKey,
+              },
               wallets: [],
             };
             let wallets = [];
@@ -164,6 +170,10 @@ const Welcome = (props) => {
                 },
                 stellarWallet: {
                   publicKey: wallet.stellarWallet.publicKey
+                },
+                dydx: {
+                  dydxAddress: dydxAddress.dydxAddress,
+                  dydxPublicKey: dydxAddress.publicKey,
                 },
                 walletType: "Multi-coin",
               },
@@ -217,7 +227,12 @@ const Welcome = (props) => {
               stellarPublicKey: wallet.stellarWallet.publicKey,
               stellarPrivateKey: wallet.stellarWallet.secretKey,
               mnemonic: wallet.mnemonic,
-              walletType: wallet.walletType
+              walletType: wallet.walletType,
+              dydxAddress: dydxAddress.dydxAddress,
+              dydxPublicKey: dydxAddress.publicKey,
+              dydxMnemonic: dydxAddress.mnemonic,
+              dydxPrivateKey: dydxAddress.privateKey,
+              dydxWalletConnectSignature: dydxAddress.walletConnectSignature
             })
             if (walletResponse.success) {
             setLoading(false);
@@ -269,7 +284,7 @@ const Welcome = (props) => {
             {Loading ? <ActivityIndicator color={"green"} size={"large"} /> : <Text style={styles.btnText}>CREATE A NEW WALLET</Text>}
           </TouchableOpacity>
 
-          {Loading ? null : <TouchableOpacity style={styles.importWalletView} onPress={() => props.navigation.navigate("Import")} disabled={Loading}>
+          {Loading ? null : <TouchableOpacity style={styles.importWalletView} onPress={() => props.navigation.navigate("WalletNetworkSelection",{selectionType:"importForSetupApp",backScreenName:"Welcome"})} disabled={Loading}>
             <Text style={styles.importText}>Import Wallet</Text>
           </TouchableOpacity>}
         </> :

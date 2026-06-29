@@ -9,6 +9,12 @@ RCT_EXTERN_METHOD(signTransaction:(NSString *)chainName
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(signTypedData:(NSString *)chainName
+                  walletAddress:(NSString *)walletAddress
+                  typedDataJson:(NSString *)typedDataJson
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 + (BOOL)requiresMainQueueSetup
 {
   return NO;

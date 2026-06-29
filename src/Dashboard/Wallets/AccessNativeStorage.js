@@ -68,7 +68,15 @@ class AccessNativeStorage {
             throw new Error('StorageModule not available');
         }
         const result = await StorageModule.delete(key);
-        return result.success;
+        return result;
+    }
+
+    async walletRename(key,walletName) {
+        if (!StorageModule) {
+            throw new Error('StorageModule not available');
+        }
+        const result = await StorageModule.renameWallet(key,walletName);
+        return result;
     }
 
 

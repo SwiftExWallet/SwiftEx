@@ -7,17 +7,18 @@ import {
 import { useDispatch, useSelector } from "react-redux";
 import Icon from "../icon";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
-import { MULTICHAIN_PORTFOLIO, PORTFOLIO_CONFIG, RAPID_STELLAR, SET_ASSET_DATA, WALLET_ACTIVATION_SHOW } from "../components/Redux/actions/type";
+import { PORTFOLIO_CONFIG, RAPID_STELLAR, SET_ASSET_DATA, WALLET_ACTIVATION_SHOW } from "../components/Redux/actions/type";
 import { enableBiometrics } from "../biometrics/biometric";
 import { STELLAR_URL } from "./constants";
 import LinearGradient from "react-native-linear-gradient";
 import * as StellarSdk from '@stellar/stellar-sdk';
 import Modal from "react-native-modal";
 import { colors } from '../Screens/ThemeColorsConfig';
-import { GetWalletTokens, TemporaryTokens } from '../utilities/TokenUtils';
+import { CHAINS, GetWalletTokens, TemporaryTokens } from '../utilities/TokenUtils';
 import CustomInfoProvider from './exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import InfoComponent from './exchange/crypto-exchange-front-end-main/src/components/InfoComponent';
+import { useAssetManager } from '../utilities/TokenManageHook';
 
 function InvestmentChart() {
   const navigation = useNavigation();
@@ -30,6 +31,7 @@ function InvestmentChart() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [tokenInfoList, setTokenInfoList] = useState([]);
   const [showCustomInfo,setshowCustomInfo]=useState(false);
+  const { mergeWithApiTokens } = useAssetManager(`${wallet?.address}_${state?.STELLAR_PUBLICK_KEY}`);
   const avilableSoonAsset={
     chain: 'BTC',
     name: 'Bitcoin',
@@ -65,7 +67,7 @@ function InvestmentChart() {
       await fetchDataDispatch();
       try {
         if (wallet && wallet.address && state && state.STELLAR_PUBLICK_KEY) {
-        const walletInfo = await GetWalletTokens(wallet?.address,state.STELLAR_PUBLICK_KEY);
+        const walletInfo = await GetWalletTokens(wallet?.address,state.STELLAR_PUBLICK_KEY,state.DYDX_ADDRESS_KEY);
         if (walletInfo.tokens.length > 1) {
           const userCustomTokens=await getCustomTokens()
           const margeArray=[...walletInfo.tokens,avilableSoonAsset,...(userCustomTokens.status ? userCustomTokens.data : [])]
@@ -127,10 +129,11 @@ function InvestmentChart() {
             const preser_backup = await AsyncStorage.getItem('wallet_backup');
             matchedData = parsedData.find((item) => item.Ether_address === preser_backup);
           }
-          const walletInfo = await GetWalletTokens(wallet?.address,matchedData?matchedData?.publicKey:state?.STELLAR_PUBLICK_KEY);
+          const walletInfo = await GetWalletTokens(wallet?.address,matchedData?matchedData?.publicKey:state?.STELLAR_PUBLICK_KEY,state.DYDX_ADDRESS_KEY);
           if (walletInfo.tokens.length > 1) {
             const userCustomTokens=await getCustomTokens()
-            const margeArray=[...walletInfo.tokens,avilableSoonAsset,...(userCustomTokens.status ? userCustomTokens.data : [])]
+            const margeArray=[...walletInfo.tokens,...(userCustomTokens.status ? userCustomTokens.data : []),avilableSoonAsset]
+            await mergeWithApiTokens(margeArray)
             setTokenInfoList(margeArray);
             setLoading(false);
             dispatch({
@@ -139,16 +142,10 @@ function InvestmentChart() {
                 isTotalInUSDVisible: true,
                 totalInUSD: walletInfo.totalValueUSD
               }
-            }); 
-            dispatch({
-              type: MULTICHAIN_PORTFOLIO,
-              payload: {
-                activeWalletPortFolio: walletInfo
-              }
-            }); 
+            });
           }
         } catch (error) {
-          console.log("walletInfo_error", error);
+          console.error("walletInfo_error", error);
           CustomInfoProvider.show("info", "Portfolio currently unavailable, please try again");
         }
       }
@@ -169,6 +166,8 @@ function InvestmentChart() {
           STELLAR_PUBLICK_KEY: matchedData.publicKey,
           STELLAR_SECRET_KEY: matchedData.secretKey,
           STELLAR_ADDRESS_STATUS: isActive,
+          DYDX_PUBLIC_KEY:matchedData.dydxPublicKey,
+          DYDX_ADDRESS_KEY:matchedData.dydxAddress,
         },
       });
       dispatch({
@@ -198,7 +197,6 @@ function InvestmentChart() {
     try {
       const user = await AsyncStorage.getItem("user");
       const storedData = await AsyncStorage.getItem('myDataKey');
-      console.log("---storedData--",storedData,"---------",user);
       if (!storedData) {
         console.log('No data found for key stellar keys to dispatch');
         return;
@@ -240,6 +238,8 @@ function InvestmentChart() {
               {item.imageUrl ? (
                 <Image source={{ uri: item.imageUrl }} style={styles.coinImage} />
               ) : (
+                item.symbol?.toLowerCase()==="usdc"?
+                <Image source={{ uri: CHAINS["ARB"].bridgeSupportTokens[1].logoURI }} style={styles.coinImage} />:item.symbol?.toLowerCase()==="usdt"?<Image source={{ uri: CHAINS["ARB"].bridgeSupportTokens[0].logoURI }} style={styles.coinImage} />:
                 <LinearGradient
                   colors={['#3b82f6', '#8b5cf6']}
                   start={{ x: 0, y: 0 }}
@@ -271,7 +271,7 @@ function InvestmentChart() {
         </TouchableOpacity>
       );
     },
-    [navigation, state.THEME.THEME, state.isTotalInUSDVisible],
+    [navigation, state.THEME.THEME, state.isTotalInUSDVisible,state.activeWalletPortFolio],
   );
 
   return (
@@ -285,7 +285,7 @@ function InvestmentChart() {
         ) : (
           <>
           <FlatList
-            data={tokenInfoList}
+              data={(state && state.activeWalletPortFolio && state.activeWalletPortFolio.tokens || state && state.activeWalletPortFolio)?.filter(data => (data.active && data.contractAddress === "Native") || (data.contractAddress !== "Native" && data.active && parseFloat(data.balance) > 0)) ?? tokenInfoList}
             renderItem={renderTokens}
             keyExtractor={(item, index) => index.toString()}
             initialNumToRender={39}
@@ -301,7 +301,7 @@ function InvestmentChart() {
                 }}
               />
             }
-            contentContainerStyle={{ paddingBottom: hp(33) }}
+            // contentContainerStyle={{ paddingBottom: hp(33) }}
           />
         </>
         )}

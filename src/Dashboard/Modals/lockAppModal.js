@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { StyleSheet, View, Text, TouchableOpacity, Animated, Alert, Image, Modal, Platform, } from "react-native";
+import { StyleSheet, View, Text, TouchableOpacity, Animated, Alert, Image, Modal, Platform, AppState, } from "react-native";
 import darkBlue from "../../../assets/darkBlue.png";
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from "react-native-responsive-screen";
 import { useDispatch, useSelector } from "react-redux";
@@ -86,19 +86,22 @@ const LockAppModal = ({ pinViewVisible, setPinViewVisible }) => {
   };
 
   useEffect(() => {
-    const checkBiometricSetting = async () => {
-      if (pinViewVisible) {
+    const checkBiometricSetting = async (nextAppState) => {
+      if (pinViewVisible === true && nextAppState === "active") {
         const biometric = await AsyncStorage.getItem("Biometric");
         if (biometric === "SET") {
           const data=await useBiometrics_run();
-          if(data)
+          if (data === true) 
           {
             setPinViewVisible(false)
           }
         }
       }
     };
-    checkBiometricSetting();
+    const subscription = AppState.addEventListener("change", checkBiometricSetting);
+    return () => {
+      subscription.remove();
+    };
   }, [FOCUSED, pinViewVisible]);
   useEffect(() => {
     const initializeApp = async () => {
@@ -140,8 +143,8 @@ const LockAppModal = ({ pinViewVisible, setPinViewVisible }) => {
         <View style={styles.upper_con}>
           <Image
             style={{
-              width: wp("20"),
-              height: hp("15"),
+              width: 160,
+              height: 140,
               padding: 30,
               marginTop: hp(2),
             }}

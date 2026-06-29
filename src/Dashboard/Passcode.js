@@ -164,8 +164,8 @@ const Passcode = (props) => {
       <View style={styles.upper_con}>
         <Image
           style={{
-            width: wp("20"),
-            height: hp("15"),
+            width: Platform.OS==="ios"?wp(34):wp(20),
+            height: Platform.OS==="ios"?hp(20):hp(15),
             padding: 30,
             marginTop: hp(2),
           }}
@@ -217,13 +217,13 @@ const Passcode = (props) => {
             <Text style={[styles.keyText,{color:theme.headingTx}]}>{key}</Text>
           </TouchableOpacity>
         ))}
-        <TouchableOpacity onPress={()=>{resetInput(),handleBiometrics()}} style={styles.key}>
-          <Icon
+        <TouchableOpacity disabled={!status} onPress={()=>{resetInput(),handleBiometrics()}} style={styles.key}>
+         {status === "pinset"&& <Icon
                 type={"materialCommunity"}
                 name={Platform.OS === "android" ? "fingerprint" : "face-recognition"}
                 size={36}
                 color={theme.inactiveTx}
-              />
+              />}
         </TouchableOpacity>
         <TouchableOpacity onPress={() => handlePress("0")} style={styles.key}>
           <Text style={[styles.keyText,{color:theme.headingTx}]}>0</Text>
@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
   keypad: {
     flexDirection: "row",
     flexWrap: "wrap",
-    width: "100%",
+    width: wp(100),
     justifyContent: "center"
   },
   key: {

@@ -146,7 +146,7 @@ const SendCrypto = async (recieverAddress, amount, decrypt, balance, setLoading,
         info,
       });
     } else if (walletType === "Multi-coin") {
-      if (Token === "Ethereum") {
+      if (Token === "ETH") {
         const response = await sendEth(addressFrom, amount, addressTo, addressFrom, balance, setLoading)
         let info = response;
         const feeBN = ethers.BigNumber.from(info.fee.toString());

@@ -578,7 +578,7 @@ const Market = (props) => {
 
   return (
     <View style={{ backgroundColor: state.THEME.THEME===false?"#fff":"#1B1B1C" }}>
-    <Wallet_screen_header elementestID={"market_back"} title="" onLeftIconPress={() => navigation.goBack()} />
+    <Wallet_screen_header elementestID={"market_back"} title="Discover" onLeftIconPress={() => navigation.goBack()} />
       <View style={{ height: hp(100) }}>
         <View style={[Styles.searchContainer,{backgroundColor:state.THEME.THEME===false?"#F4F4F8":"#242426",borderColor:"rgba(255, 255, 255, 0.2)"}]}>
           <Icon name="search1" type="antDesign" size={25} color={state.THEME.THEME===false?"black":"gray"} />
@@ -589,8 +589,7 @@ const Market = (props) => {
             onChangeText={(input) => {
               let UpdatedData = []
               updatedData.filter((item) => {
-                console.log(item.name.toLowerCase().includes(input.toLowerCase()))
-                if (item.name.toLowerCase().includes(input.toLowerCase())) {
+                if (item.name.toLowerCase().includes(input.toLowerCase()) || item.symbol.toLowerCase().includes(input.toLowerCase())) {
                   UpdatedData.push(item)
                 }
 

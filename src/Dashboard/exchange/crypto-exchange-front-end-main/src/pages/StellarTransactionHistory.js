@@ -56,8 +56,41 @@ const getAssetName = (code, type) => {
   return code || 'XLM';
 };
 
+const decodeDestinationChain = (params = []) => {
+  try {
+    const chainMap = {
+      1: "Ethereum",
+      2: "BNB",
+      3: "Polygon",
+      4: "Avalanche",
+      5: "Solana",
+      6: "Arbitrum",
+      7: "Stellar"
+    };
+
+    const chainParam = params.find(
+      p => p.type === "U32"
+    );
+
+    if (!chainParam?.value) return "Bridge";
+
+    const bytes = Buffer.from(chainParam.value, "base64");
+
+    let chainId = 0;
+
+    for (let i = bytes.length - 4; i < bytes.length; i++) {
+      chainId = (chainId << 8) + bytes[i];
+    }
+
+    return chainMap[chainId] || "Bridge";
+  } catch {
+    return "Bridge";
+  }
+};
+
 
 const getTransactionType = (operation, userPublicKey, isReceived) => {
+  console.info(operation)
   if (operation.type === 'payment') {
       return operation.asset_code || operation.asset_type;
   }
@@ -71,18 +104,11 @@ const getTransactionType = (operation, userPublicKey, isReceived) => {
           return 'Swap Out';
       case 'manage_buy_offer':
           return 'Swap In';
-      case 'invoke_host_function':
-          if (isReceived) {
-            const assetSymbol = operation.asset_balance_changes?.find(
-              resObj => resObj.to === userPublicKey
-            )?.asset_code || 'USDC';
-            return `Add ${assetSymbol}`;
-          } else {
-            const assetSymbol = operation.asset_balance_changes?.find(
-              resObj => resObj.from === userPublicKey
-            )?.asset_code || 'USDC';
-            return `Send ${assetSymbol}`;
-          }
+      case 'invoke_host_function': {
+        return isReceived
+          ? `Deposit ${operation.destinationChain || "Bridge"}`
+          : `Withdraw ${operation.destinationChain || "Bridge"}`;
+      }
       case 'path_payment_strict_send':
       case 'path_payment_strict_receive': {
         const fromAsset = getAssetName(
@@ -106,10 +132,10 @@ const getTransactionType = (operation, userPublicKey, isReceived) => {
       case 'wallet_tx':
           if (operation.chain === 'SRB') {
             const assetSymbol = operation.symbol || 'USDC';
-            return `Send ${assetSymbol}`;
+            return `Withdraw ${assetSymbol}`;
           } else {
             const assetSymbol = operation.symbol || 'USDC';
-            return `Add ${assetSymbol}`;
+            return `Deposit ${assetSymbol}`;
           }
       default:
           return operation.type.replace(/([A-Z])/g, ' $1').trim();
@@ -443,11 +469,18 @@ const processStellarTx = async (tx, publicKey) => {
     amount = firstOp.starting_balance;
     isReceived = true;
   } else if (firstOp.type === 'invoke_host_function') {
+    firstOp.destinationChain =
+      decodeDestinationChain(firstOp.parameters);
+
     const resBal = firstOp.asset_balance_changes?.find(
-      resObj => (resObj.to === publicKey || resObj.from === publicKey) && resObj.type === 'transfer'
+      resObj =>
+        (resObj.to === publicKey ||
+          resObj.from === publicKey) &&
+        resObj.type === 'transfer'
     ) || null;
+
     if (resBal) {
-      amount = resBal?.amount || '0';
+      amount = resBal.amount || '0';
       isReceived = resBal.to === publicKey;
     }
   } else if (['change_trust'].includes(firstOp.type)) {
@@ -483,11 +516,15 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
   const [isFetchingStellar, setIsFetchingStellar] = useState(false);
   const state = useSelector((state) => state);
   const stellarCursorRef = useRef(null);
+  const allTransactionsRef = useRef([]);
 
   const updateStellarCursor = (token) => {
     setStellarCursor(token);
     stellarCursorRef.current = token;
   };
+  useEffect(() => {
+    allTransactionsRef.current = allTransactions;
+  }, [allTransactions]);
 
   const refreshSingleTx = async (chainSymbol, txHash) => {
     try {
@@ -553,8 +590,63 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
     }
   };
 
+  useEffect(() => {
+    const autoRefreshPendingTxs = async () => {
+      try {
+        const currentTxs = allTransactionsRef.current;
+        if (!currentTxs || !Array.isArray(currentTxs)) return;
+
+        const pendingWalletTxs = currentTxs.filter(tx => {
+          const op = tx?.operations?.records?.[0];
+          const statusStr = typeof tx?.success === 'string'
+            ? tx.success.toLowerCase()
+            : String(tx?.success || '').toLowerCase();
+
+          return (
+            op?.type === 'wallet_tx' &&
+            ['pending', 'processing', 'process'].includes(statusStr) &&
+            op?.chain &&
+            op?.hash
+          );
+        });
+        
+        if (pendingWalletTxs.length === 0) return;
+
+        await Promise.all(
+          pendingWalletTxs.map(tx => {
+            const op = tx.operations.records[0];
+            return refreshSingleTx(op.chain, op.hash);
+          })
+        );
+      } catch (error) {
+        console.error("Error inside auto refresh function:", error);
+      }
+    };
+
+    const intervalId = setInterval(autoRefreshPendingTxs, 20000);
+    return () => clearInterval(intervalId);
+  }, []);
+
   const fetchTransactions = async () => {
     try {
+      const transactionsData = await server
+        .transactions()
+        .forAccount(publicKey)
+        .order('desc')
+        .limit(STELLAR_BATCH_SIZE)
+        .call();
+
+      const lastRecord = transactionsData.records[transactionsData.records.length - 1];
+      updateStellarCursor(lastRecord?.paging_token || null);
+
+      const processedTransactions = await Promise.all(
+        transactionsData.records.map(tx => processStellarTx(tx, publicKey))
+      );
+
+      const stellarHashes = new Set(
+        transactionsData.records.map(tx => tx.hash).filter(Boolean)
+      );
+
       let walletTxs = [];
       try {
         const walletResponse = await LocalTxManager.getWalletTx(state?.wallet?.address);
@@ -565,11 +657,11 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
             if (!tx.timestamp) continue;
 
             const currentTime = Date.now();
-            const isOlderThan10Min = (currentTime - tx.timestamp) > 10 * 60 * 1000;
+            const isOlderThan25Min = (currentTime - tx.timestamp) > 25 * 60 * 1000;
             const txStatus = tx.status?.toLowerCase();
             const isSRBPending = tx.chain === "SRB" && txStatus === "pending";
 
-            if (isSRBPending && isOlderThan10Min && tx.hash) {
+            if (isSRBPending && isOlderThan25Min && tx.hash) {
               await LocalTxManager.updateTxStatus(state?.wallet?.address, {
                 chain: tx.chain,
                 hash: tx.hash,
@@ -578,11 +670,22 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
               });
             }
           }
+          const stellarInvokeTxIds = new Set(
+            processedTransactions
+              .filter(tx => tx.operations.records[0].type === 'invoke_host_function')
+              .map(tx => tx.operations.records[0].transaction_hash)
+              .filter(Boolean)
+          );
         
-        const filteredWalletTxs = walletResponse.data.filter(tx =>
-          tx.status !== 'completed' &&
-          !['approval', 'Approval'].includes(tx.type)
-        );
+          const filteredWalletTxs = walletResponse.data.filter(tx => {
+            const isCompletedOrApproval = tx.status === 'completed' || ['approval', 'Approval'].includes(tx.type);
+            const isAlreadyInStellar = tx.hash && stellarHashes.has(tx.hash);
+            const isPendingInStellar = isAlreadyInStellar &&
+              ['pending', 'processing', 'process'].includes(tx.status?.toLowerCase());
+            const isSRBAlreadyOnStellar = tx.chain === "SRB" && stellarInvokeTxIds.has(tx.hash);
+
+            return !isCompletedOrApproval && !isSRBAlreadyOnStellar && (!isAlreadyInStellar || isPendingInStellar);
+          });
 
           const uniqueWalletTxs = [];
           const seenHashes = new Set();
@@ -629,11 +732,11 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
             }
 
             const currentTime = Date.now();
-            const isOlderThan10Min = (currentTime - txTimestamp) > 10 * 60 * 1000;
+            const isOlderThan25Min = (currentTime - txTimestamp) > 25 * 60 * 1000;
             const txStatus = tx.status?.toLowerCase();
             const isSRBPending = tx.chain === "SRB" && txStatus === "pending";
-            const finalStatus = isSRBPending && isOlderThan10Min ? "failed" : tx.status;
-            const finalStatusColor = isSRBPending && isOlderThan10Min ? "#de2727ff" : tx.statusColor;
+            const finalStatus = isSRBPending && isOlderThan25Min ? "failed" : tx.status;
+            const finalStatusColor = isSRBPending && isOlderThan25Min ? "#de2727ff" : tx.statusColor;
 
           return {
             id: `wallet_tx_${tx.hash || txTimestamp}`,
@@ -662,22 +765,6 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
         console.error('Error fetching wallet transactions:', walletError);
       }
 
-      // Fetch Stellar transactions
-      const transactionsData = await server
-        .transactions()
-        .forAccount(publicKey)
-        .order('desc')
-        .limit(STELLAR_BATCH_SIZE)
-        .call();
-
-      const lastRecord = transactionsData.records[transactionsData.records.length - 1];
-      updateStellarCursor(lastRecord?.paging_token || null);
-
-      const processedTransactions = await Promise.all(
-        transactionsData.records.map(tx => processStellarTx(tx, publicKey))
-      );
-
-      // Merge and sort all transactions by time (latest first)
       const allTxs = [...walletTxs, ...processedTransactions];
       allTxs.sort((a, b) => b.sortTime - a.sortTime);
 
@@ -726,8 +813,6 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
       setIsFetchingStellar(false);
     }
   };
-
-  
 
   const getFilteredTransactions = (txList, filterTab = selectedTab) => {
     return txList.filter(tx => {

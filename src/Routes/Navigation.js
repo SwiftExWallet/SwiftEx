@@ -89,13 +89,18 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../Screens/ThemeColorsConfig";
 import BridgeAssets from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/BridgeAssets";
 import { AppCheck } from "../Screens/AppChecks/AppCheck";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import {TokensManagement} from "../Dashboard/TokensManagement";
+import { WalletNetworkSelection } from "../Dashboard/ImportWalletModule/WalletNetworkSelection";
+import RampProvider from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/RampProvider";
+import BanxaRampProvider from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/BanxaRampProvider";
 
 const Stack = createNativeStackNavigator();
 
 const AuthStack = () => {
   const [webUri, setWebUri] = useState(null);
   return(
-    <>
+    <GestureHandlerRootView style={{flex:1}}>
     <NavigationContainer
     // theme={{ colors: { background: "#000C66" } }}
     theme={{ colors: { background: "black" } }}
@@ -180,15 +185,7 @@ const AuthStack = () => {
       <Stack.Screen
         name="Wallet"
         component={Wallet}
-        options={{  header: () => {
-          return (
-            <WalletHeader
-              title={"Wallet"}
-              IconName="delete"
-              IconType="material"
-            />
-          );
-        },}}
+        options={{headerShown:false}}
       />
       <Stack.Screen
         name="ImportWallet"
@@ -533,6 +530,18 @@ const AuthStack = () => {
           },
         }}
       />
+      <Stack.Screen
+        name="RampProvider"
+        component={RampProvider}
+        options={{
+          headerShown: false,
+          headerStyle: { backgroundColor: "#4CA6EA" },
+          headerTintColor: "white",
+          headerTitleStyle: {
+            fontWeight: "bold",
+          },
+        }}
+      />
 
 <Stack.Screen
         name="newOffer_modal"
@@ -636,6 +645,13 @@ const AuthStack = () => {
           headerShown: false,
         }}
       />
+      <Stack.Screen
+        name="BanxaRampProvider"
+        component={BanxaRampProvider}
+        options={{
+          headerShown: false,
+        }}
+      />
         <Stack.Screen
         name="StellarOffers"
         component={OfferView}
@@ -651,6 +667,21 @@ const AuthStack = () => {
         }}
       />
       <Stack.Screen
+        name="TokensManagement"
+        component={TokensManagement}
+        options={{
+          headerShown:false
+        }}
+      />
+      <Stack.Screen
+        name="WalletNetworkSelection"
+        component={WalletNetworkSelection}
+        options={{
+          headerShown:false
+        }}
+      />
+
+      <Stack.Screen
         name="TxDetails"
         options={{headerShown:false}}
         >
@@ -663,7 +694,7 @@ const AuthStack = () => {
         visible={!!webUri}
         onClose={() => setWebUri(null)}
       />
-  </>
+  </GestureHandlerRootView>
   )
 };
 const NavigationProvider = () => {

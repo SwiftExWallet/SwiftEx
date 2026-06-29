@@ -12,7 +12,7 @@ RCT_EXTERN_METHOD(getAllWallets:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(getWalletAddress:(RCTPromiseResolveBlock)resolver
                   rejecter:(RCTPromiseRejectBlock)reject)
 
-RCT_EXTERN_METHOD(delete:(NSString *)key
+RCT_EXTERN_METHOD(delete:(NSString *)id
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
@@ -27,6 +27,12 @@ RCT_EXTERN_METHOD(updateActiveWallet:(NSString *)id
                   rejecter:(RCTPromiseRejectBlock)reject)
 
 RCT_EXTERN_METHOD(getWalletInfo:(RCTPromiseResolveBlock)resolver
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(
+                  renameWallet:(NSString *)id
+                  name:(NSString *)name
+                  resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
 + (BOOL)requiresMainQueueSetup

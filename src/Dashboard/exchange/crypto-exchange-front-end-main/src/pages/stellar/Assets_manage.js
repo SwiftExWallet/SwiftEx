@@ -24,6 +24,7 @@ const Assets_manage = ({ route }) => {
     const [TRUST_ASSET, setTRUST_ASSET] = useState(false);
     const [Loading, setLoading] = useState(null);
     const [Loading_assets_bal, setLoading_assets_bal] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
     const [assets, setassets] = useState([
         {
             "asset_type": "native",
@@ -216,6 +217,15 @@ const Assets_manage = ({ route }) => {
 
     const fillteredAssets = stellarTokens?.assets
         ?.slice(1)
+        ?.filter((item) => {
+            if (!searchQuery.trim()) return true;
+            const query = searchQuery.toLowerCase();
+            return (
+                item.name?.toLowerCase().includes(query) ||
+                item.code?.toLowerCase().includes(query) ||
+                item.issuer?.toLowerCase().includes(query)
+            );
+        })
         ?.sort((a, b) => {
             const first = assets.some((x) => x.asset_issuer === a.issuer);
             const exist = assets.some((x) => x.asset_issuer === b.issuer);
@@ -288,10 +298,29 @@ const Assets_manage = ({ route }) => {
                         <Text style={{fontSize:13,color:"#ECB742",fontWeight:"300",marginLeft:4}}>{`Trustlines let your wallet accept and hold \n approved assets.`}</Text>
                     </View>
                     <></>
+                    <View style={{ width: '100%', marginVertical: hp(1) }}>
+                        <TextInput
+                            placeholder="Search assets"
+                            placeholderTextColor={theme.inactiveTx}
+                            value={searchQuery}
+                            onChangeText={(text) => setSearchQuery(text)}
+                            style={{
+                                backgroundColor: theme.bg,
+                                color: theme.headingTx,
+                                paddingHorizontal: 12,
+                                paddingVertical: hp(1),
+                                borderRadius: 10,
+                                fontSize: 19,
+                                width: '100%',
+                                height:hp(4.5)
+                            }}
+                            clearButtonMode="while-editing"
+                        />
+                    </View>
                     <FlatList
                         data={fillteredAssets}
                         keyExtractor={(item, index) => index.toString()}
-                        style={{ marginBottom: hp(5) }}
+                        style={{ marginBottom: hp(1) }}
                         renderItem={({ item, index }) => {
                         return (
                             <View key={index} style={[styles.search_bar, { flexDirection: "row", justifyContent: "space-between", alignItems: "center",backgroundColor:theme.bg }]}>
@@ -315,6 +344,13 @@ const Assets_manage = ({ route }) => {
                             </View>
                         )
                     }}
+                        ListEmptyComponent={() => (
+                            <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: hp(4) }}>
+                                <Text style={{ color: theme.inactiveTx, fontSize: 19, fontWeight: '500' }}>
+                                    No assets found
+                                </Text>
+                            </View>
+                        )}
                     />
                 </View>
             </Modal>

@@ -114,7 +114,7 @@ const Wallet = ({ navigation }) => {
           />
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => {setVisible(true)}} style={[styles.wallet,{backgroundColor:state.THEME.THEME===false?"#F4F4F8":"#242426"}]}>
+        <TouchableOpacity onPress={() => {navigation.navigate("WalletNetworkSelection",{selectionType:"importForSetupedApp",backScreenName:"Home"})}} style={[styles.wallet,{backgroundColor:state.THEME.THEME===false?"#F4F4F8":"#242426"}]}>
             <View style={styles.ConHeading}>
               <View style={[styles.iconCon,{backgroundColor:state.THEME.THEME?"#1B1B1C":"#FFFFFF"}]}>
               <MaterialCommunityIcon name="cloud-download-outline" size={hp("3")} color={state.THEME.THEME?"#E6E8EB":"#272729"}/>
