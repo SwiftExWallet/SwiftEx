@@ -177,6 +177,15 @@ export async function swapPepare(
     }
 
     if (sent.status === "PENDING") {
+      await LocalTxManager.saveTx(recipientAddress, {
+        chain: sourceChain,
+        hash: sent.hash,
+        status: "pending",
+        statusColor: "#eec14fff",
+        timestamp: Date.now(),
+        symbol: sourceTokenSymbol,
+        amount: amount?.toString(),
+      });
        await ShortTermStorage.syncTx({
           txHash: sent.hash,
           walletAddress: stellarWallet.publicKey,

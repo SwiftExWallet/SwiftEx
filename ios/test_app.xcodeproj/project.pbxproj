@@ -41,6 +41,7 @@
 		04234AEB2F33152200B97E49 /* StellarSigner.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = StellarSigner.m; path = test_app/StellarSigner.m; sourceTree = "<group>"; };
 		0439A4D52F31D84000E16E61 /* TransactionSigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TransactionSigner.swift; path = test_app/TransactionSigner.swift; sourceTree = "<group>"; };
 		04D696EE2F643C3700E809CD /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		04E3139D2FEFF7C900CAC0EB /* test_app.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = test_app.entitlements; path = test_app/test_app.entitlements; sourceTree = "<group>"; };
 		04F5D0262F31C31100E9257B /* EthereumWallet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EthereumWallet.swift; path = test_app/EthereumWallet.swift; sourceTree = "<group>"; };
 		04F5D02E2F31C3A900E9257B /* EthereumWallet.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = EthereumWallet.m; path = test_app/EthereumWallet.m; sourceTree = "<group>"; };
 		04F5D0302F31C3E100E9257B /* AppStorageModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStorageModule.swift; path = test_app/AppStorageModule.swift; sourceTree = "<group>"; };
@@ -83,6 +84,7 @@
 		13B07FAE1A68108700A75B9A /* test_app */ = {
 			isa = PBXGroup;
 			children = (
+				04E3139D2FEFF7C900CAC0EB /* test_app.entitlements */,
 				04D696EE2F643C3700E809CD /* AppDelegate.swift */,
 				180F48902CFDA388003A044B /* test_appRelease.entitlements */,
 				180F488E2CFD957F003A044B /* GoogleService-Info.plist */,
@@ -460,6 +462,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = test_app/test_app.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = SC3VLW4J89;
 				ENABLE_BITCODE = NO;
@@ -469,7 +472,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.0.4;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -499,7 +502,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.0.4;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

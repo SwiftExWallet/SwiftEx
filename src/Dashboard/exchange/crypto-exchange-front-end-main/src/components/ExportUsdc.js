@@ -74,7 +74,7 @@ const ExportUSDC = () => {
     if (parseFloat(numericText) === 0 || !numericText) {
       return;
     }
-    getQuote(selectedReciveNetworkDetils.chainName, selectedNetworkDetils.chainName, selectedAssetDetils.symbol, amount);
+    getQuote(selectedNetworkDetils.chainName,selectedReciveNetworkDetils.chainName, selectedAssetDetils.symbol,selectedReciveAssetDetils.symbol, amount);
   }, [chooseReciveAsset,chooseReciveNetwork])
 
   const fetchStellarWalletdetails = async () => {
@@ -217,21 +217,13 @@ const ExportUSDC = () => {
       if (result.success) {
         setshowTxHash([{ chain: "SRB", hash: showTxHash }]);
         // setshowTx(true);
-        Snackbar.show({
-          text: "USDC Exported successfully.",
-          duration: Snackbar.LENGTH_SHORT,
-          backgroundColor: 'green',
-        });
+        CustomInfoProvider.show("success","Hurray","Withdrawal Order Placed Successfully.");
         navigation.navigate("StellarTransactions")
         console.log("USDC Exported:-", result);
         setbtnLoading(false);
       } else {
         setshowTx(false);
-        Snackbar.show({
-          text: result.error||"USDC Exported Faild.",
-          duration: Snackbar.LENGTH_SHORT,
-          backgroundColor: 'red',
-        });
+        CustomInfoProvider.show("error","!Oops","Failed to Place Withdrawal Order.");
         console.log("USDC Exported Faild:-", result);
         setbtnLoading(false);
       }
@@ -239,11 +231,7 @@ const ExportUSDC = () => {
       setshowTx(false);
       setbtnLoading(false);
       console.log("error in allbridge swap execute:", error)
-      Snackbar.show({
-        text: "USDC Exported Faild.",
-        duration: Snackbar.LENGTH_SHORT,
-        backgroundColor: 'red',
-      });
+      CustomInfoProvider.show("error","!Oops","Failed to Place Withdrawal Order.");
       console.log("USDC Exported Faild:-", result);
     }
   }
@@ -330,7 +318,7 @@ console.log("resQuotes-",resQuotes)
         {/* perfect stellar usdc balance componet */}
         <View style={[styles.card,{backgroundColor:theme.cardBg,flexDirection:"column",borderBottomLeftRadius:0,borderBottomRightRadius:0}]}>
         <View style={[styles.rowBtnCon, { paddingVertical: hp(-0.5),backgroundColor:theme.cardBg }]}>
-            <Text style={[styles.subInputText,{color:theme.inactiveTx,marginTop: hp(0)}]}>USDC Amount</Text>
+            <Text style={[styles.subInputText,{color:theme.inactiveTx,marginTop: hp(0),marginBottom:hp(1)}]}>USDC Amount</Text>
             </View>
          <View style={[styles.modalOpen, { paddingVertical: hp(0.5),backgroundColor:theme.bg }]}>
             <TextInput maxLength={50} placeholder='Enter USDC Amount' placeholderTextColor={"gray"} keyboardType="numeric" value={amount} style={[styles.textInputForCrossChain,{fontSize: 18, color: theme.headingTx}]} onChangeText={(value) => { handleInputChange(value) }} returnKeyType="done" />

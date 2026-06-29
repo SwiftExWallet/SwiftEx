@@ -12,7 +12,8 @@ const Payout = () => {
   const state = useSelector((state) => state);
   const Anchors = [
     { name: "Alchemy Pay", image: require('../../../../../../assets/AlcamyPay.jpg'), domain: "alchemypay.org",screenPath:"KycComponent" },
-    { name: "Banxa", image: require('../../../../../../assets/BANXA.png'), domain: "banxa.com",screenPath:"RampProvider" },
+    { name: "MoonPay", image: require('../../../../../../assets/MoonPay.png'), domain: "moonpay.com",screenPath:"RampProvider" },
+    { name: "Banxa", image: require('../../../../../../assets/BANXA.png'), domain: "banxa.com",screenPath:"BanxaRampProvider" },
   ];
   const navigation = useNavigation();
 

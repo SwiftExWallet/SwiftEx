@@ -1,6 +1,15 @@
-import notifee, { AndroidImportance, AndroidStyle } from '@notifee/react-native';
-export const firebaseNotification = async(remoteMessage) => {
-    const channelId = await notifee.createChannel({
+import notifee, { AndroidImportance } from '@notifee/react-native';
+
+export const firebaseNotification = async (remoteMessage) => {
+  const title = remoteMessage.notification?.title || remoteMessage.data?.title;
+  const body = remoteMessage.notification?.body || remoteMessage.data?.body;
+
+  if (!title && !body) {
+    console.log('Notifee: Suppressed a blank notification.');
+    return; 
+  }
+
+  const channelId = await notifee.createChannel({
     id: 'default',
     name: 'Default Channel',
     importance: AndroidImportance.HIGH,
@@ -9,21 +18,15 @@ export const firebaseNotification = async(remoteMessage) => {
   });
 
   await notifee.displayNotification({
-    id: remoteMessage.messageId?? String(Date.now()),
-    title: remoteMessage.notification?.title,
-    body: remoteMessage.notification?.body,
+    id: remoteMessage.messageId ?? String(Date.now()),
+    title: title,
+    body: body,
     data: remoteMessage.data,
-
     android: {
       channelId,
       importance: AndroidImportance.HIGH,
       pressAction: { id: 'default' },
-      style: {
-        type: AndroidStyle.BIGTEXT,
-        text: remoteMessage.notification?.body,
-      },
     },
-
     ios: {
       sound: 'default',
       badge: 0,
@@ -34,4 +37,4 @@ export const firebaseNotification = async(remoteMessage) => {
       },
     },
   });
-  }
+};

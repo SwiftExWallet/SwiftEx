@@ -41,6 +41,12 @@
 	<string>We need access to your photo library.</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>Notifications may include alerts, sounds and icon badges.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location access is included as part of the QR scanning features.</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UIAppFonts</key>

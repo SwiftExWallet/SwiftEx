@@ -127,11 +127,11 @@ const Wallet_selection_bottom = ({ onClose }) => {
 
         dispatch(setWalletType(walletData.walletType));
 
-        await handleBalanceFetch(
-          walletData.walletType,
-          walletData.address,
-          walletData.xrpAddress
-        );
+        // await handleBalanceFetch(
+        //   walletData.walletType,
+        //   walletData.address,
+        //   walletData.xrpAddress
+        // );
         await AccessNativeStorage.updateActiveWallet(item.walletId)
         // await apiHelper.post(REACT_APP_HOST + '/v1/wallet', {
         //   "addresses": {
@@ -144,9 +144,9 @@ const Wallet_selection_bottom = ({ onClose }) => {
         // });
         alert("success", `Wallet selected: ${item.name}`);
 
-        setTimeout(() => {
+        // setTimeout(() => {
           onClose()
-        }, NAVIGATION_DELAY);
+        // }, NAVIGATION_DELAY);
       } else {
         throw new Error("Wallet selection failed");
       }

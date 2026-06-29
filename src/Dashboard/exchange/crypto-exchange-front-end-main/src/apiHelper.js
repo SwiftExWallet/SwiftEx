@@ -118,7 +118,7 @@ const apiRequest = async ({
         data: error.response.data
       };
       console.log('🔴 Returning server error result:', serverErrorResult);
-      if(serverErrorResult.status===403&&serverErrorResult.success===false){
+      if(serverErrorResult.status===403&&serverErrorResult.success===false||serverErrorResult.status===401&&serverErrorResult.success===false){
         const guestUserResponse = await createGuestUser();
         if (guestUserResponse.status) {
           alert("Success","Session recovery complete.")

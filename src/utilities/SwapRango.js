@@ -367,8 +367,8 @@ export async function ensureFusionAllowance(tokenAddress, walletAddress, amountB
             'function allowance(address owner, address spender) view returns (uint256)',
             'function approve(address spender, uint256 amount) returns (bool)',
         ];
-        if (!tokenAddress || tokenAddress.toLowerCase() === isNativeTokenAddress.toLowerCase()) {
-            return;
+        if (tokenAddress.toLowerCase() === isNativeTokenAddress.toLowerCase()) {
+            return { status: true, error:"no approval requird." };
         }
         const rpcProvider = new ethers.providers.JsonRpcProvider(CHAINS[provider].rpcUrl);
         const contract = new ethers.Contract(tokenAddress, ERC20_ALLOWANCE_ABI, rpcProvider);

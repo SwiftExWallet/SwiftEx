@@ -2,7 +2,7 @@ import axios from "axios";
 import StellarTokenList from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/stellar/Tokens.json";
 import { ARB, AVAX, BASE, BSC, DYDX, ETH, OPT, POL, PUBLIC_TX_CHEKER, STELLAR_URL, STR } from "../Dashboard/constants";
 import * as StellarSdk from '@stellar/stellar-sdk';
-import { REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL, REACT_APP_HOST } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
+import { FOLIO_BASE_ROUTE, REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL, REACT_APP_HOST } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import apiHelper from "../../src/Dashboard/exchange/crypto-exchange-front-end-main/src/apiHelper";
 import PancakeList from "../../src/Dashboard/tokens/pancakeSwap/PancakeList.json";
 const BASEROUTE = `${REACT_APP_HOST}/v1/portfolio/`;
@@ -216,70 +216,58 @@ const getStellarTokens = async (walletAddress, onProgress = null, cacheKey = nul
     const account = await server.accounts().accountId(walletAddress).call();
     const tokens = [];
     let totalValueUSD = 0;
-    const xlmPrice = await getXLMPrice();
-    const USDC_ISSUER = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
+
+    const prices = await getStellarTokenPrices(account.balances);
 
     for (const balance of account.balances) {
+      if (balance.asset_type === 'liquidity_pool_shares') continue;
+
+      let symbol, name, contractAddress, price, balanceAmount, imageUrl;
+
       if (balance.asset_type === 'native') {
-        const xlmBalance = parseNumber(balance.balance);
-        const xlmValue = xlmBalance * xlmPrice;
+        symbol = 'XLM';
+        name = 'Stellar Lumens';
+        contractAddress = 'Native';
+        balanceAmount = parseNumber(balance.balance);
+        imageUrl = getStellarTokenImage('XLM', null, 'Native');
+        price = parseNumber(prices['XLM:native']?.price || 0, 6);
 
-        const xlmToken = {
+      } else {
+        symbol = balance.asset_code;
+        name = balance.asset_code;
+        contractAddress = balance.asset_issuer;
+        balanceAmount = parseNumber(balance.balance);
+        imageUrl = getStellarTokenImage(symbol, balance.asset_issuer);
+
+        const priceKey = `${symbol}:${contractAddress}`;
+        price = parseNumber(prices[priceKey]?.price || 0, 6);
+      }
+
+      const balanceUSD = parseNumber(balanceAmount * price, 2);
+      totalValueUSD += balanceAmount * price;
+
+      const token = {
+        chain: 'Stellar',
+        name,
+        symbol,
+        balance: balanceAmount,
+        balanceUSD,
+        decimals: 7,
+        contractAddress,
+        active: balance.asset_type === 'native',
+        price,
+        imageUrl,
+      };
+
+      tokens.push(token);
+
+      if (onProgress) {
+        onProgress({
           chain: 'Stellar',
-          name: 'Stellar Lumens',
-          symbol: 'XLM',
-          balance: xlmBalance,
-          balanceUSD: parseNumber(xlmValue, 2),
-          decimals: 7,
-          contractAddress: 'Native',
-          active:true,
-          price: parseNumber(xlmPrice, 2),
-          imageUrl: getStellarTokenImage('XLM', null, 'Native'),
-        };
-
-        tokens.push(xlmToken);
-        totalValueUSD += xlmValue;
-
-        if (onProgress) {
-          onProgress({
-            chain: 'Stellar',
-            tokens: [xlmToken],
-            totalValueUSD: parseNumber(totalValueUSD, 2),
-            isPartial: true
-          });
-        }
-
-      } else if (
-        balance.asset_type === 'credit_alphanum4' &&
-        balance.asset_code === 'USDC' &&
-        balance.asset_issuer === USDC_ISSUER
-      ) {
-        const usdcBalance = parseNumber(balance.balance);
-        const usdcValue = usdcBalance * 1;
-
-        const usdcToken = {
-          chain: 'Stellar',
-          name: 'USD Coin',
-          symbol: 'USDC',
-          balance: usdcBalance,
-          balanceUSD: parseNumber(usdcValue, 2),
-          decimals: 7,
-          contractAddress: USDC_ISSUER,
-          price: 1,
-          imageUrl: getStellarTokenImage('USDC', USDC_ISSUER),
-        };
-
-        tokens.push(usdcToken);
-        totalValueUSD += usdcValue;
-
-        if (onProgress) {
-          onProgress({
-            chain: 'Stellar',
-            tokens: [usdcToken],
-            totalValueUSD: parseNumber(totalValueUSD, 2),
-            isPartial: true
-          });
-        }
+          tokens: [token],
+          totalValueUSD: parseNumber(totalValueUSD, 2),
+          isPartial: true
+        });
       }
     }
 
@@ -315,7 +303,7 @@ const getStellarTokens = async (walletAddress, onProgress = null, cacheKey = nul
         balanceUSD: 0,
         decimals: 7,
         contractAddress: 'Native',
-        active:true,
+        active: true,
         price: parseNumber(xlmPrice, 2),
         imageUrl: getStellarTokenImage('XLM', null, 'Native'),
       },
@@ -342,6 +330,22 @@ const getStellarTokens = async (walletAddress, onProgress = null, cacheKey = nul
     }
 
     return { tokens: emptyTokens, totalValueUSD: 0 };
+  }
+};
+
+const getStellarTokenPrices = async (balances) => {
+  try {
+    const addresses = balances
+      .filter(b => b.asset_type !== 'liquidity_pool_shares')
+      .map(b => {
+        if (b.asset_type === 'native') return 'XLM:native';
+        return `${b.asset_code}:${b.asset_issuer}`;
+      }); 
+    const response = await apiHelper.post(`${FOLIO_BASE_ROUTE}/prices`,{ addresses });
+
+    return response.data?.prices || {};
+  } catch {
+    return {};
   }
 };
 
@@ -869,7 +873,7 @@ export const CHAINS = {
     symbol: STR.symbol,
     chainName: STR.chainName,
     subName: STR.subName,
-    supportedTokenList: "https://lobstr.co/api/v1/sep/assets/curated.json",
+    supportedTokenList: "https://raw.githubusercontent.com/sachin-swiftex/resources/master/stellar.json",
     nativeToken: {
       "name": "Stellar",
       "symbol": "XLM",
@@ -883,7 +887,7 @@ export const CHAINS = {
     receiveEnable:true,
     bridgeEnable:true,
     swapEnable:true,
-    importForSetupApp:false,
+    importForSetupApp:true,
     importForSetupedApp:true,
     supportedForInterSwap:STR.supportedForInterSwap,
     chainNameInThirdParty:STR.chainNameInThirdParty,
@@ -939,7 +943,38 @@ export const CHAINS = {
     supportedForInterSwap:DYDX.supportedForInterSwap,
     chainNameInThirdParty:DYDX.chainNameInThirdParty,
     eipId:DYDX.eipId
-  }
+  },
+  BSC: {
+    rpcUrl: BSC.RPC,
+    chainId: BSC.chainId,
+    nativeChainKey: BSC.nativeChainKey,
+    minGasGwei: BSC.minGasGwei,
+    imageUrl: BSC.imageUrl,
+    name: BSC.name,
+    symbol: BSC.symbol,
+    chainName: BSC.chainName,
+    subName: BSC.subName,
+    gasLimit: BSC.gasLimit,
+    supportedTokenList: "https://raw.githubusercontent.com/sachin-swiftex/resources/master/bsc_tokens.json",
+    nativeToken: {
+      "name": BSC.name,
+      "symbol": BSC.symbol,
+      "address": "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+      "type": BSC.name?.toUpperCase(),
+      "decimals": 18,
+      "logoURI": BSC.imageUrl
+    },
+    bridgeSupportTokens: BSC.bridgeSupportTokens,
+    sendEnable:false,
+    receiveEnable:false,
+    bridgeEnable:false,
+    swapEnable:false,
+    importForSetupApp:false,
+    importForSetupedApp:false,
+    supportedForInterSwap:BSC.supportedForInterSwap,
+    chainNameInThirdParty:BSC.chainNameInThirdParty,
+    eipId:BSC.eipId
+  },
 };
 
 export const CHAINTOCHARTID = {
@@ -952,9 +987,11 @@ export const CHAINTOCHARTID = {
   "ETH": "ETH",
   "BNB": "BNB",
   "STR": "XLM",
-  "DYDX": "DYDX"
+  "DYDX": "DYDX",
+  "XLM":"XLM"
 };
 export const isNativeTokenAddress="0x0000000000000000000000000000000000000000";
+export const NativeESCROWAddress="0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 
 export const CheckTxStatus = async (txHash, chain) => {
   const baseUrl = PUBLIC_TX_CHEKER[chain];
@@ -974,4 +1011,21 @@ export const TXSTATUS = {
   failed: 'failed',
   pending: 'pending',
   error:'error'
+};
+
+export const isBridgeTokenSupported = (chain, tokenId) => {
+  const response = CHAINS[chain].bridgeSupportTokens.find(token => token.address?.toLowerCase() === tokenId?.toLowerCase());
+  return response;
+};
+
+export const UI_CHAIN_NAME = {
+  POL: "POL",
+  ARB: "ETH",
+  OPT: "ETH",
+  AVA: "AVAX",
+  BAS: "ETH",
+  ETH: "ETH",
+  BSC: "BNB",
+  SRB: "SRB",
+  DYDX: "DYDX"
 };

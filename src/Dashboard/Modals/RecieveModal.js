@@ -24,6 +24,7 @@ const RecieveModal = ({ modalVisible, setModalVisible }) => {
         }}
         showOnlyEvm={false}
         showDataType={"receiveEnable"}
+        selectedAsset={assetInfo}
         />
 
       {assetInfo !== null && <TokenQrCode

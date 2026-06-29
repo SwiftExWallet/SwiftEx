@@ -584,7 +584,7 @@ const classic = ({ props }) => {
       console.info("swap-result->", result)
       if (result.success) {
         setSwapLoading(false);
-        CustomInfoProvider.show("success", "Bridge Successfull.", [
+        CustomInfoProvider.show("success","Hurray","Deposit Order Placed Successfully.",[
           { text: "Okay", onPress: nextStep },
         ]);
       } else {
@@ -648,12 +648,21 @@ const classic = ({ props }) => {
           amountOut: fromAmount.toString(),
           txType:"Bridge"
         })
+        await LocalTxManager.saveTx(state && state.wallet && state.wallet.address, {
+          chain: selectedFromNetwork.chainName,
+          hash: res.transferTxHash,
+          status: "pending",
+          statusColor: "#eec14fff",
+          timestamp: Date.now(),
+          symbol: selectedFromAsset.symbol,
+          amount: fromAmount.toString(),
+        });
         txHashes.push({
           chain: selectedFromNetwork.chainName,
           hash: res.transferTxHash,
           type: "Transfer"
         });
-        CustomInfoProvider.show("success", "Bridge Successfull.", [
+        CustomInfoProvider.show("success","Hurray","Deposit Order Placed Successfully.", [
           { text: "Okay", onPress: nextStep },
         ]);
       } else {

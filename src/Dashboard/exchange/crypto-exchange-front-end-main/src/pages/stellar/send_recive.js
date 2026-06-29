@@ -13,7 +13,7 @@ import Bridge from "../../../../../../../assets/Bridge.png";
 import QRCode from "react-native-qrcode-svg";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { useSelector } from "react-redux";
-import { Camera, useCameraDevice, useCodeScanner } from "react-native-vision-camera";
+import { Camera, useCameraDevice, useCodeScanner, useCameraPermission } from "react-native-vision-camera";
 import { Exchange_screen_header } from "../../../../../reusables/ExchangeHeader";
 import { alert } from "../../../../../reusables/Toasts";
 import { STELLAR_URL } from "../../../../../constants";
@@ -30,6 +30,7 @@ import { colors } from "../../../../../../Screens/ThemeColorsConfig";
 StellarSdk.Networks.PUBLIC
 
 const send_recive = ({route}) => {
+  const { hasPermission, requestPermission } = useCameraPermission()
     const {bala,asset_name,assetIssuer}=route.params;
     console.log("----------------usdtAsse-----------------",bala,asset_name,assetIssuer)
     const usdtAsset = asset_name==="native"?StellarSdk.Asset.native():new StellarSdk.Asset(asset_name, assetIssuer);
@@ -105,34 +106,60 @@ const send_recive = ({route}) => {
           }
         }
         setModalVisible(true);
-      }  
+      }else{
+        if(!hasPermission){
+          requestPermission()
+        }else{
+          setModalVisible(true);
+        }
+      }
   };
 
-    const get_data=async()=>{
-        setLoading(true);
-            setqrvalue(state?.STELLAR_PUBLICK_KEY)
-            if(asset_name==="native")
-            {
-              GetStellarAvilabelBalance(state?.STELLAR_PUBLICK_KEY).then((result) => {
-                setresStellarbal(result?.availableBalance)
-                setLoading(false);
-              }).catch(error => {
-                console.log('Error loading account:', error);
-                setLoading(false);
-              });
-            }
-            if(asset_name!=="native")
-            {
-              GetStellarUSDCAvilabelBalance(state?.STELLAR_PUBLICK_KEY,asset_name,assetIssuer).then((result) => {
-                console.log("-------jhdkjas",result)
-                setresStellarbal(result?.availableBalance)
-                setLoading(false);
-              }).catch(error => {
-                console.log('Error loading account:', error);
-                setLoading(false);
-              });
-            }
+  const get_data = async () => {
+    setLoading(true);
+    setqrvalue(state?.STELLAR_PUBLICK_KEY)
+    if (asset_name === "native") {
+      GetStellarAvilabelBalance(state?.STELLAR_PUBLICK_KEY).then((result) => {
+        setresStellarbal(result?.availableBalance)
+        setLoading(false);
+      }).catch(error => {
+        console.log('Error loading account:', error);
+        setLoading(false);
+      });
     }
+    if (asset_name !== "native") {
+      const result = await GetStellarUSDCAvilabelBalance(state?.STELLAR_PUBLICK_KEY, asset_name, assetIssuer)
+      if (result.error) {
+        setresStellarbal("0.0")
+        setLoading(false);
+        if (Platform.OS === "ios") {
+          Alert.alert(
+            "warning",
+            result.error,
+            [
+              { text: "Close", style: "cancel" },
+              { text: "Trust", onPress: () => navigation.navigate("Assets_manage", { openAssetModal: true }) },
+            ]
+          );
+        }
+        if (Platform.OS === "android") {
+          CustomInfoProvider.show(
+            "warning",
+            result.error,
+            [
+              { text: "Close", style: "cancel" },
+              { text: "Trust", onPress: () => {CustomInfoProvider.hide(),setTimeout(()=>{
+                navigation.navigate("Assets_manage", { openAssetModal: true })
+              },1000)} },
+            ]
+          );
+        }
+      } else {
+        setresStellarbal(result?.availableBalance)
+        setLoading(false);
+      }
+    }
+  }
     function validateStellarAddress(address) {
       if (address.length !== 56 || address[0] !== 'G') {
           return false;

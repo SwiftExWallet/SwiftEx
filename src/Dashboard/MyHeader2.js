@@ -7,7 +7,8 @@ import {
   UIManager,
   TouchableOpacity,
   StatusBar, ActivityIndicator,
-  ScrollView
+  ScrollView,
+  RefreshControl
 } from "react-native";
 import { Text } from "react-native-paper";
 import RecieveModal from "./Modals/RecieveModal";
@@ -22,10 +23,14 @@ import SwapModal from "./Modals/SwapModal";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import Icon from "../icon";
 import Wallet_selection_bottom from "./Wallets/Wallet_selection_bottom";
-import { PORTFOLIO_CONFIG } from "../components/Redux/actions/type";
+import { MULTICHAIN_PORTFOLIO, PORTFOLIO_CONFIG } from "../components/Redux/actions/type";
 import Modal from "react-native-modal";
 import InvestmentChart from "./InvestmentChart";
 import WalletConnect from "../Dashboard/walletConnect/WalletConnect"
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getAssetId } from "../utilities/TokenManageHook";
+import { GetWalletTokens } from "../utilities/TokenUtils";
+import CustomInfoProvider from "./exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 if (
   Platform.OS === "android" &&
   UIManager.setLayoutAnimationEnabledExperimental(true)
@@ -45,6 +50,7 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
   const [Wallet_modal, setWallet_modal] = useState(false);
   const [Loading_upper, setLoading_upper] = useState(true);
   const [walletSyncShow, setWalletSyncShow] = useState(false);
+  const [pull, setPull] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   if (Platform.OS === "android") {
     if (UIManager.setLayoutAnimationEnabledExperimental) {
@@ -135,10 +141,105 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
       </View>
     );
   };
+
+  const mergeWithApiTokens = async (apiTokens) => {
+    try {
+      const stored = await AsyncStorage.getItem(`${state?.wallet?.address}_${state.STELLAR_PUBLICK_KEY}`);
+      const savedTokens = stored ? JSON.parse(stored) : [];
+      const savedMap = new Map(savedTokens.map(t => [getAssetId(t), t]));
+
+      const merged = apiTokens.map(apiToken => {
+        const id = getAssetId(apiToken);
+        const savedToken = savedMap.get(id);
+
+        if (savedToken) {
+          return {
+            ...apiToken,
+            active: savedToken.active,
+          };
+        }
+
+        if (apiToken && apiToken.balanceUSD !== undefined && apiToken.balanceUSD !== null) {
+          const balanceVal = parseFloat(apiToken.balanceUSD);
+          if (balanceVal <= 0) {
+            return apiToken;
+          }
+
+          const isWorthy = balanceVal >= 0.50;
+          return {
+            ...apiToken,
+            active: isWorthy ? true : false
+          };
+        }
+
+        return apiToken;
+      });
+      const apiIds = new Set(apiTokens.map(getAssetId));
+      const customTokens = savedTokens.filter(t => !apiIds.has(getAssetId(t)));
+
+      dispatch({
+        type: MULTICHAIN_PORTFOLIO,
+        payload: {
+          activeWalletPortFolio: [...merged, ...customTokens]
+        }
+      });
+    } catch (e) {
+      console.error('merge error', e);
+    }
+  };
+
+  const PullRefreshPortFollio = async (evmAddress, stellarAddress, dydxAddress) => {
+    try {
+      const walletInfo = await GetWalletTokens(evmAddress, stellarAddress, dydxAddress);
+      if (walletInfo.tokens.length > 1) {
+        await mergeWithApiTokens(walletInfo.tokens)
+        dispatch({
+          type: PORTFOLIO_CONFIG,
+          payload: {
+            isTotalInUSDVisible: true,
+            totalInUSD: walletInfo.totalValueUSD
+          }
+        });
+        return {
+          status: true,
+          messaeg: "done"
+        }
+      } else {
+        return {
+          status: true,
+          messaeg: "done"
+        }
+      }
+    } catch (error) {
+      return {
+        status: false,
+        messaeg: error
+      }
+    }
+  }
+
+  const managePullRefresh = async () => {
+    try {
+      setPull(true);
+      await PullRefreshPortFollio(state?.wallet?.address, state.STELLAR_PUBLICK_KEY, state.DYDX_ADDRESS_KEY);
+      setPull(false);
+    } catch (error) {
+      console.error("error in managePullRefresh:", error);
+      setPull(false);
+    }
+  }
   
   return (
     <View style={[styles.safeArea, { backgroundColor: themeColors.bg,paddingTop:Platform.OS==="ios"?hp(5):0 }]}>
-    <ScrollView>
+      <ScrollView
+        refreshControl={
+          <RefreshControl
+            refreshing={pull}
+            tintColor="#4CA6EA"
+            onRefresh={() => {managePullRefresh()}}
+          />
+        }
+      >
     
       <StatusBar
         barStyle={isDark ? "light-content" : "dark-content"}
@@ -171,6 +272,20 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
               </TouchableOpacity>
 
              <View style={{flexDirection:"row"}}>
+              <TouchableOpacity
+                style={[
+                  styles.bellCon,
+                  { backgroundColor: isDark ? "#18181C" : "#F4F4F8",marginRight:10 },
+                ]}
+                onPress={() => {navigation.navigate("Transactions")}}
+              >
+                <Icon
+                  name="history"
+                  type="material"
+                  size={28}
+                  color={isDark ? "gray" : "#272729"}
+                />
+              </TouchableOpacity>
              <TouchableOpacity
                 style={[
                   styles.bellCon,
@@ -229,12 +344,6 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
                 icon: "vertical-align-bottom",
                 type: "material",
                 action: openModal2,
-              },
-              {
-                name: "Bridge",
-                icon: "arrow-u-down-right",
-                type: "materialCommunity",
-                action: openModal4,
               },
               {
                 name: "Swap",
@@ -385,12 +494,12 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   featureCon: {
-    paddingHorizontal: 9,
+    paddingHorizontal: 18,
     flexDirection: "row",
     marginTop: "6%",
     justifyContent: "space-between",
     alignItems: "center",
-    height: 90,
+    height: 91,
   },
   featureCard: {
     alignItems: "center",
@@ -406,7 +515,7 @@ const styles = StyleSheet.create({
   },
   featureText: {
     marginTop: 5,
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: "500",
   },
   modalBackground: {
@@ -418,7 +527,8 @@ const styles = StyleSheet.create({
   modalView: {
     width: wp(100),
     height: hp(45),
-    borderRadius: 30,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
     paddingVertical: hp(1.5),
     alignItems: "center",
   },

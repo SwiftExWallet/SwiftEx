@@ -38,6 +38,7 @@ import { PPOST, proxyRequest } from "../exchange/crypto-exchange-front-end-main/
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import ShortTermStorage from "../../utilities/ShortTermStorage";
 import { CheckPasscode } from "../../biometrics/utils";
+import { colors } from "../../Screens/ThemeColorsConfig";
 
 const TransactionPinModal = ({
   pinViewVisible,
@@ -51,6 +52,7 @@ const TransactionPinModal = ({
   setDisable,
 }) => {
   const state = useSelector((state) => state);
+  const theme = state.THEME.THEME ? colors.dark : colors.light;
   const [pin, setPin] = useState();
   const [status, setStatus] = useState("pinset");
   const [showRemoveButton, setShowRemoveButton] = useState(false);
@@ -340,19 +342,19 @@ const TransactionPinModal = ({
       <Animated.View // Special animatable View
         style={{ opacity: fadeAnim }}
       >
-        <View style={style.Body}>
+        <View style={[style.Body,{backgroundColor:theme.bg}]}>
           <Animated.Image
             style={{
-              width: wp("12"),
-              height: hp("12"),
+              width: wp(19),
+              height: hp(15),
               padding: 30,
-              marginTop: hp(16),
+              marginTop: hp(23),
               transform: [{ rotate: SpinValue }],
             }}
             source={darkBlue}
           />
-          <Text style={style.welcomeText}> Hi,</Text>
-          <Text style={style.welcomeText1}>
+          <Text style={[style.welcomeText,{color:theme.headingTx}]}> Hi,</Text>
+          <Text style={[style.welcomeText1,{color:theme.headingTx}]}>
             {" "}
             {status == "verify"
               ? "Please Re-enter your pin"
@@ -378,17 +380,13 @@ const TransactionPinModal = ({
              inputViewEmptyStyle={{
                backgroundColor: "transparent",
                borderWidth: 1,
-               borderColor: "#fff",
+               borderColor: theme.headingTx,
              }}
              inputViewFilledStyle={{
-               backgroundColor: "#fff",
+               backgroundColor: theme.inactiveTx,
              }}
-             // buttonViewStyle={{
-             //   borderWidth: 1,
-             //   borderColor: "#FFF",
-             // }}
              buttonTextStyle={{
-               color: "#fff",
+               color: theme.headingTx,
              }}
               onButtonPress={async (key) => {
                 if (key === "custom_left") {
@@ -572,12 +570,12 @@ const TransactionPinModal = ({
               }}
               customLeftButton={
                 showRemoveButton ? (
-                  <Icon name={"backspace"} size={36} color={"gray"} />
+                  <Icon name={"backspace"} size={36} color={theme.inactiveTx} />
                 ) : undefined
               }
               customRightButton={
                 showCompletedButton ? (
-                  <Icon name={"chevron-forward-circle"} size={36} color={"#FFF"} />
+                  <Icon name={"chevron-forward-circle"} size={36} color={theme.inactiveTx} />
                 ) : undefined
               }
               buttonTextByKey={{
@@ -604,7 +602,6 @@ export default TransactionPinModal;
 
 const style = StyleSheet.create({
   Body: {
-    backgroundColor: "#131E3A",
     height: hp(110),
     width: wp(100),
     alignItems: "center",
@@ -613,15 +610,13 @@ const style = StyleSheet.create({
     alignSelf: "center",
   },
   welcomeText: {
-    fontSize: 19,
-    fontWeight: "200",
-    color: "white",
+    fontSize: 20,
+    fontWeight: "500",
     marginTop: hp(2),
   },
   welcomeText1: {
-    fontSize: 19,
-    fontWeight: "200",
-    color: "white",
+    fontSize: 20,
+    fontWeight: "400",
     marginTop: hp(1),
   },
   welcomeText2: {

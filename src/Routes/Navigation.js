@@ -93,6 +93,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import {TokensManagement} from "../Dashboard/TokensManagement";
 import { WalletNetworkSelection } from "../Dashboard/ImportWalletModule/WalletNetworkSelection";
 import RampProvider from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/RampProvider";
+import BanxaRampProvider from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/BanxaRampProvider";
 
 const Stack = createNativeStackNavigator();
 
@@ -640,6 +641,13 @@ const AuthStack = () => {
       <Stack.Screen
         name="BridgeAssets"
         component={BridgeAssets}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="BanxaRampProvider"
+        component={BanxaRampProvider}
         options={{
           headerShown: false,
         }}

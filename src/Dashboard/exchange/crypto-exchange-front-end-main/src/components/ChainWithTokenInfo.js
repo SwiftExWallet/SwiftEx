@@ -3,13 +3,13 @@ import { useSelector } from "react-redux";
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
 import { Wallet_screen_header } from "../../../../reusables/ExchangeHeader";
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from "react-native-responsive-screen";
-import { CHAINS, TemporaryTokens } from "../../../../../utilities/TokenUtils";
+import { CHAINS, TemporaryTokens, UI_CHAIN_NAME } from "../../../../../utilities/TokenUtils";
 import { useEffect, useMemo, useState } from "react";
 import { useIsFocused } from "@react-navigation/native";
 import Modal from "react-native-modal";
 import { GetCryptoList, GetCryptoListWtihFilter } from "../../../../TokensManagement";
 
-export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEvm=true,showDataType }) => {
+export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEvm=true,showDataType,selectedAsset=null }) => {
     const focused = useIsFocused();
     const state = useSelector((state) => state);
     const theme = state.THEME.THEME ? colors.dark : colors.light;
@@ -56,6 +56,19 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
             flexDirection: "row",
             justifyContent: "space-between",
             alignItems:"center"
+        },
+        activeCard: {
+            width: wp(93),
+            borderRadius: hp(2),
+            paddingVertical: hp(1),
+            paddingHorizontal: wp(2),
+            marginTop: hp(1),
+            backgroundColor: theme.cardBg,
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems:"center",
+            borderColor:"#4052D6",
+            borderWidth:1
         },
         cardTitel: {
             color: theme.headingTx,
@@ -110,7 +123,7 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
 
     useEffect(() => {
         setFindBar("");
-    }, [focused])
+    }, [focused,visible])
 
     useEffect(() => {
         const initChainInfo = async () => {
@@ -171,27 +184,29 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
                         onChangeText={(value) => { setFindBar(value) }}
                     />
                 </View>
-                {loading ? <View style={styles.loadingCon}>
-                    <ActivityIndicator size={"large"} color={theme.headingTx} />
-                </View> :
+
                     <FlatList
                         style={styles.listCon}
-                        contentContainerStyle={{ flexGrow: 1 }}
+                        contentContainerStyle={{ flexGrow: 1,paddingBottom: hp(5) }}
                         data={refineInfo}
                         keyExtractor={(item, index) => index}
+                        showsVerticalScrollIndicator={false}
                         renderItem={({ item, index }) => {
+                        const currentAssetId = (item.address || item.issuer || '')?.toLowerCase();
+                        const selectedAssetId = (selectedAsset?.address || selectedAsset?.issuer || '')?.toLowerCase();
+                        const isSelected = currentAssetId === selectedAssetId &&item.chain?.toUpperCase() === selectedAsset?.chain?.toUpperCase();
                             return (
-                                <TouchableOpacity style={styles.card} onPress={() => { selectedToken(item) }}>
+                                <TouchableOpacity style={[isSelected ? styles.activeCard : styles.card]} onPress={() => { selectedToken(item) }} key={index}>
                                     <View style={styles.flatView}>
                                         <Image source={{ uri: item.logoURI || item.icon }} style={styles.img} />
                                         <View>
-                                            <Text style={styles.cardTitel}>{item.symbol || item.code}</Text>
+                                            <Text style={styles.cardTitel}>{UI_CHAIN_NAME[item.symbol || item.code]|| item.symbol || item.code}</Text>
                                             <Text style={styles.cardSubTitel}>{item.name || item.domain}</Text>
                                         </View>
                                     </View>
                                     <View style={{alignItems:"flex-end"}}>
                                         <Text style={[styles.cardSubTitel, { marginRight: wp(3),maxWidth:wp(15) }]} numberOfLines={1}>{item.balance || 0.0}</Text>
-                                        <Text style={[styles.cardSubTitel, { marginRight: wp(3) }]}>{item.chain}</Text>
+                                        <Text style={[styles.cardSubTitel, { marginRight: wp(3) }]}>{item.symbol || item.code}</Text>
                                     </View>
                                 </TouchableOpacity>
                             );
@@ -201,7 +216,7 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
                                 <Text style={styles.listEmptyComTxt}>No data found.</Text>
                             </View>
                         }
-                    />}
+                    />
             </View>
             </View>
         </Modal>

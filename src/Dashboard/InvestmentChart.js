@@ -14,7 +14,7 @@ import LinearGradient from "react-native-linear-gradient";
 import * as StellarSdk from '@stellar/stellar-sdk';
 import Modal from "react-native-modal";
 import { colors } from '../Screens/ThemeColorsConfig';
-import { GetWalletTokens, TemporaryTokens } from '../utilities/TokenUtils';
+import { CHAINS, GetWalletTokens, TemporaryTokens } from '../utilities/TokenUtils';
 import CustomInfoProvider from './exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import InfoComponent from './exchange/crypto-exchange-front-end-main/src/components/InfoComponent';
@@ -238,6 +238,8 @@ function InvestmentChart() {
               {item.imageUrl ? (
                 <Image source={{ uri: item.imageUrl }} style={styles.coinImage} />
               ) : (
+                item.symbol?.toLowerCase()==="usdc"?
+                <Image source={{ uri: CHAINS["ARB"].bridgeSupportTokens[1].logoURI }} style={styles.coinImage} />:item.symbol?.toLowerCase()==="usdt"?<Image source={{ uri: CHAINS["ARB"].bridgeSupportTokens[0].logoURI }} style={styles.coinImage} />:
                 <LinearGradient
                   colors={['#3b82f6', '#8b5cf6']}
                   start={{ x: 0, y: 0 }}

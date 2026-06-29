@@ -101,10 +101,10 @@ const formatDate = (timestamp) => {
   const now = new Date();
   const txDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  
+
   const diffMs = todayDate - txDate;
   const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  
+
   if (days === 0) return 'Today';
   if (days === 1) return 'Yesterday';
   if (days < 7) return `${days} days ago`;
@@ -113,7 +113,7 @@ const formatDate = (timestamp) => {
 
 const groupTransactionsByDate = (transactions) => {
   const groups = {};
-  
+
   transactions.forEach(tx => {
     const dateKey = formatDate(tx.timestamp);
     if (!groups[dateKey]) {
@@ -121,7 +121,7 @@ const groupTransactionsByDate = (transactions) => {
     }
     groups[dateKey].push(tx);
   });
-  
+
   return groups;
 };
 
@@ -150,7 +150,7 @@ const ChainSelector = ({ activeChain, onSelect, colors }) => {
 
   return (
     <>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.chainSelectorButton, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}
         onPress={() => setModalVisible(true)}
       >
@@ -167,7 +167,7 @@ const ChainSelector = ({ activeChain, onSelect, colors }) => {
         visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}
       >
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
           onPress={() => setModalVisible(false)}
@@ -177,34 +177,44 @@ const ChainSelector = ({ activeChain, onSelect, colors }) => {
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
               Select Network
             </Text>
-            
-            {Object.values(CHAINS).map((chain) => (
-              <TouchableOpacity
-                key={chain.id}
-                style={[
-                  styles.chainOption,
-                  { borderBottomColor: colors.border },
-                  activeChain === chain.symbol && { backgroundColor: colors.chipBg }
-                ]}
-                onPress={() => {
-                  onSelect(chain.symbol);
-                  setModalVisible(false);
-                }}
-              >
-                <Image source={{ uri: chain.imageUrl }} style={styles.chainIcon} />
-                <View style={styles.chainDetails}>
-                  <Text style={[styles.chainName, { color: colors.textPrimary }]}>
-                    {chain.name}
-                  </Text>
-                  <Text style={[styles.chainSymbol, { color: colors.textSecondary }]}>
-                    {chain.symbol}
-                  </Text>
-                </View>
-                {activeChain === chain.symbol && (
-                  <Icon name="check-circle" size={24} color={colors.accent} />
+            <FlatList
+              data={Object.values(CHAINS)
+                .filter(item => !item.name?.toLowerCase().includes("dydx"))
+                .filter(
+                  (item, index, self) =>
+                    index === self.findIndex(obj => obj.name === item.name)
                 )}
-              </TouchableOpacity>
-            ))}
+              keyExtractor={(item, index) => item.id?.toString() || index.toString()}
+              renderItem={({ item, index }) => {
+                return(
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.chainOption,
+                    { borderBottomColor: colors.border },
+                    activeChain === item.symbol && { backgroundColor: colors.chipBg }
+                  ]}
+                  onPress={() => {
+                    onSelect(item.symbol);
+                    setModalVisible(false);
+                  }}
+                >
+                  <Image source={{ uri: item.imageUrl }} style={styles.chainIcon} />
+                  <View style={styles.chainDetails}>
+                    <Text style={[styles.chainName, { color: colors.textPrimary }]}>
+                      {item.name}
+                    </Text>
+                    <Text style={[styles.chainSymbol, { color: colors.textSecondary }]}>
+                      {item.symbol}
+                    </Text>
+                  </View>
+                  {activeChain === item.symbol && (
+                    <Icon name="check-circle" size={24} color={colors.accent} />
+                  )}
+                </TouchableOpacity>
+                )
+              }}
+            />
           </View>
         </TouchableOpacity>
       </Modal>
@@ -223,7 +233,7 @@ const FilterChips = ({ activeFilter, onFilterChange, colors }) => {
           key={filter}
           style={[
             styles.filterChip,
-            { 
+            {
               backgroundColor: activeFilter === filter ? colors.chipActive : colors.chipBg,
               borderColor: activeFilter === filter ? colors.chipActive : 'transparent',
             }
@@ -242,8 +252,7 @@ const FilterChips = ({ activeFilter, onFilterChange, colors }) => {
   );
 };
 
-// Transaction Card Component
-const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors }) => {
+const TransactionCard = ({ item, walletAddress, activeChain, activeFilter, navigation, colors, onRefreshList }) => {
   const scaleAnim = useState(new Animated.Value(1))[0];
 
   const getTransactionType = (tx) => {
@@ -256,19 +265,33 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
   };
 
   const txType = getTransactionType(item);
-  const isPending = item.isPending === true||item.status==="pending";
-  const isFailed = item.isFailed === true||item.status==="failed";
-  const isSuccess = item.isSuccess === true||item.status==="completed";
+  const isPending = item.isPending === true || ['pending', 'created', 'partially_filled'].includes(item.status);
+  const isFailed = item.isFailed === true || ['failed', 'cancelled', 'expired', 'invalid', 'refunding', 'refunded'].includes(item.status);
+  const isSuccess = item.isSuccess === true || ['completed', 'executed', 'filled'].includes(item.status);
   const isApprove = item.isApprove === true || item.typeTx?.toLowerCase() === 'approve';
 
   const getStatusConfig = () => {
+    switch (item.status) {
+      case 'created': return { text: 'Created', color: colors.accent, icon: 'plus-circle-outline' };
+      case 'pending': return { text: 'Pending', color: colors.pending, icon: 'clock-outline' };
+      case 'partially_filled': return { text: 'Partial', color: colors.warning, icon: 'circle-half-full' };
+      case 'completed': return { text: 'Success', color: colors.success, icon: 'check-circle' };
+      case 'executed': return { text: 'Executed', color: colors.success, icon: 'check-circle' };
+      case 'filled': return { text: 'Filled', color: colors.success, icon: 'check-circle' };
+      case 'failed': return { text: 'Failed', color: colors.error, icon: 'close-circle' };
+      case 'cancelled': return { text: 'Cancelled', color: colors.error, icon: 'cancel' };
+      case 'expired': return { text: 'Expired', color: colors.textTertiary, icon: 'timer-off-outline' };
+      case 'invalid': return { text: 'Invalid', color: colors.error, icon: 'alert-circle' };
+      case 'refunding': return { text: 'Refunding', color: colors.warning, icon: 'refresh' };
+      case 'refunded': return { text: 'Refunded', color: colors.warning, icon: 'cash-refund' };
+      default: break;
+    }
     if (isFailed) return { text: 'Failed', color: colors.error, icon: 'close-circle' };
     if (isPending) return { text: 'Pending', color: colors.pending, icon: 'clock-outline' };
     if (isSuccess) return { text: 'Success', color: colors.success, icon: 'check-circle' };
     if (txType === 'Send') return { text: 'Sent', color: colors.error, icon: 'arrow-up' };
     if (txType === 'Receive') return { text: 'Received', color: colors.success, icon: 'arrow-down' };
     if (txType === 'Approve') return { text: 'Approved', color: colors.accent, icon: 'check-circle' };
-    if (txType === 'Bridge') return { text: 'Bridge', color: colors.accent, icon: 'check-circle' };
     return { text: 'Unknown', color: colors.textTertiary, icon: 'help-circle' };
   };
 
@@ -280,13 +303,13 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
         case 'RANGO': return `https://explorer.rango.exchange/swap/${item.requestId}`;
         case "ALLBRIDGE":
           CustomInfoProvider.show("waiting", "Please Wait", "Collecting information.");
-            const getUrl = await sdk.getTransferStatus(item.fromChain, item.txHash);
-            if(getUrl.txId){
-              CustomInfoProvider.hide();
-              return `https://core.allbridge.io/explorer/transfer/${getUrl.send.hash}`;
-            }else{
-              CustomInfoProvider.show("error","!Opps","Tx under relay.");
-            }
+          const getUrl = await sdk.getTransferStatus(item.fromChain, item.txHash);
+          if (getUrl.txId) {
+            CustomInfoProvider.hide();
+            return `https://core.allbridge.io/explorer/transfer/${getUrl.send.hash}`;
+          } else {
+            CustomInfoProvider.show("error", "!Opps", "Tx under relay.");
+          }
         case 'UNISWAP':
         case 'EVMTX':
         case 'ONEINCH':
@@ -319,44 +342,44 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
     }
   };
 
-  const handlePress = async() => {
+  const handlePress = async () => {
     Animated.sequence([
       Animated.timing(scaleAnim, { toValue: 0.97, duration: 100, useNativeDriver: true }),
       Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true })
     ]).start();
-    if ((item.provider === "UNISWAP" || item.provider === "TX" || item.provider === "EVMTX") && item.status === "pending") {
-      CustomInfoProvider.show("waiting", "Please Wait", "Collecting information.");
-      const updatedStaus = await CheckTxStatus(item.txHash, item.fromChain);
-      if (updatedStaus.status === true && updatedStaus.message === TXSTATUS["processed"]) {
-        await proxyRequest('/v1/swapOrders/updateStatus', PPUT, {
-          txHash: item.txHash,
-          orderStatus: TXSTATUS["success"]
-        });
-        CustomInfoProvider.hide()
-        const explorerUrl = await getExplorerUrl();
-        if (explorerUrl) {
-          Linking.openURL(explorerUrl);
-        }
-      } else {
-        if (updatedStaus.status === false && updatedStaus.reqStatus === TXSTATUS["error"]) {
-          await proxyRequest('/v1/swapOrders/updateStatus', PPUT, {
-            txHash: item.txHash,
-            orderStatus: TXSTATUS["failed"]
-          });
+
+    const is1inchFusion = item.provider === 'ONEINCH_FUSION' || item.provider === 'ONEINCH_FUSION_PLUS';
+
+    if (is1inchFusion && item.status === 'pending') {
+      CustomInfoProvider.show("waiting", "Please Wait", "Checking order status...");
+      try {
+        const chain = item.fromChain || activeChain;
+        const { res, err } = await proxyRequest(
+          `/v1/swap/1inch/orderStatus?chain=${chain}&orderHash=${item.txHash || item.orderHash}&swapProvider=${item.provider}`,
+          PGET
+        );
+
+        if (!err?.status && res) {
+          onRefreshList();
+          CustomInfoProvider.hide();
+        } else {
           CustomInfoProvider.hide();
         }
-        const explorerUrl = await getExplorerUrl();
-        if (explorerUrl) {
-          Linking.openURL(explorerUrl);
-        }
+      } catch (e) {
+        console.error('1inch order status error:', e);
+        CustomInfoProvider.hide();
       }
-    } else {
-      CustomInfoProvider.hide();
-      const explorerUrl = await getExplorerUrl();
-      if (explorerUrl) {
-        Linking.openURL(explorerUrl);
-      }
+      return;
     }
+    
+    if(item.provider === "UNISWAP" || item.provider === "TX" || item.provider === "EVMTX"){
+      const explorerUrl = await getExplorerUrl();
+        if (explorerUrl) Linking.openURL(explorerUrl);
+    }
+
+    CustomInfoProvider.hide();
+    const explorerUrl = await getExplorerUrl();
+    if (explorerUrl) Linking.openURL(explorerUrl);
   };
 
   const copyToClipboard = (text, label) => {
@@ -370,9 +393,9 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
       'Transaction Options',
       'What would you like to do?',
       [
-        { text: 'Copy Hash', onPress: () => copyToClipboard(item.hash||item.txHash, 'Transaction hash') },
-        { 
-          text: 'Copy Address', 
+        { text: 'Copy Hash', onPress: () => copyToClipboard(item.hash || item.txHash, 'Transaction hash') },
+        {
+          text: 'Copy Address',
           onPress: () => {
             const address = txType === 'Send' ? item.to : item.from || item.walletAddress;
             copyToClipboard(address, 'Address');
@@ -392,21 +415,18 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
         onLongPress={handleLongPress}
         activeOpacity={0.7}
       >
-        {/* Icon & Status */}
         <View style={styles.cardLeft}>
           <View style={[styles.iconCircle, { backgroundColor: status.color + '15' }]}>
             <Icon name={status.icon} size={24} color={status.color} />
           </View>
         </View>
 
-        {/* Transaction Details */}
         <View style={styles.cardCenter}>
           <View style={styles.cardRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={[styles.assetText, { color: colors.textPrimary }]}>
-                {item.fromChain&&item.toChain?item.txType:item.asset || activeChain}
+                {item.fromChain && item.toChain ? item.txType : item.asset || activeChain}
               </Text>
-              {/* Show chain badge if transaction is from different chain */}
               {item.chain && item.chain !== activeChain && (
                 <View style={[styles.chainBadge, { backgroundColor: colors.chipBg }]}>
                   <Text style={[styles.chainBadgeText, { color: colors.textSecondary }]}>
@@ -419,7 +439,7 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
 
           <Text style={[styles.addressText, { color: colors.textSecondary }]}>
             {isPending || isFailed || isApprove || isSuccess
-              ? item.fromChain&&item.toChain?`${item.fromChain} (${item.fromToken}) to ${item.toChain} (${item.toToken})`:shortenAddress(item.hash, 6)
+              ? item.fromChain && item.toChain ? `${item.fromChain} (${item.fromToken}) to ${item.toChain} (${item.toToken})` : shortenAddress(item.hash, 6)
               : txType === 'Send'
                 ? `To: ${shortenAddress(item.to)}`
                 : `From: ${shortenAddress(item.from)}`
@@ -428,30 +448,23 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
 
           {item.timestamp && (
             <Text style={[styles.timeText, { color: colors.textTertiary }]}>
-              {new Date(item.timestamp).toLocaleString('en-US', { 
-                month: 'short', 
-                day: 'numeric', 
-                hour: '2-digit', 
-                minute: '2-digit' 
+              {new Date(item.timestamp).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
               })}
             </Text>
           )}
         </View>
 
-        {/* Amount - with txType just above */}
         <View style={styles.cardRight}>
           <View style={[styles.statusBadge, { backgroundColor: status.color + '15' }]}>
-              <Text style={[styles.statusBadgeText, { color: status.color }]}>
-                {status.text}
-              </Text>
-            </View>
-          {/* Show txType just above amount */}
-          {(isPending || isFailed || isApprove || isSuccess) && txType && (
-            <Text style={[styles.txTypeTextRight, { color: colors.textSecondary }]}>
-              {txType}
+            <Text style={[styles.statusBadgeText, { color: status.color }]}>
+              {status.text}
             </Text>
-          )}
-          
+          </View>
+
           {!isApprove && item.value !== 0 && (
             <Text style={[
               styles.amountText,
@@ -461,8 +474,8 @@ const TransactionCard = ({ item, walletAddress, activeChain, navigation, colors 
               {formatNumber(item.value || item.formattedAmount || item.amountIn || 0)}
             </Text>
           )}
-          
-          {isPending && (
+
+          {['pending', 'created', 'partially_filled', 'refunding'].includes(item.status) && (
             <View style={styles.pendingIndicator}>
               <ActivityIndicator size="small" color={colors.pending} />
             </View>
@@ -511,7 +524,6 @@ const TransactionHistory = () => {
   const [activeChain, setActiveChain] = useState('ETH');
   const [activeFilter, setActiveFilter] = useState('All');
   const [apiTransactions, setApiTransactions] = useState([]);
-  const [recentTransactions, setRecentTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -527,7 +539,6 @@ const TransactionHistory = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // Get previous screen name from navigation state
   const previousScreen = useNavigationState(state => {
     const routes = state?.routes || [];
     const currentIndex = state?.index;
@@ -538,12 +549,10 @@ const TransactionHistory = () => {
   });
 
   useEffect(() => {
-    // Only set initial chain on first mount or when explicitly passed via route params
     if (route?.params?.txType) {
-      setActiveChain(route.params.txType||"ETH");
+      setActiveChain(route.params.txType || "ETH");
     }
-    
-    // Auto-select filter based on previous screen
+
     if (previousScreen === 'Settings' || previousScreen === 'Setting' || previousScreen === 'TxDetail' || previousScreen === 'HomeScreen') {
       setActiveFilter('All');
     } else if (previousScreen) {
@@ -556,59 +565,78 @@ const TransactionHistory = () => {
     fetchTransactions();
   }, [activeChain]);
 
-  // Fetch recent transactions from ShortTermStorage for Recent filter
   useEffect(() => {
     if (activeFilter === 'Recent') {
       fetchRecentTransactions();
     }
   }, [activeFilter]);
 
+  // --- AUTO REFRESH LOOP FOR PENDING TRANSACTIONS (RECENT ONLY) ---
+  useEffect(() => {
+    let intervalId = null;
+
+    if (activeFilter === 'Recent' && isFocused) {
+      const hasPendingTransactions = transactions.some(tx => 
+        tx.isPending === true || ['pending', 'created', 'partially_filled', 'refunding'].includes(tx.status)
+      );
+
+      if (hasPendingTransactions) {
+        intervalId = setInterval(() => {
+          fetchRecentTransactions(false);
+        }, 5000);
+      }
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [transactions, activeFilter, isFocused]);
+  // -----------------------------------------------------------------
+
   const fetchRecentTransactions = async (isLoadMore = false) => {
-  try {
-    if (!isLoadMore) {
-      setIsLoading(true);
-      setError(null);
-      setPage(1);
-      setTransactions([]);
-    } else {
-      setIsLoadingMore(true);
+    try {
+      if (!isLoadMore) {
+        if (transactions.length === 0) setIsLoading(true);
+        setError(null);
+        setPage(1);
+      } else {
+        setIsLoadingMore(true);
+      }
+
+      const currentPage = isLoadMore ? page : 1;
+      const params = new URLSearchParams();
+      params.append('limit', limit);
+      params.append('page', currentPage);
+
+      const { res, err } = await proxyRequest(
+        `/v1/swapOrders/orderByWallet?address=${walletAddress}&${params.toString()}`,
+        PGET
+      );
+
+      if (err?.status) {
+        setError('Failed to fetch transactions');
+        return;
+      }
+
+      if (res?.ok === true) {
+        const formattedTxs = res.data.data.map(tx => ({
+          ...tx,
+          timestamp: tx.confirmedAt || tx.createdAt
+        }));
+
+        setTransactions(prev => isLoadMore ? [...prev, ...formattedTxs] : formattedTxs);
+        setHasNext(res.data.hasNext);
+        if (res.data.hasNext) setPage(prev => prev + 1);
+      }
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      setError('Something went wrong');
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+      setRefreshing(false);
     }
-
-    const currentPage = isLoadMore ? page : 1;
-
-    const params = new URLSearchParams();
-    params.append('limit', limit);
-    params.append('page', currentPage);
-
-    const { res, err } = await proxyRequest(
-      `/v1/swapOrders/orderByWallet?address=${walletAddress}&${params.toString()}`, 
-      PGET
-    );
-
-    if (err?.status) {
-      setError('Failed to fetch transactions');
-      return;
-    }
-
-    if (res?.ok === true) {
-      const formattedTxs = res.data.data.map(tx => ({
-        ...tx,
-        timestamp: tx.confirmedAt || tx.createdAt
-      }));
-
-      setTransactions(prev => isLoadMore ? [...prev, ...formattedTxs] : formattedTxs);
-      setHasNext(res.data.hasNext);
-      if (res.data.hasNext) setPage(prev => prev + 1);
-    }
-  } catch (error) {
-    console.error('Error fetching transactions:', error);
-    setError('Something went wrong');
-  } finally {
-    setIsLoading(false);
-    setIsLoadingMore(false);
-    setRefreshing(false);
-  }
-};
+  };
 
   const fetchTransactions = async (isLoadMore = false) => {
     if (activeChain === 'STR') return;
@@ -616,27 +644,24 @@ const TransactionHistory = () => {
 
     try {
       if (!isLoadMore) {
-        setLoading(true);
+        if (apiTransactions.length === 0) setLoading(true);
         setError(null);
         setSentPageKey(null);
         setReceivedPageKey(null);
         setHasNextPage(true);
-        setApiTransactions([]);
       } else {
         setLoadingMore(true);
       }
 
-
       let endpoint = `/v1/transaction-history`;
-
       const params = new URLSearchParams();
       if (isLoadMore && sentPageKey) params.append('sentPageKey', sentPageKey);
       if (isLoadMore && receivedPageKey) params.append('receivedPageKey', receivedPageKey);
       if (params.toString()) endpoint += `?${params.toString()}`;
 
-      const { res, err } = await proxyRequest(endpoint, PPOST,{
+      const { res, err } = await proxyRequest(endpoint, PPOST, {
         walletAddress,
-        chain:activeChain.toLowerCase()==="bnb"?"bsc":activeChain.toLowerCase()
+        chain: activeChain.toLowerCase() === "bnb" ? "bsc" : activeChain.toLowerCase()
       });
 
       if (err?.status) {
@@ -678,7 +703,6 @@ const TransactionHistory = () => {
     }
   };
 
-  // Updated filteredTransactions logic
   const filteredTransactions = useMemo(() => {
     if (activeFilter === 'Recent') {
       return transactions;
@@ -691,14 +715,7 @@ const TransactionHistory = () => {
       if (tx.to?.toLowerCase() === walletAddress?.toLowerCase()) return activeFilter === 'Receive';
       return false;
     });
-  }, [apiTransactions, recentTransactions, activeFilter, walletAddress,isLoading,transactions]);
-
-  // // Auto-switch to 'All' if Recent filter is empty
-  // useEffect(() => {
-  //   if (activeFilter === 'Recent' && filteredTransactions.length === 0 && !loading) {
-  //     setActiveFilter('All');
-  //   }
-  // }, [filteredTransactions, activeFilter, loading]);
+  }, [apiTransactions, activeFilter, walletAddress, transactions]);
 
   const groupedTransactions = useMemo(() => {
     return groupTransactionsByDate(filteredTransactions);
@@ -722,16 +739,20 @@ const TransactionHistory = () => {
   );
 
   const renderTransaction = ({ item }) => (
-    <TransactionCard 
-      item={item} 
+    <TransactionCard
+      item={item}
       walletAddress={walletAddress}
       activeChain={activeChain}
+      activeFilter={activeFilter}
       navigation={navigation}
       colors={colors}
+      onRefreshList={() => {
+        if (activeFilter === 'Recent') fetchRecentTransactions();
+        else fetchTransactions(false);
+      }}
     />
   );
 
-  // Convert grouped transactions to sections
   const sections = Object.keys(groupedTransactions).map(dateKey => ({
     title: dateKey,
     data: groupedTransactions[dateKey]
@@ -756,29 +777,26 @@ const TransactionHistory = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Wallet_screen_header 
-        title="Transactions" 
-        onLeftIconPress={() => navigation.goBack()} 
+      <Wallet_screen_header
+        title="Transactions"
+        onLeftIconPress={() => navigation.goBack()}
       />
 
-      {/* Chain Selector & Filters */}
       <View style={styles.headerSection}>
-        {/* Chain Selector - Hide when Recent filter is active */}
         {activeFilter !== 'Recent' && (
-          <ChainSelector 
-            activeChain={activeChain} 
+          <ChainSelector
+            activeChain={activeChain}
             onSelect={setActiveChain}
             colors={colors}
           />
         )}
-        <FilterChips 
-          activeFilter={activeFilter} 
+        <FilterChips
+          activeFilter={activeFilter}
           onFilterChange={setActiveFilter}
           colors={colors}
         />
       </View>
 
-      {/* Loading State */}
       {loading || isLoading ? (
         <View style={styles.loadingContainer}>
           {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -786,11 +804,10 @@ const TransactionHistory = () => {
           ))}
         </View>
       ) : error ? (
-        // Error State
         <View style={styles.errorContainer}>
           <Icon name="alert-circle-outline" size={48} color={colors.error} />
           <Text style={[styles.errorText, { color: colors.textPrimary }]}>{error}</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.retryButton, { backgroundColor: colors.accent }]}
             onPress={fetchTransactions}
           >
@@ -798,54 +815,52 @@ const TransactionHistory = () => {
           </TouchableOpacity>
         </View>
       ) : filteredTransactions.length === 0 ? (
-        // Empty State
         <EmptyState activeFilter={activeFilter} colors={colors} />
       ) : (
-        // Transaction List
-              <FlatList
-                data={sections}
-                keyExtractor={(item, index) => `section-${index}`}
-                renderItem={({ item: section }) => (
-                  <View>
-                    {renderSectionHeader({ section })}
-                    {section.data.map((tx, index) => (
-                      <View key={`${tx.hash}-${index}`}>
-                        {renderTransaction({ item: tx })}
-                      </View>
-                    ))}
-                  </View>
-                )}
-                contentContainerStyle={styles.listContent}
-                showsVerticalScrollIndicator={false}
-                onEndReached={handleLoadMore}       
-                onEndReachedThreshold={0.3}        
-                ListFooterComponent={() => (
-                  loadingMore ? (
-                    <ActivityIndicator
-                      size="small"
-                      color={colors.accent}
-                      style={{ marginVertical: 16 }}
-                    />
-                  ) : !hasNextPage && apiTransactions.length > 0 ? (
-                    <Text style={{
-                      textAlign: 'center',
-                      color: colors.textTertiary,
-                      marginVertical: 16,
-                      fontSize: 13
-                    }}>
-                      No more transactions
-                    </Text>
-                  ) : null
-                )}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={onRefresh}
-                    colors={[colors.accent]}
-                    tintColor={colors.accent}
-                  />
-                }
+        <FlatList
+          data={sections}
+          keyExtractor={(item, index) => `section-${index}`}
+          renderItem={({ item: section }) => (
+            <View>
+              {renderSectionHeader({ section })}
+              {section.data.map((tx, index) => (
+                <View key={`${tx.hash}-${index}`}>
+                  {renderTransaction({ item: tx })}
+                </View>
+              ))}
+            </View>
+          )}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={() => (
+            loadingMore ? (
+              <ActivityIndicator
+                size="small"
+                color={colors.accent}
+                style={{ marginVertical: 16 }}
               />
+            ) : !hasNextPage && (apiTransactions.length > 0 || transactions.length > 0) ? (
+              <Text style={{
+                textAlign: 'center',
+                color: colors.textTertiary,
+                marginVertical: 16,
+                fontSize: 13
+              }}>
+                No more transactions
+              </Text>
+            ) : null
+          )}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[colors.accent]}
+              tintColor={colors.accent}
+            />
+          }
+        />
       )}
     </View>
   );
@@ -889,6 +904,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingTop: 8,
     paddingBottom: 32,
+    maxHeight:"80%"
   },
   modalHandle: {
     width: 40,

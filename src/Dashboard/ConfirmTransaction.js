@@ -65,7 +65,6 @@ const ConfirmTransaction = (props) => {
 
       if (res.txHash) {
         try {
-          ShowToast(toast, "Transaction Successful");
           await ShortTermStorage.syncTx({
             txHash: res?.txHash,
             walletAddress: state && state.wallet && state.wallet.address,
@@ -101,7 +100,6 @@ const ConfirmTransaction = (props) => {
 
       if (res.txHash) {
         try {
-          ShowToast(toast, "Transaction Successful");
           await ShortTermStorage.syncTx({
             txHash: res?.txHash,
             walletAddress: state && state.wallet && state.wallet.address,

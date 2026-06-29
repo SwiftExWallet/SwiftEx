@@ -23,7 +23,7 @@ import { Animated } from "react-native";
 import { useDispatch, useSelector } from "react-redux";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
-import { Camera, useCameraDevice, useCodeScanner } from "react-native-vision-camera";
+import { Camera, useCameraDevice, useCameraPermission, useCodeScanner } from "react-native-vision-camera";
 import { SendCrypto } from "./sendFunctions";
 import "react-native-get-random-values";
 import "@ethersproject/shims";
@@ -42,8 +42,10 @@ import { colors } from "../../Screens/ThemeColorsConfig";
 import { ChainSupportedToken } from "../exchange/crypto-exchange-front-end-main/src/components/ChainWithTokenInfo";
 import ShortTermStorage from "../../utilities/ShortTermStorage";
 import MultiChainTokenSend from "../exchange/crypto-exchange-front-end-main/src/components/MultiChainTokenSend";
+import { UI_CHAIN_NAME } from "../../utilities/TokenUtils";
 
 const SendTokens = (props) => {
+  const { hasPermission, requestPermission } = useCameraPermission();
   const cameraRef = useRef(null);
   const device = useCameraDevice('back');
   const [selectedChain, setSelectedChain] = useState({
@@ -254,6 +256,12 @@ const checkPermission = async () => {
       }
     }
     setModalVisible(true);
+  } else {
+    if (!hasPermission) {
+      requestPermission()
+    } else {
+      setModalVisible(true);
+    }
   }
 };
   async function a()
@@ -357,7 +365,7 @@ const checkPermission = async () => {
             <View style={{alignItems:"center"}}>
               <Image source={{uri:selectedChain.logoURI}} width={wp(6.7)} height={hp(3)}/>
               <Text style={[style.currency, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
-                {selectedChain.symbol || 'Native'}
+                {UI_CHAIN_NAME[selectedChain.symbol]||selectedChain.symbol || 'Native'}
               </Text>
             </View>
             </View>
@@ -466,7 +474,7 @@ const checkPermission = async () => {
                     setLoading(false);
                     navigation.navigate("Transactions");
                   }else{
-                    CustomInfoProvider.show("error", "!Opps","Transaction failed to send please check and try again.");
+                    CustomInfoProvider.show("error", "!Opps",txResponse.error||"Transaction failed to send please check and try again.");
                     setLoading(false);
                   }
                 }
@@ -546,6 +554,7 @@ const checkPermission = async () => {
           }
           showOnlyEvm={false}
           showDataType={"sendEnable"}
+          selectedAsset={selectedChain}
           />
           </View>
 </>

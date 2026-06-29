@@ -23,6 +23,19 @@ export const useAssetManager = (walletAddress) => {
                     };
                 }
 
+                if (apiToken && apiToken.balanceUSD !== undefined && apiToken.balanceUSD !== null) {
+                    const balanceVal = parseFloat(apiToken.balanceUSD);
+                    if (balanceVal <= 0) {
+                        return apiToken;
+                    }
+
+                    const isWorthy = balanceVal >= 0.50;
+                    return {
+                        ...apiToken,
+                        active: isWorthy ? true : false
+                    };
+                }
+
                 return apiToken;
             });
             const apiIds = new Set(apiTokens.map(getAssetId));

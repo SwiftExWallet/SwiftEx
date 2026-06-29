@@ -1,15 +1,13 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   ActivityIndicator,
   Image,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
   Animated,
-  Dimensions,
 } from "react-native";
 import Icon from "../icon";
 import {
@@ -20,13 +18,11 @@ import { useNavigation } from "@react-navigation/native";
 import RecieveAddress from "./Modals/ReceiveAddress";
 import { REACT_APP_LOCAL_TOKEN } from "./exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
-import { GET, authRequest } from "./exchange/crypto-exchange-front-end-main/src/api";
 import { alert } from "./reusables/Toasts";
 import { LineChart } from "react-native-gifted-charts";
 import { useSelector } from "react-redux";
 import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import Stellar_image from "../../assets/Stellar_(XLM).png";
-import brridge_new from "../../assets/brridge_new.png";
 import TokenQrCode from "./Modals/TokensQrCode";
 import InfoComponent from "./exchange/crypto-exchange-front-end-main/src/components/InfoComponent";
 import LinearGradient from "react-native-linear-gradient";
@@ -68,7 +64,6 @@ const Asset_info = ({ route }) => {
   );
 
   const assetImage = useMemo(() => {
-    if (assetSymbol === "XLM") return Stellar_image;
     return { uri: asset_type?.img || asset_type?.imageUrl };
   }, [assetSymbol, asset_type]);
 
@@ -142,29 +137,56 @@ const Asset_info = ({ route }) => {
     }
   };
 
-  const fetchBinanceData = async (symbol) => {
+const fetchBinanceData = async (symbol) => {
     try {
-      const normalizedSymbol = symbol === "USDT" ? "USDC" : CHAINTOCHARTID[symbol];
+      const currentChain = asset_type?.chain;
+      const cleanSymbol = symbol ? symbol.toUpperCase() : "";
+      let targetTicker = cleanSymbol;
+      if (cleanSymbol === "USDT" || cleanSymbol === "USDC") {
+        targetTicker = "USDC"; 
+      } 
+      else if (asset_type?.contractAddress === "Native" && CHAINTOCHARTID[currentChain]) {
+        targetTicker = CHAINTOCHARTID[currentChain];
+      } 
+      else if (CHAINTOCHARTID[cleanSymbol]) {
+        targetTicker = CHAINTOCHARTID[cleanSymbol];
+      }
+      
       const response = await fetch(
-        `https://api.binance.com/api/v3/ticker/tradingDay?symbol=${normalizedSymbol}USDT`
+        `https://api.binance.com/api/v3/ticker/tradingDay?symbol=${targetTicker}USDT`
       );
+      if (!response.ok) throw new Error(`Binance pair ${targetTicker}USDT not found`);
       const data = await response.json();
 
       setAssetData({
-        current_price: parseFloat(data.lastPrice),
-        high_24h: parseFloat(data.highPrice),
-        low_24h: parseFloat(data.lowPrice),
+        current_price: parseFloat(data.lastPrice) || 0,
+        high_24h: parseFloat(data.highPrice) || 0,
+        low_24h: parseFloat(data.lowPrice) || 0,
         market_cap: "N/A",
-        total_volume: parseFloat(data.volume),
+        total_volume: parseFloat(data.volume) || 0,
         total_supply: "N/A",
-        price_change_percentage_24h: parseFloat(data.priceChangePercent),
+        price_change_percentage_24h: parseFloat(data.priceChangePercent) || 0,
       });
 
-      setCurrentPrice(parseFloat(data.lastPrice));
-      setPriceChange(parseFloat(data.priceChangePercent));
+      setCurrentPrice(parseFloat(data.lastPrice) || 0);
+      setPriceChange(parseFloat(data.priceChangePercent) || 0);
       setLoading(false);
     } catch (error) {
-      console.error("Binance data error:", error);
+      console.error("Binance data fetch fallback error:", error);
+      
+      if (asset_type?.price) {
+        setAssetData({
+          current_price: asset_type.price,
+          high_24h: asset_type.price,
+          low_24h: asset_type.price,
+          market_cap: "N/A",
+          total_volume: 0,
+          total_supply: "N/A",
+          price_change_percentage_24h: 0,
+        });
+        setCurrentPrice(asset_type.price);
+        setPriceChange(0);
+      }
       setLoading(false);
     }
   };
@@ -184,18 +206,29 @@ const Asset_info = ({ route }) => {
     setChartError(false);
 
     try {
-      const normalizedSymbol = symbol === "USDT" ? "USDC" : CHAINTOCHARTID[symbol];
+      const currentChain = asset_type?.chain;
+      const cleanSymbol = symbol ? symbol.toUpperCase() : "";
+      let targetTicker = cleanSymbol;
+      if (cleanSymbol === "USDT" || cleanSymbol === "USDC") {
+        targetTicker = "USDC";
+      } 
+      else if (asset_type?.contractAddress === "Native" && CHAINTOCHARTID[currentChain]) {
+        targetTicker = CHAINTOCHARTID[currentChain];
+      } 
+      else if (CHAINTOCHARTID[cleanSymbol]) {
+        targetTicker = CHAINTOCHARTID[cleanSymbol];
+      }
+
       const { interval, limit } = getIntervalForTimeframe(timeframe);
       
       const response = await fetch(
-        `https://api.binance.com/api/v1/klines?symbol=${normalizedSymbol}USDT&interval=${interval}&limit=${limit}`
+        `https://api.binance.com/api/v1/klines?symbol=${targetTicker}USDT&interval=${interval}&limit=${limit}`
       );
 
-      if (!response.ok) throw new Error("Failed to fetch chart");
+      if (!response.ok) throw new Error(`Failed to fetch chart for ${targetTicker}USDT`);
 
       const data = await response.json();
-      
-      if (!data || data.length === 0) throw new Error("No chart data");
+      if (!data || data.length === 0) throw new Error("No chart endpoints found");
 
       const formattedData = data.map((item) => ({
         value: parseFloat(item[4]),
@@ -215,7 +248,7 @@ const Asset_info = ({ route }) => {
 
       setChartLoading(false);
     } catch (error) {
-      console.error("Chart fetch error:", error);
+      console.error("Chart layout fetch error:", error);
       setChartError(true);
       setChartLoading(false);
       
@@ -271,20 +304,21 @@ const Asset_info = ({ route }) => {
   }, [token, navigation]);
 
   const handleSwap = useCallback(() => {
- navigation.navigate("newOffer_modal", {
-                purchesReq:0,
-                tradeAssetType:
-                  assetSymbol === "BSC"
-                    ? "ETH"
-                    : ["ETH"].includes(assetSymbol)
-                      ? assetSymbol
-                      : assetSymbol?.toUpperCase(), tradeAssetIssuer: ["ETH", "BTC", "BSC"].includes(assetSymbol) ? "GBFXOHVAS43OIWNIO7XLRJAHT3BICFEIKOJLZVXNT572MISM4CMGSOCC" : null
-              })
+    if(asset_type.chain==="Stellar"){
+      navigation.navigate("newOffer_modal", {
+        purchesReq:0,
+        tradeAssetType:
+        assetSymbol === "BSC"
+        ? "ETH"
+        : ["ETH"].includes(assetSymbol)
+        ? assetSymbol
+        : assetSymbol?.toUpperCase(), tradeAssetIssuer: ["ETH", "BTC", "BSC"].includes(assetSymbol) ? "GBFXOHVAS43OIWNIO7XLRJAHT3BICFEIKOJLZVXNT572MISM4CMGSOCC" : null
+      })
+    }else{
+      navigation.navigate("EthSwap");
+    }
   }, [token, assetSymbol, navigation]);
 
-  const handleHistory = useCallback(() => {
-    navigation.navigate("Transactions");
-  }, []);
 
   const ActionButton = ({ icon,iconProvider, label, onPress, disabled, customInfo, customInfoTxt }) => (
     <TouchableOpacity
@@ -386,7 +420,7 @@ const Asset_info = ({ route }) => {
           <View style={[styles.chartContainer,{backgroundColor:isDark?"#242426":"#F4F4F8"}]}>
             <View style={styles.headerSection}>
               <View style={styles.assetHeader}>
-                  {!(assetImage?.uri||assetImage?.source)?<LinearGradient
+                  {!(assetImage?.uri||assetImage?.source||assetImage?.imageUrl)?<LinearGradient
                     colors={['#3b82f6', '#8b5cf6']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
@@ -535,7 +569,7 @@ const Asset_info = ({ route }) => {
               <ActionButton
                 icon="swap-vert"
                 iconProvider={"material"}
-                label={`Swap${"\n"}(SDEX)`}
+                label={`Swap${"\n"}`}
                 onPress={handleSwap}
                 customInfo={true}
                 customInfoTxt={"This swap runs on Stellar’s on-chain SDEX. A small network fee (typically a fraction of a cent) is paid to the Stellar network per swap."}
@@ -545,20 +579,6 @@ const Asset_info = ({ route }) => {
                 iconProvider={"material"}
                 label="Buy"
                 onPress={handleBuy}
-              />
-              <ActionButton
-                icon="bridge"
-                iconProvider={"materialCommunity"}
-                label="Bridge"
-                onPress={()=>{
-                  if (asset_type.chain === "Stellar") {
-                    navigation.navigate("ExportUSDC", { Asset_type: "ETH" })
-                  } else {
-                    navigation.navigate("BridgeAssets", {
-                      Asset_type: assetSymbol === "XLM" ? "ETH" : assetSymbol,
-                    })
-                  }
-                }}
               />
             </View>
 
@@ -589,7 +609,7 @@ const Asset_info = ({ route }) => {
                         { color: isDark ? "#E6E8EB" : "#232428" },
                       ]}
                     >
-                      Last price
+                      Price Change 24h
                     </Text>
                     <Text
                       style={[
@@ -597,8 +617,8 @@ const Asset_info = ({ route }) => {
                         { color: isDark ? "#E6E8EB" : "#282828" },
                       ]}
                     >
-                      {assetData.total_supply !== "N/A"
-                        ? `${assetData.total_supply?.toLocaleString()} ${assetSymbol}`
+                      {assetData.price_change_percentage_24h !== "N/A"
+                        ? `${assetData.price_change_percentage_24h} %`
                         : "Info unavailable"}
                     </Text>
                   </View>

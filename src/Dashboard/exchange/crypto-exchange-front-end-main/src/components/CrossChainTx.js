@@ -647,6 +647,15 @@ const CrossChainTx = ({ props }) => {
           amountOut: fromAmount.toString(),
           txType:"Bridge"
         })
+        await LocalTxManager.saveTx(state && state.wallet && state.wallet.address, {
+          chain: selectedFromNetwork.chainName,
+          hash: res.transferTxHash,
+          status: "pending",
+          statusColor: "#eec14fff",
+          timestamp: Date.now(),
+          symbol: selectedFromAsset.symbol,
+          amount: fromAmount.toString(),
+        });
         txHashes.push({
           chain: selectedFromNetwork.chainName,
           hash: res.transferTxHash,

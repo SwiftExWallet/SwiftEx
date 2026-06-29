@@ -24,7 +24,7 @@ import { useSelector } from "react-redux";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { isInteger } from "lodash";
 import { isFloat } from "validator";
-import { Camera, useCameraDevice, useCodeScanner } from "react-native-vision-camera";
+import { Camera, useCameraDevice, useCameraPermission, useCodeScanner } from "react-native-vision-camera";
 import { useToast } from "native-base";
 import { Wallet_screen_header } from "../../../../reusables/ExchangeHeader";
 import ErrorComponet from "../../../../../utilities/ErrorComponet";
@@ -43,6 +43,7 @@ import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
 import AccessNativeStorage from "../../../../Wallets/AccessNativeStorage";
 import { CHAINS } from "../../../../../utilities/TokenUtils";
 const TokenSend = ({ route }) => {
+  const { hasPermission, requestPermission } = useCameraPermission();
   const toast = useToast();
   const FOCUSED = useIsFocused()
   const [show, setshow] = useState(false);
@@ -318,6 +319,12 @@ const TokenSend = ({ route }) => {
         }
       }
       setModalVisible(true);
+    } else {
+      if (!hasPermission) {
+        requestPermission()
+      } else {
+        setModalVisible(true);
+      }
     }
   };
 

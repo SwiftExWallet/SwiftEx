@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { colors } from "../Screens/ThemeColorsConfig";
 import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from "react-native-responsive-screen";
-import { CHAINS, TemporaryTokens } from "../utilities/TokenUtils";
+import { CHAINS, isNativeTokenAddress, TemporaryTokens, UI_CHAIN_NAME } from "../utilities/TokenUtils";
 import { useEffect, useMemo, useState } from "react";
 import ToggleSwitch from "toggle-switch-react-native";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
@@ -69,16 +69,18 @@ export const GetCryptoList = async (chainId, state) => {
                     !tokenAddr ||
                     tokenAddr === '0x0000000000000000000000000000000000000000';
 
+                const normalizeChain = (chain) => chain === 'STR' ? 'Stellar' : chain;
                 const portfolioToken = isNative
                     ? activeWalletTokens.find(t =>
-                        t.chain === chainId &&
+                        normalizeChain(t.chain) === normalizeChain(chainId) &&
                         (
                             t.contractAddress?.toLowerCase() === 'native' ||
-                            t.contractAddress?.toLowerCase() === '0x0000000000000000000000000000000000000000' ||
-                            t.symbol?.toLowerCase() === token.symbol?.toLowerCase()
+                            t.symbol?.toLowerCase() === token.symbol?.toLowerCase() ||
+                            t.symbol?.toLowerCase() === token.code?.toLowerCase()
                         )
                     )
                     : activeWalletTokens.find(t =>
+                        normalizeChain(t.chain) === normalizeChain(chainId) &&
                         t.contractAddress?.toLowerCase() === tokenAddr
                     );
 
@@ -88,20 +90,23 @@ export const GetCryptoList = async (chainId, state) => {
                     chain: chainId
                 };
             })
-            .sort((a, b) => {
-                if (a.type !== b.type) {
-                    return a.type === 'NATIVE' ? -1 : 1;
-                }
+                .sort((a, b) => {
+                    const aIsNative = a.type === 'NATIVE' || !a.address && !a.issuer;
+                    const bIsNative = b.type === 'NATIVE' || !b.address && !b.issuer;
 
-                const balanceA = parseFloat(a.balance || '0');
-                const balanceB = parseFloat(b.balance || '0');
+                    if (aIsNative !== bIsNative) {
+                        return aIsNative ? -1 : 1;
+                    }
 
-                if (balanceA > 0 || balanceB > 0) {
-                    return balanceB - balanceA;
-                }
+                    const balanceA = parseFloat(a.balance || '0');
+                    const balanceB = parseFloat(b.balance || '0');
 
-                return a.symbol||a.code.localeCompare(b.symbol||b.code);
-            });
+                    if (balanceA > 0 || balanceB > 0) {
+                        return balanceB - balanceA;
+                    }
+
+                    return (a.symbol || a.code || '').localeCompare(b.symbol || b.code || '');
+                });
 
         return {
             status: true,
@@ -370,11 +375,7 @@ export const TokensManagement = () => {
                     onChangeText={(value) => { setFindBar(value) }}
                 />
             </View>
-            {loading
-                ? <View style={styles.loadingCon}>
-                    <ActivityIndicator size={"large"} color={theme.headingTx} />
-                </View>
-                : <FlatList
+             <FlatList
                     style={styles.listCon}
                     contentContainerStyle={{ flexGrow: 1 }}
                     data={refineInfo}
@@ -384,17 +385,20 @@ export const TokensManagement = () => {
                             <View style={styles.flatView}>
                                 <Image source={{ uri: item.logoURI || item.icon }} style={styles.img} />
                                 <View>
-                                    <Text style={styles.cardTitel}>{item.symbol || item.code}</Text>
+                                    <Text style={styles.cardTitel}>{UI_CHAIN_NAME[item.symbol || item.code] || item.symbol || item.code}</Text>
                                     <Text style={styles.cardSubTitel}>{item.name || item.domain}</Text>
                                 </View>
                             </View>
-                            <ToggleSwitch
-                                isOn={item.active}
-                                onColor="#4052D6"
-                                offColor="gray"
-                                size="medium"
-                                onToggle={() => { updatePortfolio(item) }}
-                            />
+                            {item?.address !== isNativeTokenAddress &&
+                                item?.code !== "XLM" && (
+                                    <ToggleSwitch
+                                        isOn={item.active}
+                                        onColor="#4052D6"
+                                        offColor="gray"
+                                        size="medium"
+                                        onToggle={() => updatePortfolio(item)}
+                                    />
+                                )}
                         </View>
                     )}
                     ListEmptyComponent={
@@ -403,7 +407,6 @@ export const TokensManagement = () => {
                         </View>
                     }
                 />
-            }
         </View>
     );
 };

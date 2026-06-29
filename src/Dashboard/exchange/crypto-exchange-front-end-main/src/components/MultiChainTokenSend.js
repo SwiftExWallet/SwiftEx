@@ -23,7 +23,7 @@ import { useSelector } from "react-redux";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { isInteger } from "lodash";
 import { isFloat } from "validator";
-import { Camera, useCameraDevice, useCodeScanner } from "react-native-vision-camera";
+import { Camera, useCameraDevice, useCameraPermission, useCodeScanner } from "react-native-vision-camera";
 import { useToast } from "native-base";
 import ErrorComponet from "../../../../../utilities/ErrorComponet";
 import { Paste } from "../../../../../utilities/utilities";
@@ -39,6 +39,7 @@ import LinearGradient from "react-native-linear-gradient";
 import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
 import { CHAINS } from "../../../../../utilities/TokenUtils";
 const MultiChainTokenSend = ({ route }) => {
+  const { hasPermission, requestPermission } = useCameraPermission();
   const toast = useToast();
   const FOCUSED = useIsFocused()
   const [show, setshow] = useState(false);
@@ -285,6 +286,12 @@ const MultiChainTokenSend = ({ route }) => {
         }
       }
       setModalVisible(true);
+    } else {
+      if (!hasPermission) {
+        requestPermission()
+      } else {
+        setModalVisible(true);
+      }
     }
   };
 
@@ -609,7 +616,7 @@ const styles = StyleSheet.create({
   },
   bottomContainer: {
     position: 'absolute',
-    bottom: 0,
+    bottom: hp(5),
     left: 0,
     right: 0,
     paddingHorizontal: wp(4),

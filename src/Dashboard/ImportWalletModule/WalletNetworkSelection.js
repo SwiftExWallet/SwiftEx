@@ -589,6 +589,150 @@ export const WalletNetworkSelection = (props) => {
         }
     }
 
+    const restoreSetupStellarWallet = async (key) => {
+        try {
+            Keyboard.dismiss()
+            const checkWalletName = await checkWalletExistOrNot(accountName);
+            if (checkWalletName) {
+                return false;
+            }
+            if (!accountName) {
+                return alert("error", "Please enter an wallet name to proceed");
+            }
+            setLoading(true);
+            const user = await AsyncStorage.getItem("user");
+            const check = await validateStellarKey(key);
+            console.info("check", check, key)
+            if (!check.validateStellarKey) {
+                setLoading(false);
+                return alert(
+                    "error",
+                    "Incorrect Secret Key. Please provide a valid Secret Key"
+                );
+            }
+            const accountFromMnemonic = await NativeModules.EthereumWallet.importStellarPrivateKey(key);
+            const dydxAddress = await dydxAddressDrive(accountFromMnemonic.generated.privateKey)
+            const wallet = {
+                address: accountFromMnemonic.generated.address,
+                xrp: {
+                    address: "000000000"
+                },
+                stellarWallet: {
+                    publicKey: accountFromMnemonic.original.publicKey
+                },
+            };
+            const pin = await AsyncStorage.getItem("pin");
+            const body = {
+                accountName: accountName,
+                pin: JSON.parse(pin),
+            };
+            const token = genUsrToken(body);
+            console.log(token);
+
+            const accounts = {
+                address: wallet.address,
+                name: accountName,
+                xrp: {
+                    address: "000000000",
+                },
+                stellarWallet: {
+                    publicKey: wallet.stellarWallet.publicKey,
+                },
+                walletType: "Multi-coin",
+                dydx: {
+                    dydxAddress: dydxAddress.dydxAddress,
+                    dydxPublicKey: dydxAddress.publicKey,
+                },
+                wallets: [],
+            };
+            let wallets = [];
+            wallets.push(accounts);
+            const allWallets = [
+                {
+                    address: wallet.address,
+                    name: accountName,
+                    xrp: {
+                        address: "000000000",
+                    },
+                    stellarWallet: {
+                        publicKey: wallet.stellarWallet.publicKey,
+                    },
+                    dydx: {
+                        dydxAddress: dydxAddress.dydxAddress,
+                        dydxPublicKey: dydxAddress.publicKey,
+                    },
+                    walletType: "Multi-coin",
+                },
+            ];
+
+            AsyncStorage.setItem(
+                "wallet",
+                JSON.stringify(allWallets[0])
+            );
+            AsyncStorage.setItem(
+                `${accountName}-wallets`,
+                JSON.stringify(allWallets)
+            );
+            AsyncStorage.setItem("user", accountName);
+            AsyncStorage.setItem("currentWallet", accountName);
+            AsyncStorage.setItem("token", token);
+            dispatch(setUser(accountName));
+            dispatch(
+                setCurrentWallet(
+                    wallet.address,
+                    accountName,
+                    "000000000",
+                    "000000000",
+                    "000000000",
+                    "000000000",
+                    "Multi-coin"
+                )
+            );
+            dispatch(AddToAllWallets(wallets, accountName));
+            dispatch(getBalance(wallet.address));
+            dispatch(setToken(token));
+            dispatch(setWalletType("Multi-coin"));
+            const walletResponse = await AccessNativeStorage.saveWallet({
+                name: accountName,
+                address: accountFromMnemonic.generated.address,
+                privatekey: accountFromMnemonic.generated.privateKey,
+                stellarPublicKey: accountFromMnemonic.original.publicKey,
+                stellarPrivateKey: accountFromMnemonic.original.secretKey,
+                mnemonic: "",
+                walletType: "Multi-coin",
+                dydxAddress: dydxAddress.dydxAddress,
+                dydxPublicKey: dydxAddress.publicKey,
+                dydxMnemonic: dydxAddress.mnemonic,
+                dydxPrivateKey: dydxAddress.privateKey,
+                dydxWalletConnectSignature: dydxAddress.walletConnectSignature
+            })
+            if (walletResponse.success) {
+                const resultApi = await apiHelper.post(REACT_APP_HOST + '/v1/wallet', {
+                    "addresses": {
+                        "eth": accountFromMnemonic.generated.address,
+                        "xlm": accountFromMnemonic.original.publicKey,
+                        "bnb": accountFromMnemonic.generated.address,
+                        "multi": accountFromMnemonic.generated.address
+                    },
+                    "isPrimary": true
+                });
+                if (resultApi.success) {
+                    setLoading(false);
+                    alert("success", "wallet synced!");
+                    navigation.navigate("HomeScreen");
+                } else {
+                    alert("error", "unable to sync wallet.");
+                    console.log('Error:', resultApi.error, 'Status:', resultApi.status);
+                }
+            }
+
+        } catch (e) {
+            console.error(e);
+            setLoading(false);
+            CustomInfoProvider.show("error", "!Opps", e);
+        }
+    }
+
     const restoreStellarWallet = async (key) => {
         try {
             Keyboard.dismiss()
@@ -726,24 +870,40 @@ export const WalletNetworkSelection = (props) => {
     }
 
     const manageImportWays = async () => {
-        if (props.route.params.selectionType === "importForSetupApp") {
-            await restoreSetupWallet(keys)
+        const finalClean = keys.trim().replace(/\s+/g, ' ');
+        setKeys(finalClean);
+
+        if (chainInfo.symbol !== "STR" && props.route.params.selectionType === "importForSetupApp") {
+            await restoreSetupWallet(finalClean);
+            return 0;
         }
         if (chainInfo.symbol === "STR") {
-            await restoreStellarWallet(keys)
+            if (props.route.params.selectionType === "importForSetupApp") {
+                await restoreSetupStellarWallet(finalClean);
+                return 0;
+            } else {
+                await restoreStellarWallet(finalClean);
+                return 0;
+            }
         }
         if (label === 1) {
-            await restoreWalletUsingPrivateKey(keys)
+            await restoreWalletUsingPrivateKey(finalClean);
+            return 0;
         } else {
-            await restoreWallet(keys)
+            await restoreWallet(finalClean);
+            return 0;
         }
-    }
+    };
+    
+    const chains = Object.values(CHAINS).filter(item => item[props.route.params.selectionType]===true);
+    const stellar = chains.find(item => item.name === "Stellar");
+    const others = chains.filter(item => item.name !== "Stellar").sort((a, b) => a.name.localeCompare(b.name));
 
     return (
         <View style={styles.mainCon}>
             <Wallet_screen_header elementestID={"Select"} title={!showImportOptions ? "Select Network" : "Import " + chainInfo.name + " Wallet"} onLeftIconPress={() => { showImportOptions ? setshowImportOptions(false) : navigation.navigate(props.route.params.backScreenName) }} />
             {!showImportOptions ? <FlatList
-                data={[walletMultiChain,...Object.values(CHAINS).filter(item => item[props.route.params.selectionType] === true).sort((a,b)=>a.name.localeCompare(b.name))]}
+                data={[walletMultiChain,...(stellar ? [stellar] : []),...others]}
                 keyExtractor={(item, index) => index}
                 renderItem={({ item, index }) => {
                     return (
@@ -752,13 +912,14 @@ export const WalletNetworkSelection = (props) => {
                                 <Image source={item.name === "Muti-Chain"?require('../../../assets/walletImage.png'):{ uri: item.imageUrl }} style={styles.chainImg} />
                                 <View>
                                     <Text style={styles.cardTitel}>{item.name}</Text>
-                                    <Text style={styles.cardSubTitel}>{item.chainName}</Text>
+                                    <Text style={styles.cardSubTitel}>{item.chainName==="SRB"?"XLM":item.chainName}</Text>
                                 </View>
                             </View>
                             <Icon type={"materials"} name="chevron-right" size={20} color={theme.inactiveTx} />
                         </TouchableOpacity>
                     );
                 }}
+                contentContainerStyle={{ paddingBottom: hp(5) }}
             /> : <View>
                 <View style={styles.txtCard}>
                     <Text style={styles.txtLabel}>Wallet Name</Text>
@@ -787,17 +948,15 @@ export const WalletNetworkSelection = (props) => {
                         {label === 0 ?
                             <TextInput
                                 value={keys}
-                                onChangeText={(text) => {
-                                    const cleaned = text.replace(/[^a-zA-Z\s]/g, '')
-                                        .trim()
-                                        .replace(/\s+/g, ' ')
-                                        .toLowerCase();
-                                    setKeys(cleaned)
+                                onChangeText={(value) => {
+                                    const typingClean = value.replace(/[^a-zA-Z\s]/g, '').toLowerCase();
+                                    setKeys(typingClean)
                                 }}
                                 style={styles.inputContainer}
                                 placeholder={"Mnemonic"}
                                 placeholderTextColor={"gray"}
                                 editable={!loading}
+                                multiline={true}
                             /> : <TextInput
                                 value={keys}
                                 onChangeText={(text) => { setKeys(text) }}
@@ -805,6 +964,7 @@ export const WalletNetworkSelection = (props) => {
                                 placeholder={"Private Key"}
                                 placeholderTextColor={"gray"}
                                 editable={!loading}
+                                multiline={true}
                             />}
                     </View> : <View style={styles.txtCard}>
                         <Text style={styles.txtLabel}>Secret Key</Text>
@@ -813,6 +973,7 @@ export const WalletNetworkSelection = (props) => {
                             onChangeText={(text) => {
                                 setKeys(text)
                             }}
+                            multiline={true}
                             style={styles.inputContainer}
                             placeholder={"Secret Key"}
                             placeholderTextColor={"gray"}

@@ -32,7 +32,7 @@ import darkBlue from "../../../assets/darkBlue.png"
 import { delay, isInteger } from "lodash";
 import { ShowErrotoast, Showsuccesstoast, alert } from "../reusables/Toasts";
 import { isFloat } from "validator";
-import { Camera, useCameraDevice, useCodeScanner } from "react-native-vision-camera";
+import { Camera, useCameraDevice, useCameraPermission, useCodeScanner } from "react-native-vision-camera";
 import { REACT_APP_LOCAL_TOKEN } from "../exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import { useToast } from "native-base";
 import { STELLAR_URL } from "../constants";
@@ -48,6 +48,7 @@ import QRScannerComponent from "../Modals/QRScannerComponent";
 import LinearGradient from "react-native-linear-gradient";
 StellarSdk.Networks.PUBLIC
 const SendXLM = (props) => {
+    const { hasPermission, requestPermission } = useCameraPermission();
     const toast=useToast();
     const FOCUSED = useIsFocused()
     const [show, setshow] = useState(false);
@@ -349,6 +350,12 @@ const SendXLM = (props) => {
                   ) {
                     CustomInfoProvider.show("warning", "Permission Denied", "Camera permission requird for scaning QR Code.");
                   }
+                }
+              } else {
+                if (!hasPermission) {
+                  requestPermission()
+                } else {
+                  setModalVisible(true);
                 }
               }
             };

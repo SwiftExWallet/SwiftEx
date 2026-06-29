@@ -32,7 +32,7 @@ import {
 } from "react-native-responsive-screen";
 import { colors } from '../../../../../../Screens/ThemeColorsConfig';
 
-const AMMSwap = () => {
+const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   const state=useSelector((state)=>state);
   const [assetTrustRequired,setassetTrustRequired]=useState([]);
   const [fromToken, setFromToken] = useState({
@@ -75,6 +75,13 @@ const AMMSwap = () => {
   useEffect(()=>{
     setassetTrustRequired([]);
   },[isFocused,fromToken,toToken])
+
+  useEffect(()=>{
+    if (FROM_TOKEN && TO_TOKEN) {
+      setFromToken(FROM_TOKEN);
+      setToToken(TO_TOKEN);
+    }
+  },[isFocused])
 
   useEffect(()=>{
     settokenBurn(false)

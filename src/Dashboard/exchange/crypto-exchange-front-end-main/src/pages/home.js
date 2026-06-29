@@ -101,14 +101,14 @@ export const HomeView = () => {
   ]
 
   const quickActions = [
-    { name: `Swap\nAssets`, icon: "candlestick-chart", iconProvider: "material" },
-    { name: `Add\nUSDC`, icon: "add", iconProvider: "material" },
-    { name: `Use\nUSDC`, icon: "currency-exchange", iconProvider: "material" },
+    { name: `Trade\nAssets`, icon: "candlestick-chart", iconProvider: "material" },
+    { name: `Deposit\nUSDC`, icon: "add", iconProvider: "material" },
+    { name: `Withdraw\nUSDC`, icon: "currency-exchange", iconProvider: "material" },
   ]
   const quickTradeActions = [
     { name: `Manage\nAssets`, icon: "token", iconProvider: "material" },
     { name: `Fiat\nAccess`, icon: "attach-money", iconProvider: "material" },
-    { name: `Pending\nAdv.Swaps`, icon: "timeline-clock-outline", iconProvider: "materialCommunity" },
+    { name: `Pending\nTrades`, icon: "timeline-clock-outline", iconProvider: "materialCommunity" },
     { name: `Transaction\nHistory`, icon: "restore", iconProvider: "material" },
   ]
   useEffect(() => {
@@ -276,7 +276,7 @@ export const HomeView = () => {
           justifyContent:"space-between",
           alignItems:"center",
          }}>
-           <Text style={[styles.headingTx, { color: theme.headingTx }]}>Start Swap</Text>
+           <Text style={[styles.headingTx, { color: theme.headingTx }]}>Start Trade</Text>
              <View style={{ flexDirection: "row",alignItems:"center" }}>
                 <Image source={{uri:CHART_API[0].img_0}} width={29} height={29} />
                 <Text style={[styles.infoText, { color: theme.headingTx }]}>Avg. Network Fee</Text>
@@ -336,11 +336,11 @@ export const HomeView = () => {
             </View>
           </View>
         </View>
-        {(walletType !== "Ethereum" && walletType !== "Multi-coin") && (
+        {/* {(walletType !== "Ethereum" && walletType !== "Multi-coin") && (
           <Text style={styles.whiteColor}>
             Only Ethereum and Multi-coin based wallets are supported.
           </Text>
-        )}
+        )} */}
 
         <View style={[styles.quickActionWrapper, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }]}>
           <Text style={[styles.headingTx, { color: theme.headingTx }]}>Manage Assets</Text>

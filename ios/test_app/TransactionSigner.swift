@@ -82,6 +82,54 @@ class TransactionSigner: NSObject {
           reject("SIGN_ERROR", error.localizedDescription, error)
       }
   }
+@objc
+func signTypedData(
+    _ chainName: String,
+    walletAddress: String,
+    typedDataJson: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+) {
+    do {
+        guard let privateKeyHex = try getPrivateKey(for: walletAddress, chain: chainName)
+        else {
+            throw SignerError.privateKeyNotFound
+        }
+
+        let privateKeyData = safeHexData(privateKeyHex)
+
+        guard let privKey = PrivateKey(data: privateKeyData) else {
+            throw SignerError.privateKeyNotFound
+        }
+
+        // encodeTyped returns Data (non-optional) in this version of TW Core
+        let hashData = EthereumAbi.encodeTyped(messageJson: typedDataJson)
+
+        guard hashData.count == 32 else {
+            throw SignerError.invalidRawTransaction
+        }
+
+        guard let sigData = privKey.sign(digest: hashData, curve: .secp256k1) else {
+            throw SignerError.invalidRawTransaction
+        }
+
+        guard sigData.count == 65 else {
+            throw SignerError.invalidRawTransaction
+        }
+
+        let r = sigData[0..<32].map  { String(format: "%02x", $0) }.joined()
+        let s = sigData[32..<64].map { String(format: "%02x", $0) }.joined()
+        let v = String(format: "%02x", sigData[64])
+
+        resolve([
+            "success":   true,
+            "signature": "0x\(r)\(s)\(v)"
+        ])
+
+    } catch {
+        reject("SIGN_TYPED_ERROR", error.localizedDescription, error)
+    }
+}
 
   
   private func dataFromHex(_ hex: String) -> Data {
