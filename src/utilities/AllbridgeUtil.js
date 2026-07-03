@@ -7,7 +7,7 @@ import {
   nodeRpcUrlsDefault,
   mainnet,
 } from "@allbridge/bridge-core-sdk";
-import {rpc,TransactionBuilder} from '@stellar/stellar-sdk';
+import {rpc,Transaction, xdr} from '@stellar/stellar-sdk';
 import LocalTxManager from './LocalTxManager';
 import { SRBRPC } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/ExchangeConstants';
 import { NativeModules } from 'react-native';
@@ -93,7 +93,9 @@ export async function swapPepare(
   amount,
   recipientAddress,
   stellarWallet,
-  payFeeMode
+  payFeeMode,
+  isOtherAddress = false,
+  userAddress
 ) {
   console.log("Allbridge-swap--", sourceChain, destChain, sourceTokenSymbol, destTokenSymbol, amount, recipientAddress);
 
@@ -116,18 +118,14 @@ export async function swapPepare(
       try {
         const xdrTx = await sdk.bridge.rawTxBuilder.send(sendParams);
         const sorobanServer = new rpc.Server(SRBRPC);
-        let transactionBuilderTx = TransactionBuilder.fromXDR(xdrTx, mainnet.sorobanNetworkPassphrase);
-        const simulateTX = await sorobanServer.simulateTransaction(transactionBuilderTx);
-        const resourceFee = simulateTX.minResourceFee;
-        const strFee = Math.floor(Number(resourceFee) * 1.5).toString();
-        const assembleTx = rpc.assembleTransaction(transactionBuilderTx, simulateTX);
-        assembleTx.fee = strFee;
-        const finalTx = assembleTx.build();
-        const txXDR = finalTx.toXDR();
+        const env = xdr.TransactionEnvelope.fromXDR(xdrTx, "base64");
+        const resourceFee = Number(env.v1().tx().ext().sorobanData().resourceFee().toString());
+        env.v1().tx().fee(resourceFee + 5000);
+        const transaction = new Transaction(env, mainnet.sorobanNetworkPassphrase);
+        const txXDR = transaction.toXDR();
         const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
-        const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
-        finalTx.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
-        const result = await sorobanServer.sendTransaction(finalTx);
+        transaction.addSignature(signedTx.publicKey, signedTx.signature);
+        const result = await sorobanServer.sendTransaction(transaction);
         return result;
       } catch (error) {
         console.log(`error:`, error.message);
@@ -177,7 +175,7 @@ export async function swapPepare(
     }
 
     if (sent.status === "PENDING") {
-      await LocalTxManager.saveTx(recipientAddress, {
+      await LocalTxManager.saveTx(isOtherAddress?userAddress:recipientAddress, {
         chain: sourceChain,
         hash: sent.hash,
         status: "pending",

@@ -1,6 +1,7 @@
 import Snackbar from 'react-native-snackbar';
 import { Box, useToast } from 'native-base';
 import { View,Text } from 'react-native';
+import CustomInfoProvider from '../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 
 
 export const ShowToast = (toast,message)=>{
@@ -27,11 +28,7 @@ export const ShowErrotoast = (toast,message)=>{
 }
 
 export const Showsuccesstoast = (toast,message)=>{
-  Snackbar.show({
-    text: message,
-    duration: Snackbar.LENGTH_SHORT,
-    backgroundColor:'green',
-});
+    CustomInfoProvider.show("success","Hurray",message);
 }
 
 export function alert(type,message){

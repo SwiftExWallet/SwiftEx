@@ -5,6 +5,7 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 import { FOLIO_BASE_ROUTE, REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL, REACT_APP_HOST } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import apiHelper from "../../src/Dashboard/exchange/crypto-exchange-front-end-main/src/apiHelper";
 import PancakeList from "../../src/Dashboard/tokens/pancakeSwap/PancakeList.json";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 const BASEROUTE = `${REACT_APP_HOST}/v1/portfolio/`;
 
 const CONFIG = {
@@ -522,6 +523,7 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
     };
     saveToCache(cacheKey, result);
     console.debug('data cached successfully');
+    GetStellarTokenList()
     return result;
 
   } catch (error) {
@@ -533,6 +535,43 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
     throw new Error(`Failed to fetch wallet tokens: ${error.message}`);
   }
 }
+
+export const GetStellarTokenList = async (forceRefresh = false) => {
+  try {
+    const CACHE_DURATION = 30 * 60 * 1000;
+    const lastFetchStr = await AsyncStorage.getItem("stellarTokensLastTime");
+    const cachedDataStr = await AsyncStorage.getItem("stellarTokensList");
+    const now = Date.now();
+
+    if (!forceRefresh && lastFetchStr && cachedDataStr) {
+      const lastFetchTime = parseInt(lastFetchStr, 10);
+      if (now - lastFetchTime < CACHE_DURATION) {
+        return JSON.parse(cachedDataStr);
+      }
+    }
+
+    const response = await fetch(CHAINS["STR"].supportedTokenList);
+    const cryptoList = await response.json();
+    const tokenList = Array.isArray(cryptoList.assets) ? cryptoList.assets : [];
+
+    const localCustomData = await AsyncStorage.getItem("importedStellarWalletToken");
+    let finalTokens = [...tokenList];
+
+    if (localCustomData) {
+      const parsedCustom = JSON.parse(localCustomData);
+      finalTokens = [...tokenList, ...parsedCustom];
+    }
+
+    await AsyncStorage.setItem("stellarTokensList", JSON.stringify(finalTokens));
+    await AsyncStorage.setItem("stellarTokensLastTime", now.toString());
+
+    return finalTokens;
+  } catch (error) {
+    console.error('stellar token list execution fail:', error);
+    const staleData = await AsyncStorage.getItem("stellarTokensList");
+    return staleData ? JSON.parse(staleData) : [];
+  }
+};
 
 export const TemporaryTokens=[
     {

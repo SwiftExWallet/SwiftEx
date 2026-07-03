@@ -30,6 +30,7 @@ import WalletActivationComponent from '../utils/WalletActivationComponent';
 import { swap_prepare } from '../../../../../../All_bridge';
 import { CHAINS } from '../../../../../utilities/TokenUtils';
 import ShortTermStorage from '../../../../../utilities/ShortTermStorage';
+import { StrKey } from '@stellar/stellar-sdk';
 
 const classic = ({ props }) => {
   const navigation = useNavigation();
@@ -402,7 +403,14 @@ const classic = ({ props }) => {
       color: "#4F46E5",
       fontSize: 20,
       fontWeight: '500',
-    }
+    },
+    recieverAddressInput: {
+      marginTop: hp(1),
+      borderRadius: 10,
+      paddingVertical: hp(1),
+      paddingHorizontal: wp(2.4),
+      backgroundColor: theme.bg,
+    },
   });
 
   const [fromAmount, setFromAmount] = useState(0.0);
@@ -423,6 +431,7 @@ const classic = ({ props }) => {
   const [swapLoading,setSwapLoading] = useState(false);
   const [showWalletActivation,setShowWalletActivation] = useState(false);
   const [walletActivationWarning,setWalletActivationWarning] = useState(false);
+  const [recieverAddress, setRecieverAddress] = useState("");
 
   const getFromNetworkTokens = () => {
     return CHAINS[selectedFromNetwork.symbol].bridgeSupportTokens;
@@ -452,6 +461,7 @@ const classic = ({ props }) => {
 
   useEffect(() => {
     const init = async () => {
+      setRecieverAddress(state?.STELLAR_PUBLICK_KEY);
       const walletStatus = await stellarWalletStatus(state?.STELLAR_PUBLICK_KEY);
       setShowWalletActivation(walletStatus);
     }
@@ -547,8 +557,21 @@ const classic = ({ props }) => {
     navigation.navigate("StellarTransactions");
   }
 
+  function validateStellarAddress(address) {
+    if (address.length !== 56 || address[0] !== 'G') {
+      return false;
+    }
+    try {
+      StrKey.decodeEd25519PublicKey(address);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   const swapManager = async () => {
     Keyboard.dismiss();
+    if(validateStellarAddress(recieverAddress)){
     if(selectedFromNetwork.chainName!==selectedToNetwork.chainName){
       if (parseFloat(fromAmount) <= 0) {
         CustomInfoProvider.show("error","Please enter a valid amount.");
@@ -561,6 +584,9 @@ const classic = ({ props }) => {
       }
     }else{
       CustomInfoProvider.show("error","The source and destination networks cannot be the same.");
+    }
+    }else{
+      CustomInfoProvider.show("error","Please provide the valid receiver address.");
     }
   }
 
@@ -605,7 +631,7 @@ const classic = ({ props }) => {
       const resultOfBidirectional = await swap_prepare(
         state?.wallet?.address,
         state?.wallet?.address,
-        selectedToNetwork.subName==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address,
+        selectedToNetwork.subName==="STR"?recieverAddress:state?.wallet?.address,
         fromAmount.toString(),
         selectedFromAsset.symbol,
         selectedToAsset.symbol,
@@ -868,6 +894,17 @@ const classic = ({ props }) => {
                 </View>
               </View>
             )}
+
+            <Text style={[styles.labelText,{marginTop:hp(1.2),alignSelf:"flex-start"}]}>Reciever Address</Text>
+            <View style={styles.recieverAddressInput}>
+              <TextInput
+                scrollEnabled={true}
+                value={recieverAddress}
+                style={{color: theme.headingTx,fontSize: 18}}
+                returnKeyType="done"
+                onChangeText={(txt)=>{setRecieverAddress(txt)}}
+              />
+            </View>
 
             <View style={styles.toAmountContainer}>
               <Text style={styles.toAmount}>≈ </Text>

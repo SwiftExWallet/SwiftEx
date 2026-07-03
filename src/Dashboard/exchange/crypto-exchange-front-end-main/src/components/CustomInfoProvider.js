@@ -8,6 +8,7 @@ import {
   Animated,
   Easing,
   Dimensions,
+  Vibration,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 
@@ -338,9 +339,30 @@ const CustomInfoProvider = () => {
   );
 };
 
+const proccessVibrate = (type) => {
+  switch (type) {
+    case "success":
+      Vibration.vibrate(Platform.OS === "ios" ? [0, 40, 60, 40] : [0, 40, 60, 40]);
+      break;
+    case "error":
+      Vibration.vibrate(Platform.OS === "ios" ? [0, 60, 50, 60] : [0, 60, 50, 60]);
+      break;
+    case "warning":
+      Vibration.vibrate(50);
+      break;
+    case "waiting":
+      Vibration.vibrate(5);
+      break;
+    default:
+      Vibration.vibrate(30);
+      break;
+  }
+};
+
 CustomInfoProvider.show = (type, title, message, buttons) => {
   if (typeof message === "string" && message.includes("[big.js] ")) message = "Invalid value";
   if (typeof title === "string" && title.includes("[big.js] ")) title = "Invalid value";
+  proccessVibrate(type || "info");
   internalShowFunc(type, title, message, buttons);
 };
 

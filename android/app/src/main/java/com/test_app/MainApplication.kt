@@ -12,6 +12,7 @@ import com.google.firebase.FirebaseApp // Import FirebaseApp
 import org.app.swiftEx.wallet.ethwallet.EthereumWalletPackage
 import java.security.Security
 import org.bouncycastle.jce.provider.BouncyCastleProvider
+import com.stallion.Stallion
 class MainApplication : Application(), ReactApplication {
 
    companion object {
@@ -33,6 +34,7 @@ class MainApplication : Application(), ReactApplication {
               add(walletTransactionPackage())
              // add(PlayIntegrityPackage())
             },
+      jsBundleFilePath = Stallion.getJSBundleFile(applicationContext)
     )}       
 
   override fun onCreate() {

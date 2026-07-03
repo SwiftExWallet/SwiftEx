@@ -1742,6 +1742,29 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - react-native-stallion (2.4.1):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
+    - ZIPFoundation
   - react-native-webview (13.16.1):
     - hermes-engine
     - RCTRequired
@@ -2391,6 +2414,7 @@ PODS:
   - WalletCoreSwiftProtobuf (1.29.0)
   - Yoga (0.0.0)
   - YttriumWrapper (0.10.40)
+  - ZIPFoundation (0.9.20)
 
 DEPENDENCIES:
   - BVLinearGradient (from `../node_modules/react-native-linear-gradient`)
@@ -2455,6 +2479,7 @@ DEPENDENCIES:
   - react-native-quick-crypto (from `../node_modules/react-native-quick-crypto`)
   - react-native-randombytes (from `../node_modules/react-native-randombytes`)
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
+  - react-native-stallion (from `../node_modules/react-native-stallion`)
   - react-native-webview (from `../node_modules/react-native-webview`)
   - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
   - React-networking (from `../node_modules/react-native/ReactCommon/react/networking`)
@@ -2536,6 +2561,7 @@ SPEC REPOS:
     - TrustWalletCore
     - WalletCoreSwiftProtobuf
     - YttriumWrapper
+    - ZIPFoundation
 
 EXTERNAL SOURCES:
   BVLinearGradient:
@@ -2637,6 +2663,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-randombytes"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
+  react-native-stallion:
+    :path: "../node_modules/react-native-stallion"
   react-native-webview:
     :path: "../node_modules/react-native-webview"
   React-NativeModulesApple:
@@ -2811,6 +2839,7 @@ SPEC CHECKSUMS:
   react-native-quick-crypto: 1a2467cf17acc57dce5bb076a953978b79e3fd11
   react-native-randombytes: 4eeddad82d1fd57adda1cd5beffe67d041c9d6de
   react-native-safe-area-context: ae7587b95fb580d1800c5b0b2a7bd48c2868e67a
+  react-native-stallion: b71a716c6512ca75582895f1ff685608ae63980f
   react-native-webview: 0ed52ddb2eafc64a502871218440b8b4d37961c3
   React-NativeModulesApple: 44a9474594566cd03659f92e38f42599c6b9dee4
   React-networking: db73d91466cb134fcbdaaa579fb2de14e2c2ea01
@@ -2866,6 +2895,7 @@ SPEC CHECKSUMS:
   WalletCoreSwiftProtobuf: a4798576a2d309511fc45f81843d348732ec571d
   Yoga: 772166513f9cd2d61a6251d0dacbbfaa5b537479
   YttriumWrapper: e99db26ea3ca6b4580933320e11e046f9607525a
+  ZIPFoundation: dfd3d681c4053ff7e2f7350bc4e53b5dba3f5351
 
 PODFILE CHECKSUM: 921df4ec45f7f46795027ff2418e9234a7bf635e
 

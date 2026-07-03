@@ -90,7 +90,6 @@ const decodeDestinationChain = (params = []) => {
 
 
 const getTransactionType = (operation, userPublicKey, isReceived) => {
-  console.info(operation)
   if (operation.type === 'payment') {
       return operation.asset_code || operation.asset_type;
   }
