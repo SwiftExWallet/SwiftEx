@@ -548,6 +548,7 @@ const AuthStack = () => {
         component={NewOfferModal}
         options={{
           headerShown: false,
+          gestureEnabled:false,
           headerStyle: { backgroundColor: "#4CA6EA" },
           headerTintColor: "white",
           headerTitleStyle: {

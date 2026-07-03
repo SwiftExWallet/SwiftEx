@@ -134,6 +134,7 @@
     "react-native-screens": "^4.0.0",
     "react-native-snackbar": "^2.8.0",
     "react-native-snackbar-component": "^1.1.12",
+    "react-native-stallion": "^2.4.1",
     "react-native-svg": "^15.7.1",
     "react-native-svg-charts": "^5.4.0",
     "react-native-swipe-gestures": "^1.0.5",
@@ -194,6 +195,7 @@
     "prettier": "2.8.8",
     "react-test-renderer": "18.3.1",
     "rn-nodeify": "^10.3.0",
+    "stallion-cli": "^2.5.0",
     "typescript": "5.0.4"
   },
   "react-native": {

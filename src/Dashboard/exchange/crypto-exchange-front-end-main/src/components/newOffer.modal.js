@@ -13,6 +13,7 @@ import {
   Animated,
   BackHandler,
   NativeModules,
+  Image,
 } from "react-native";
 import {
   widthPercentageToDP as wp,
@@ -40,6 +41,9 @@ import stellarTokens from "../pages/stellar/Tokens.json";
 import OneTapComponet from "./OneTapComponet";
 import CustomInfoProvider from "./CustomInfoProvider";
 import CrossChainTx from "./CrossChainTx";
+import { GetStellarTokenList } from "../../../../../utilities/TokenUtils";
+import DragToProcced from "../../src/pages/AnimatedComponent/DragToProcced"
+
 // Initialize Stellar server
 const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
 
@@ -83,16 +87,18 @@ const SUB_TAB_CONFIG = {
 };
 
 export const NewOfferModal = () => {
+  const defaultBase = stellarConfig.SUPPORTED_ASSETS[0];
+  const defaultCounter = stellarConfig.SUPPORTED_ASSETS[1];
   const toast = useToast();
   const navigation = useNavigation();
   const back_data = useRoute();
   const isFocused = useIsFocused();
   const state = useSelector((state) => state);
-  const [chooseSearchQuery, setChooseSearchQuery] = useState('');
+  const [pendingBaseAsset, setPendingBaseAsset] = useState(null);
   const [activeTab, setActiveTab] = useState(SUB_TAB_CONFIG.TRADE.id);
   const [activeTradeType, setactiveTradeType] = useState(TAB_CONFIG.LARGE_ORDER_TRADE.id);
-  const [selectedValue, setSelectedValue] = useState(tradingPairsConfig.PAIRS[0].base_value);
-  const [SelectedBaseValue, setSelectedBaseValue] = useState(tradingPairsConfig.PAIRS[0].counter_value);
+  const [selectedValue, setSelectedValue] = useState(defaultCounter.code === "XLM" ? "native" : defaultCounter.code);
+  const [SelectedBaseValue, setSelectedBaseValue] = useState(defaultBase.code === "XLM" ? "native" : defaultBase.code);
   const [Balance, setbalance] = useState('');
   const [offer_amount, setoffer_amount] = useState('');
   const [offer_price, setoffer_price] = useState('');
@@ -102,7 +108,7 @@ export const NewOfferModal = () => {
   const [show_trust_modal, setshow_trust_modal] = useState([]);
   const [titel, settitel] = useState("UPDATING..");
   const [reserveLoading, setreserveLoading] = useState(false);
-  const [chooseModalPair, setchooseModalPair] = useState(false);
+  const [pairPickerStep, setPairPickerStep] = useState(null);
   const [priceType, setpriceType] = useState(0);
   const [reservedError, setreservedError] = useState(false);
   const [infoVisible, setinfoVisible] = useState("");
@@ -111,16 +117,43 @@ export const NewOfferModal = () => {
   const [assetInfo, setassetInfo] = useState(false);
   const [ACTIVATION_MODAL_PROD, setACTIVATION_MODAL_PROD] = useState(false);
   const [showOneTap,setshowOneTap]=useState(false);
-  const [top_value, settop_value] = useState(tradingPairsConfig.PAIRS[0].visible_0);
-  const [top_value_0, settop_value_0] = useState(tradingPairsConfig.PAIRS[0].visible_1);
-  const [top_domain, settop_domain] = useState(tradingPairsConfig.PAIRS[0].asset_dom);
-  const [top_domain_0, settop_domain_0] = useState(tradingPairsConfig.PAIRS[0].asset_dom_1);
-  const [AssetIssuerPublicKey, setAssetIssuerPublicKey] = useState(tradingPairsConfig.PAIRS[0].visible0Issuer);
-  const [AssetIssuerPublicKey1, setAssetIssuerPublicKey1] = useState(tradingPairsConfig.PAIRS[0].visible1Issuer);
+  const [topValueIcon, settopValueIcon] = useState(defaultBase.icon);
+  const [topValueIcon0, settopValueIcon0] = useState(defaultCounter.icon);
+  const [top_value, settop_value] = useState(defaultBase.code);
+  const [top_value_0, settop_value_0] = useState(defaultCounter.code);
+  const [top_domain, settop_domain] = useState(defaultBase.domain);
+  const [top_domain_0, settop_domain_0] = useState(defaultCounter.domain);
+  const [AssetIssuerPublicKey, setAssetIssuerPublicKey] = useState(defaultBase.issuer);
+  const [AssetIssuerPublicKey1, setAssetIssuerPublicKey1] = useState(defaultCounter.issuer);
+  const [supportedAssetsList, setSupportedAssetsList] = useState([]);
+  const [findBar, setFindBar] = useState("");
   const [tradePriceLoading,settradePriceLoading]=useState(false);
   const theme = useMemo(() => state.THEME?.THEME ? colors.dark : colors.light, [state.THEME?.THEME]);
   const apiController = useRef(null);
   const debounceTimer = useRef(null);
+
+  useEffect(() => {
+    const initAssets = async () => {
+      const tokens = await GetStellarTokenList();
+      if (Array.isArray(tokens) && tokens.length > 0) {
+        setSupportedAssetsList(tokens);
+        const defaultBase = tokens[0];
+        const defaultCounter = tokens.find(t => t.code === "USDC") || tokens[1];
+        if (defaultBase && defaultCounter) {
+          settop_value(defaultBase.code);
+          setAssetIssuerPublicKey(defaultBase.issuer);
+          settop_domain(defaultBase.domain);
+          setSelectedBaseValue(defaultBase.code === "XLM" ? "native" : defaultBase.code);
+          settop_value_0(defaultCounter.code);
+          setAssetIssuerPublicKey1(defaultCounter.issuer);
+          settop_domain_0(defaultCounter.domain);
+          setSelectedValue(defaultCounter.code === "XLM" ? "native" : defaultCounter.code);
+        }
+      }
+    };
+
+    initAssets();
+  }, [isFocused]);
 
   const safeCall = async (fn) => {
     if (apiController.current) apiController.current.abort();
@@ -133,12 +166,6 @@ export const NewOfferModal = () => {
       throw e;
     }
   };
-  const chooseFilteredItemList = useMemo(() => 
-    tradingPairsConfig.PAIRS.filter(item => 
-      item.name.toLowerCase().includes(chooseSearchQuery.toLowerCase())
-    ),
-    [chooseSearchQuery]
-  );
 
   const validateAmount = useCallback((amount) => {
     const parsed = parseFloat(amount);
@@ -182,7 +209,7 @@ export const NewOfferModal = () => {
 
   const handleTransactionError = useCallback((error, offerType) => {
     setoffer_amount('');
-    console.log('Error occurred:', error.response ? error.response.data.extras.result_codes : error);
+    console.error('Error occurred:', error.response ? error.response.data.extras.result_codes : error);
     
     const errMessage = error.response?.data?.extras?.result_codes?.operations?.join(', ') || "";
     
@@ -258,7 +285,7 @@ export const NewOfferModal = () => {
       
       return 'Request placed successfully';
     } catch (error) {
-      console.debug("----err-or--",error)
+      console.error("----err-or--",error)
       handleTransactionError(error, stellarConfig.TRADE_TYPES.SELL);
     }
   }, [offer_amount, offer_price, SelectedBaseValue, selectedValue, AssetIssuerPublicKey, AssetIssuerPublicKey1, validateAmount, validatePrice, createStellarAsset, toast, navigation, handleTransactionError]);
@@ -321,7 +348,7 @@ export const NewOfferModal = () => {
       
       return 'Request placed successfully';
     } catch (error) {
-      console.debug("error",error)
+      console.error("error",error)
       handleTransactionError(error, stellarConfig.TRADE_TYPES.BUY);
     }
   }, [offer_amount, offer_price, top_value, top_value_0, AssetIssuerPublicKey, AssetIssuerPublicKey1, validateAmount, validatePrice, createStellarAsset, toast, navigation, handleTransactionError]);
@@ -339,11 +366,11 @@ export const NewOfferModal = () => {
     if (existsAsset){
       return  {assetStatus: true };
     } 
-    const unavilabeAsset = stellarTokens.assets.find(
-      (item) => item.code === asset
+    const unavilabeAsset = supportedAssetsList?.find(
+      (item) => item?.code === asset
     );
     return { unavilabeAsset: unavilabeAsset, assetStatus: false }
-  }, []);
+  }, [supportedAssetsList]);
 
   const get_stellar = useCallback(async (asset) => {
     return safeCall(async (signal) => {
@@ -489,21 +516,6 @@ export const NewOfferModal = () => {
     // navigation.goBack();
   }, [navigation]);
 
-const selectTradingPair = useCallback((item) => {
-  setchooseModalPair(false);
-
-  settop_value(item.visible_0);
-  settop_value_0(item.visible_1);
-
-  setAssetIssuerPublicKey(item.visible0Issuer);
-  setAssetIssuerPublicKey1(item.visible1Issuer);
-
-  setSelectedValue(item.base_value);
-  setSelectedBaseValue(item.counter_value);
-
-  settop_domain(item.asset_dom);
-  settop_domain_0(item.asset_dom_1);
-}, []);
 
   const triggerMarketUpdate = useCallback(() => {
     setshow_trust_modal([]);
@@ -536,26 +548,6 @@ const selectTradingPair = useCallback((item) => {
     }
   }
 
-  const chooseRenderItem = useCallback(({ item }) => (
-    <TouchableOpacity 
-      onPress={() => selectTradingPair(item)} 
-      style={[styles.chooseItemContainer, {
-        marginBottom: 2,
-        paddingVertical: hp(1.5),
-        backgroundColor: theme.cardBg,
-        borderRadius: 15
-      }]}
-    >
-      <Text style={[styles.chooseItemText, { color: theme.headingTx }]}>
-        {item.name}
-      </Text>
-    </TouchableOpacity>
-  ), [theme.cardBg, theme.headingTx, selectTradingPair]);
-
-
-
-
-
   const isBalanceInsufficient = useMemo(() => {
     return Balance === "0.0000000" || parseFloat(Balance) === 0;
   }, [Balance]);
@@ -582,69 +574,30 @@ const selectTradingPair = useCallback((item) => {
   }, [isFocused, back_data?.params?.tradeAssetType]);
   
   useEffect(() => {
-  if (back_data?.params?.tradeAssetType && isFocused) {
-    const assetType = back_data.params.tradeAssetType;
-    const matchingPair = tradingPairsConfig.PAIRS.find(pair => 
-      (pair.visible_0 === assetType && pair.visible_1 === "USDC") ||
-      (pair.visible_1 === assetType && pair.visible_0 === "USDC")
-    );
     
-    if (matchingPair) {
-      if (matchingPair.visible_0 === assetType) {
-        settop_value(matchingPair.visible_0);
-        settop_value_0(matchingPair.visible_1);
-        setAssetIssuerPublicKey(matchingPair.visible0Issuer);
-        setAssetIssuerPublicKey1(matchingPair.visible1Issuer);
-        setSelectedValue(matchingPair.base_value);
-        setSelectedBaseValue(matchingPair.counter_value);
-        settop_domain(matchingPair.asset_dom);
-        settop_domain_0(matchingPair.asset_dom_1);
-      } else {
-        settop_value(matchingPair.visible_1);
-        settop_value_0(matchingPair.visible_0);
-        setAssetIssuerPublicKey(matchingPair.visible1Issuer);
-        setAssetIssuerPublicKey1(matchingPair.visible0Issuer);
-        setSelectedValue(matchingPair.counter_value);
-        setSelectedBaseValue(matchingPair.base_value);
-        settop_domain(matchingPair.asset_dom_1);
-        settop_domain_0(matchingPair.asset_dom);
-      }
-      setactiveTradeType(TAB_CONFIG.LARGE_ORDER_TRADE.id);
-      setActiveTab(SUB_TAB_CONFIG.TRADE.id);
-      setTimeout(() => {
-        const assetCodeToCheck = assetType === "XLM" ? "native" : assetType;
-        get_stellar(assetCodeToCheck);
-        getLastTradePrice(
-          assetType === "XLM" ? "native" : assetType,
-          matchingPair.visible_0 === assetType ? matchingPair.visible0Issuer : matchingPair.visible1Issuer,
-          "USDC",
-          matchingPair.visible_1 === "USDC" ? matchingPair.visible1Issuer : matchingPair.visible0Issuer
-        );
-      }, 300);
-      
-    } else {
-      const anyPair = tradingPairsConfig.PAIRS.find(pair => 
-        pair.visible_0 === assetType || pair.visible_1 === assetType
-      );
-      if (anyPair) {
-        console.log(`${assetType}/USDC pair not found, using ${anyPair.name}`);
-        selectTradingPair(anyPair);
-        // setTimeout(() => {
-        //   CustomInfoProvider.show(
-        //     "Trading Pair Info", 
-        //     `${assetType}/USDC pair not available. Showing ${anyPair.name} instead.`
-        //   );
-        // }, 500);
-      } else {
-        console.log(`No trading pair found for ${assetType}`);
-        // CustomInfoProvider.show(
-        //   "Asset Not Found", 
-        //   `No trading pair found for ${assetType}. Please select a pair manually.`
-        // );
+    if (back_data?.params?.tradeAssetType && isFocused) {
+      const assetType = back_data.params.tradeAssetType;
+      const incomingAsset = stellarConfig.SUPPORTED_ASSETS.find(a => a.code === assetType);
+      const usdcAsset = stellarConfig.SUPPORTED_ASSETS.find(a => a.code === "USDC");
+
+      if (incomingAsset && usdcAsset) {
+        settop_value(incomingAsset.code);
+        settop_value_0(usdcAsset.code);
+        setAssetIssuerPublicKey(incomingAsset.issuer);
+        setAssetIssuerPublicKey1(usdcAsset.issuer);
+        setSelectedBaseValue(incomingAsset.code === "XLM" ? "native" : incomingAsset.code);
+        setSelectedValue(usdcAsset.code === "XLM" ? "native" : usdcAsset.code);
+        settop_domain(incomingAsset.domain);
+        settop_domain_0(usdcAsset.domain);
+
+        setTimeout(() => {
+          const assetCodeToCheck = assetType === "XLM" ? "native" : assetType;
+          get_stellar(assetCodeToCheck);
+          getLastTradePrice(assetCodeToCheck, incomingAsset.issuer, "USDC", usdcAsset.issuer);
+        }, 300);
       }
     }
-  }
-}, [back_data?.params?.tradeAssetType, isFocused, selectTradingPair, get_stellar, getLastTradePrice]);
+  }, [back_data?.params?.tradeAssetType, isFocused]);
 
   const glow = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -694,6 +647,15 @@ const selectTradingPair = useCallback((item) => {
       setshowOneTap(false);
     }, [])
   );
+
+  const filteredAssets = useMemo(() => {
+    if (!findBar.trim()) return supportedAssetsList;
+    return supportedAssetsList?.filter((item) =>
+      item?.code?.toLowerCase()?.includes(findBar.toLowerCase()) ||
+      item?.domain?.toLowerCase()?.includes(findBar.toLowerCase()) ||
+      item?.issuer?.toLowerCase()?.includes(findBar.toLowerCase())
+    );
+  }, [findBar, supportedAssetsList]);
 
   return (
     <View style={[styles.scrollView0, { backgroundColor: theme.bg }]}>
@@ -856,17 +818,25 @@ const selectTradingPair = useCallback((item) => {
                     {/* Pair selection container */}
                     <View style={[styles.pairSelectionCon, { backgroundColor: theme.cardBg }]}>
                       <View style={styles.pariViewCon}>
-                        <TouchableOpacity style={[styles.pairNameCon, { backgroundColor: theme.bg }]}>
-                          <Text style={[styles.pairNameText, { color: theme.headingTx }]}>
-                            {top_value}
-                          </Text>
-                          <Text style={[styles.pairNameText.pairDomainText, { color: theme.inactiveTx }]}>
-                            {top_domain}
-                          </Text>
+                        <TouchableOpacity style={[styles.pairNameCon, { backgroundColor: theme.bg,width: wp(32) }]}
+                            onPress={() => {
+                              setPendingBaseAsset(null);
+                              setPairPickerStep('base');
+                            }}
+                          >
+                            <Image source={{ uri: topValueIcon }} style={[styles.tokenIcon]}/>
+                            <View style={[styles.pairNameCon, { backgroundColor: theme.bg,flexDirection:"column" }]}>
+                              <Text style={[styles.pairNameText, { color: theme.headingTx }]}>
+                                {top_value}
+                              </Text>
+                              <Text style={[styles.pairNameText.pairDomainText, { color: theme.inactiveTx,width:wp(15) }]} numberOfLines={1}>
+                                {top_domain}
+                              </Text>
+                            </View>
                         </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                          style={[styles.pairSwapCon, { backgroundColor: theme.bg }]} 
+
+                        <TouchableOpacity
+                          style={[styles.pairSwapCon, { backgroundColor: theme.bg }]}
                           onPress={() => {
                             settop_domain(top_domain_0);
                             settop_value(top_value_0);
@@ -874,34 +844,32 @@ const selectTradingPair = useCallback((item) => {
                             settop_value_0(top_value);
                             setAssetIssuerPublicKey(AssetIssuerPublicKey1);
                             setAssetIssuerPublicKey1(AssetIssuerPublicKey);
+                            settopValueIcon(topValueIcon0);
+                            settopValueIcon0(topValueIcon);
                           }}
                         >
                           <Icon name="swap" type={"antDesign"} size={25} color={"#4052D6"} />
                         </TouchableOpacity>
-                        
-                        <TouchableOpacity style={[styles.pairNameCon, { backgroundColor: theme.bg }]}>
-                          <Text style={[styles.pairNameText, { color: theme.headingTx }]}>
-                            {top_value_0}
-                          </Text>
-                          <Text style={[styles.pairNameText.pairDomainText, { color: theme.inactiveTx }]}>
-                            {top_domain_0}
-                          </Text>
+                        <TouchableOpacity
+                         style={[styles.pairNameCon, { backgroundColor: theme.bg,width: wp(32) }]}
+                          onPress={() => {
+                            const currentBaseAsset = supportedAssetsList.find(asset => asset.code === top_value);
+                            setPendingBaseAsset(currentBaseAsset || supportedAssetsList[0]);
+                            setPairPickerStep('counter');
+                          }}
+                        >
+                          <Image source={{ uri: topValueIcon0 }} style={[styles.tokenIcon]}/>
+                            <View style={[styles.pairNameCon, { backgroundColor: theme.bg, flexDirection: "column" }]}>
+                              <Text style={[styles.pairNameText, { color: theme.headingTx }]}>
+                                {top_value_0}
+                              </Text>
+                              <Text style={[styles.pairNameText.pairDomainText, { color: theme.inactiveTx,width:wp(15) }]} numberOfLines={1}>
+                                {top_domain_0}
+                              </Text>
+                            </View>
                         </TouchableOpacity>
                       </View>
-                      
-                      <TouchableOpacity 
-                        style={[styles.pairSelectionSubCon, { backgroundColor: theme.bg }]} 
-                        onPress={() => setchooseModalPair(true)}
-                      >
-                        <Text style={[styles.pairSelectionSubCon.pairSelectionName, { color: theme.headingTx }]}>
-                          {top_value} 
-                                <Icon name={"arrow-right"} type={"materialCommunity"} size={19} color={theme.headingTx} style={{ marginHorizontal: 10 }} />
-                           {top_value_0}
-                        </Text>
-                        <Icon name="down" type={"antDesign"} size={20} color={theme.headingTx} />
-                      </TouchableOpacity>
                     </View>
-
                     {/* Account info container */}
                     <View style={[
                       styles.pairSelectionCon, 
@@ -1003,7 +971,7 @@ const selectTradingPair = useCallback((item) => {
                             <View style={styles.amountSubinfo}>
                               <Text style={[styles.pairHeadingText]}>Amount </Text>
                               <Text style={{ color: theme.headingTx, fontSize: 16, fontWeight: "500", marginLeft: wp(1) }}>
-                                Swap {getAssetDisplayName(top_value)}
+                                Trade {getAssetDisplayName(top_value)}
                                 <Icon name={"arrow-right"} type={"materialCommunity"} size={19} color={theme.headingTx} style={{ marginHorizontal: 4 }} />
                                 {getAssetDisplayName(top_value_0)}</Text>
                             </View>
@@ -1163,25 +1131,150 @@ const selectTradingPair = useCallback((item) => {
                           )}
                         </Text>
                       </TouchableOpacity>
+                      {/* <View style={{marginTop:hp(0.9),marginBottom:hp(2.8)}}>
+                        <DragToProcced
+                          onDragComplete={() => {
+                            setLoading(true)
+                            offer_creation()
+                          }}
+                          disabled={Loading || isBalanceInsufficient || assetInfo}
+                          isProccessing={Loading}
+                          heading={assetInfo ? (ERROR_MESSAGES.INSUFFICIENT_FUNDS) : (show_trust_modal.length > 0 ? ERROR_MESSAGES.MULTIOP_OFFER : ERROR_MESSAGES.CREATE_OFFER)}
+                        />
+                      </View> */}
 
 
                     <Modal
                       animationType="slide"
                       transparent={true}
-                      visible={chooseModalPair}
+                      visible={pairPickerStep !== null}
+                      onRequestClose={() => {
+                        setPairPickerStep(null);
+                        setPendingBaseAsset(null);
+                        setFindBar("");
+                      }}
                     >
-                      <TouchableOpacity 
-                        style={[styles.chooseModalContainer]} 
-                        onPress={() => setchooseModalPair(false)}
+                      <TouchableOpacity
+                        style={styles.chooseModalContainer}
+                        onPress={() => {
+                          setPairPickerStep(null);
+                          setPendingBaseAsset(null);
+                          setFindBar("");
+                        }}
                       >
                         <View style={[styles.chooseModalContent, { backgroundColor: theme.bg }]}>
-                          <Text style={[styles.chooseItem_text, { color: theme.headingTx }]}>
-                            Select Swap Pair
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: hp(2) }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.chooseItem_text, { color: theme.headingTx, marginVertical: 0 }]}>
+                                  {pairPickerStep === 'base' ? 'Select base asset' : 'Select counter asset'}
+                                </Text>
+                              </View>
+                            </View>
+                          <View style={[styles.findBarCon,{backgroundColor: theme.cardBg,}]}>
+                            <Icon name="search1" type="antDesign" size={18} color={theme.inactiveTx} style={{ marginRight: 8 }} />
+                            <TextInput
+                              style={{ flex: 1, color: theme.headingTx, fontSize: 17, paddingVertical: 0 }}
+                              placeholder="Find asset..."
+                              placeholderTextColor="gray"
+                              value={findBar}
+                              onChangeText={(text) => setFindBar(text)}
+                              autoCapitalize="none"
+                              autoCorrect={false}
+                            />
+                            {findBar.length > 0 && (
+                              <TouchableOpacity onPress={() => setFindBar("")}>
+                                <Icon name="closecircle" type="antDesign" size={16} color={theme.inactiveTx} />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+
                           <FlatList
-                            data={chooseFilteredItemList}
-                            renderItem={chooseRenderItem}
-                            keyExtractor={(item) => item.id.toString()}
+                            data={filteredAssets}
+                            keyExtractor={(item,index) => index}
+                            renderItem={({ item }) => {
+                            const isDisabled =
+                              (pairPickerStep === 'counter' && item?.issuer === AssetIssuerPublicKey) ||
+                              (pairPickerStep === 'base' && item?.issuer === AssetIssuerPublicKey1);
+                              return (
+                                <TouchableOpacity
+                                  disabled={isDisabled}
+                                  onPress={() => {
+                                     if (pairPickerStep === 'base') {
+                                      settopValueIcon(item?.icon);
+                                      settop_value(item?.code);
+                                      setAssetIssuerPublicKey(item?.issuer);
+                                      settop_domain(item?.domain);
+                                      setSelectedValue(item?.code === "XLM" ? "native" : item?.code);
+                                      setPairPickerStep(null);
+                                      setFindBar("");
+                                    } else {
+                                      settopValueIcon0(item?.icon);
+                                      settop_value_0(item?.code);
+                                      setAssetIssuerPublicKey1(item?.issuer);
+                                      settop_domain_0(item?.domain);
+                                      setSelectedBaseValue(item?.code === "XLM" ? "native" : item?.code);
+                                      setPairPickerStep(null);
+                                      setFindBar("");
+                                    }
+                                  }}
+                                  style={[
+                                    styles.chooseItemContainer,
+                                    {
+                                      paddingVertical: hp(1.5),
+                                      backgroundColor: isDisabled ? theme.bg : theme.cardBg,
+                                      borderRadius: 15,
+                                      marginBottom: 8,
+                                      opacity: isDisabled ? 0.4 : 1,
+                                      flexDirection: "row",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      paddingHorizontal: 12,
+                                    }
+                                  ]}
+                                >
+                                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                      <Image
+                                        source={{ uri: item?.icon }}
+                                        style={[styles.tokenIcon]}
+                                      />
+                                      <View style={{ alignItems: "flex-start", marginLeft: 12 }}>
+                                        <Text style={[styles.chooseItemText, { color: theme.headingTx, fontSize: 16, fontWeight: "600" }]}>
+                                          {item?.code}
+                                        </Text>
+                                        <Text style={{ color: theme.inactiveTx, fontSize: 12, marginTop: 2 }}>
+                                          {item?.domain}
+                                        </Text>
+                                      </View>
+                                    </View>
+
+                                    {pairPickerStep === 'base' && !isDisabled && (
+                                      <Icon
+                                        name="arrowright"
+                                        type="antDesign"
+                                        size={16}
+                                        color={theme.inactiveTx}
+                                        style={{ marginRight: 4 }}
+                                      />
+                                    )}
+                                    {pairPickerStep === 'counter' && !isDisabled && (
+                                      <Icon
+                                        name="check"
+                                        type="antDesign"
+                                        size={18}
+                                        color="#4052D6"
+                                        style={{ marginRight: 4 }}
+                                      />
+                                    )}
+                                  </TouchableOpacity>
+                                );
+                              }}
+                              ListEmptyComponent={() => (
+                                <View style={{ alignItems: 'center', paddingVertical: hp(4) }}>
+                                  <Text style={{ color: theme.inactiveTx, fontSize: 16, fontWeight: '500' }}>
+                                    No assets found
+                                  </Text>
+                                </View>
+                              )}
                           />
                         </View>
                       </TouchableOpacity>
@@ -1464,7 +1557,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 10,
     borderTopRightRadius: 10,
     width: wp(99),
-    maxHeight: '80%',
+    height: '80%',
     borderColor: 'rgba(72, 93, 202, 1)rgba(67, 89, 205, 1)',
     borderTopWidth: 3,
   },
@@ -1519,11 +1612,11 @@ const styles = StyleSheet.create({
     width: "98%",
   },
   pairNameCon: {
-    width: wp(32),
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    padding: 5
+    padding: 5,
+    flexDirection:"row"
   },
   pairSwapCon: {
     width: wp(10.5),
@@ -1774,6 +1867,21 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     marginVertical: hp(0.5)
   },
+  tokenIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 16
+  },
+  findBarCon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    height: 49,
+    borderWidth: 1,
+    borderColor: 'rgba(64,82,214,0.2)'
+  }
 });
 
 export const stellarConfig = {
@@ -1797,7 +1905,10 @@ export const stellarConfig = {
     ETH: "ETH",
     BTC: "BTC",
   },
- SUPPORTED_ASSETS: ["USDC", "ETH", "BTC"],
+  SUPPORTED_ASSETS: [
+    { code: "XLM", issuer: null, domain: "stellar.org", icon: "https://stellar.myfilebase.com/ipfs/QmSTXU2wn1USnmd5ZypA5zMze259wEPSDP3i8wivyr9qiq" },
+    { code: "USDC", issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", domain: "centre.io", icon: "https://assets-cdn.trustwallet.com/blockchains/arbitrum/assets/0xaf88d065e77c8cC2239327C5EDb3A432268e5831/logo.png" }
+  ],
   ISSUERS: {
     USDC: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
     ETH: "GBFXOHVAS43OIWNIO7XLRJAHT3BICFEIKOJLZVXNT572MISM4CMGSOCC",
@@ -1824,80 +1935,4 @@ export const stellarConfig = {
     { id: 3, amountSuggest: "75%" },
     { id: 4, amountSuggest: "100%" },
   ],
-};
-export const tradingPairsConfig = {
-  PAIRS: [
-    { 
-      id: 1, 
-      name: "XLM/USDC", 
-      base_value: "USDC", 
-      counter_value: "native", 
-      visible_0: "XLM", 
-      visible_1: "USDC", 
-      asset_dom: "steller.org", 
-      asset_dom_1: "centre.io", 
-      visible0Issuer: null, 
-      visible1Issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" 
-    },
-    { 
-      id: 2, 
-      name: "ETH/BTC", 
-      base_value: "BTC", 
-      counter_value: "ETH", 
-      visible_0: "ETH", 
-      visible_1: "BTC", 
-      asset_dom: "ultracapital.xyz", 
-      asset_dom_1: "ultracapital.xyz", 
-        visible0Issuer: "GBFXOHVAS43OIWNIO7XLRJAHT3BICFEIKOJLZVXNT572MISM4CMGSOCC", 
-      visible1Issuer: "GDPJALI4AZKUU2W426U5WKMAT6CN3AJRPIIRYR2YM54TL2GDWO5O2MZM" 
-    },
-    { 
-      id: 3, 
-      name: "ETH/USDC", 
-      base_value: "USDC", 
-      counter_value: "ETH", 
-      visible_0: "ETH", 
-      visible_1: "USDC", 
-      asset_dom: "ultracapital.xyz", 
-      asset_dom_1: "centre.io", 
-       visible0Issuer: "GBFXOHVAS43OIWNIO7XLRJAHT3BICFEIKOJLZVXNT572MISM4CMGSOCC", 
-      visible1Issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" 
-    },
-    { 
-      id: 4, 
-      name: "BTC/ETH", 
-      base_value: "ETH", 
-      counter_value: "BTC", 
-      visible_0: "BTC", 
-      visible_1: "ETH", 
-      asset_dom: "ultracapital.xyz", 
-      asset_dom_1: "ultracapital.xyz", 
-      visible0Issuer: "GDPJALI4AZKUU2W426U5WKMAT6CN3AJRPIIRYR2YM54TL2GDWO5O2MZM", 
-      visible1Issuer: "GBFXOHVAS43OIWNIO7XLRJAHT3BICFEIKOJLZVXNT572MISM4CMGSOCC" 
-    },
-    { 
-      id: 5, 
-      name: "XLM/BTC", 
-      base_value: "BTC", 
-      counter_value: "native", 
-      visible_0: "XLM", 
-      visible_1: "BTC", 
-      asset_dom: "steller.org", 
-      asset_dom_1: "ultracapital.xyz", 
-      visible0Issuer: null, 
-      visible1Issuer: "GDPJALI4AZKUU2W426U5WKMAT6CN3AJRPIIRYR2YM54TL2GDWO5O2MZM" 
-    },
-    { 
-      id: 6, 
-      name: "USDC/BTC", 
-      base_value: "BTC", 
-      counter_value: "USDC", 
-      visible_0: "USDC", 
-      visible_1: "BTC", 
-      asset_dom: "centre.io", 
-      asset_dom_1: "ultracapital.xyz", 
-      visible0Issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", 
-      visible1Issuer: "GDPJALI4AZKUU2W426U5WKMAT6CN3AJRPIIRYR2YM54TL2GDWO5O2MZM" 
-    },
-  ]
 };

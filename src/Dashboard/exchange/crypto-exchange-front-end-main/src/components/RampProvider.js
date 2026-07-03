@@ -149,6 +149,14 @@ const RampProvider = () => {
       );
     }, [currencies, findResult,]);
 
+    const handleChange = (text) => {
+        const payAmount = text
+            .replace(",", ".")
+            .replace(/[^0-9.]/g, "")
+            .replace(/(\..*?)\..*/g, "$1");
+        setamountSend(payAmount);
+    };
+
   const renderCurrencyItem = ({ item }) => {
     return (
       <TouchableOpacity style={[styles.tokenItem, { backgroundColor: theme.cardBg, },]}
@@ -203,10 +211,11 @@ const RampProvider = () => {
 
             <TextInput
               value={amountSend}
-              onChangeText={setamountSend}
+              onChangeText={handleChange}
               keyboardType="decimal-pad"
               placeholder="0.00"
               placeholderTextColor="gray"
+              returnKeyType="done"
               style={[styles.amountInput, { color: theme.headingTx,backgroundColor:theme.bg }]}
             />
           </View>

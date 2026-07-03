@@ -21,6 +21,7 @@ import CustomInfoProvider from './CustomInfoProvider';
 import { convertMultiple } from '../utils/UsdPriceHandler';
 import { colors } from '../../../../../Screens/ThemeColorsConfig';
 import { CHAINS } from '../../../../../utilities/TokenUtils'
+import { ethers } from 'ethers';
 
 const ExportUSDC = () => {
   const Focused = useIsFocused();
@@ -42,6 +43,7 @@ const ExportUSDC = () => {
   const [showTx,setshowTx]=useState(false);
   const [showTxHash,setshowTxHash]=useState([]);
   const [viewInUSD, setViewInUSD] = useState(false);
+  const [recieverAddress, setRecieverAddress] = useState("");
   const manageFeeViewer = () => setViewInUSD(prev => !prev);
   const [selectedNetworkDetils, setselectedNetworkDetils] = useState(CHAINS["STR"]);
   const [selectedAssetDetils, setselectedAssetDetils] = useState({
@@ -66,6 +68,7 @@ const ExportUSDC = () => {
     setbtnLoading(false);
     setXLMAvlBal("0.0");
     setPayFeeType("native")
+    setRecieverAddress(state && state.wallet && state.wallet.address);
   }, [Focused])
 
   useEffect(() => {
@@ -104,6 +107,18 @@ const ExportUSDC = () => {
     }
   }
 
+  function validateETHAddress(address) {
+    try {
+      if (ethers.utils.isAddress(address)) {
+        return true;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      return false;
+    }
+  }
+  
 
   const handleWalletActivationComponent = () => {
     setstellarWalletActivated(false)
@@ -203,15 +218,22 @@ const ExportUSDC = () => {
         publicKey: state && state.STELLAR_PUBLICK_KEY,
         secretKey: state && state.STELLAR_SECRET_KEY
       };
+      if (!validateETHAddress(recieverAddress)) {
+        setbtnLoading(false);
+        CustomInfoProvider.show("error", "Please provide the valid receiver address.");
+        return 0;
+      }
       const result = await swapPepare(
         selectedNetworkDetils.chainName,
         selectedReciveNetworkDetils.chainName,
         selectedAssetDetils.symbol,
         selectedReciveAssetDetils.symbol,
         amount,
-        state && state.wallet && state.wallet.address,
+        recieverAddress,
         stellarWallet,
-        payFeeType
+        payFeeType,
+        state?.wallet?.address?.toLowerCase() !== recieverAddress?.toLowerCase(),
+        state?.wallet?.address?.toLowerCase() !== recieverAddress?.toLowerCase()? state?.wallet?.address: false
       );
       console.log("swap-result----", result)
       if (result.success) {
@@ -353,6 +375,17 @@ console.log("resQuotes-",resQuotes)
               <Icon name={"fire"} type={"materialCommunity"} size={25} color={payFeeType==="stable"?"#fff":"#4052D6"} />
               <Text style={[styles.feePayTx,{color: payFeeType==="stable"?"#fff":theme.headingTx}]}>Stable-Coin </Text>
             </TouchableOpacity>
+            </View>
+            
+            <Text style={[styles.subInputText, { fontSize: 16,color:theme.headingTx,paddingLeft:wp(3.4),marginTop:hp(1.5) }]}>Reciever Address</Text>
+            <View style={[styles.recieverAddressInput,{backgroundColor: theme.bg}]}>
+              <TextInput
+                scrollEnabled={true}
+                value={recieverAddress}
+                style={{color: theme.headingTx,fontSize: 18}}
+                returnKeyType="done"
+                onChangeText={(txt)=>{setRecieverAddress(txt)}}
+              />
             </View>
         </View>
 
@@ -755,6 +788,14 @@ const styles = StyleSheet.create({
     width:"100%",
     paddingHorizontal: wp(2),
     paddingVertical:  Platform.OS=="android"?hp(1):hp(2),
+  },
+  recieverAddressInput: {
+    marginTop: hp(1),
+    borderRadius: 10,
+    paddingVertical: hp(1),
+    paddingHorizontal: wp(2.4),
+    width:wp(87),
+    alignSelf:"center"
   },
 });
 export default ExportUSDC;
