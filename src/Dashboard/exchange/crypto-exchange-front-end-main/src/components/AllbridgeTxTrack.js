@@ -22,7 +22,7 @@ const sdk = new AllbridgeCoreSdk(nodeRpcUrlsDefault);
 const explorerLinks = {
   ETH: (hash) => `https://etherscan.io/tx/${hash}`,
   BSC: (hash) => `https://bscscan.com/tx/${hash}`,
-  SRB: (hash) => `${STELLAR_URL.EXPERT_URL}/${hash}`,
+  SRB: (hash) => `${STELLAR_URL.EXPERT_URL}/tx/${hash}`,
 };
 
 async function getAllbridgeTxStatus(chainSymbol, txHash) {

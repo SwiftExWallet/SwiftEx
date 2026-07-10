@@ -50,6 +50,7 @@ const TransactionPinModal = ({
   SaveTransaction,
   setLoading,
   setDisable,
+  txAmt
 }) => {
   const state = useSelector((state) => state);
   const theme = state.THEME.THEME ? colors.dark : colors.light;
@@ -163,9 +164,10 @@ const TransactionPinModal = ({
                   fromToken: "ETH",
                   toChain: "ETH",
                   toToken: "ETH",
-                  amountIn: "0.0",
+                  amountIn: txAmt?.toString(),
                   amountOut: "0.0",
-                  txType: "Native Transfer"
+                  txType: "Native Transfer",
+                  fromTokenMetaData:"native"
                 });
                 // ShowToast(toast, "Transaction Successful");
   
@@ -247,9 +249,10 @@ const TransactionPinModal = ({
                   fromToken: "BSC",
                   toChain: "BSC",
                   toToken: "BSC",
-                  amountIn: "0.0",
+                  amountIn: txAmt?.toString(),
                   amountOut: "0.0",
-                  txType: "Native Transfer"
+                  txType: "Native Transfer",
+                  fromTokenMetaData:"native"
                 });
                 setLoading(false);
                 setLoader(false);

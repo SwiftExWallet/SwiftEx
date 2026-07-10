@@ -37,7 +37,7 @@ import QRScannerComponent from "../../../../Modals/QRScannerComponent";
 import TokenTxDetails from "./TokenTxDetails";
 import LinearGradient from "react-native-linear-gradient";
 import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
-import { CHAINS } from "../../../../../utilities/TokenUtils";
+import { CHAINS, getProvider } from "../../../../../utilities/TokenUtils";
 const MultiChainTokenSend = ({ route }) => {
   const { hasPermission, requestPermission } = useCameraPermission();
   const toast = useToast();
@@ -82,7 +82,7 @@ const MultiChainTokenSend = ({ route }) => {
         'function transfer(address to, uint256 amount) returns (bool)',
       ];
 
-      const provider = new ethers.providers.JsonRpcProvider(activeChain.rpcUrl);
+      const provider = await getProvider(chain);
 
       const tokenInterface = new ethers.utils.Interface(ERC20_ABI);
       const formattedAmount = ethers.utils.parseUnits(amount, tokenDecimals);
@@ -137,7 +137,8 @@ const MultiChainTokenSend = ({ route }) => {
           toToken: route?.tokenSymbol || 'TOKEN',
           amountIn: amount?.toString(),
           amountOut: amount?.toString(),
-          txType: "Token Transfer"
+          txType: "Token Transfer",
+          fromTokenMetaData: route?.tokenAddress
         });
         navigation.navigate("Transactions");
       } else {
@@ -512,7 +513,8 @@ const MultiChainTokenSend = ({ route }) => {
           amount: amount,
           networkName: route?.tokenType?.toLowerCase(),
           network: route?.tokenType?.slice(0, 3),
-          tokenDecimals: route?.tokenDecimals
+          tokenDecimals: route?.tokenDecimals,
+          metadata:route
         }}
         theme={state.THEME.THEME === false ? "light" : "dark"}
         onNextStep={() => {

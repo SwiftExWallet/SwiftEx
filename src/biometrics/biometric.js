@@ -2,12 +2,11 @@ import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics'
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 
 const rnBiometrics = new ReactNativeBiometrics({
-  allowDeviceCredentials: false,
-  disableDeviceFallback: true
+  allowDeviceCredentials: true
 })
 
 export function enableBiometrics(){
-    rnBiometrics.simplePrompt({promptMessage: 'Confirm fingerprint',cancelButtonText:"SwiftEx Pin"})
+    rnBiometrics.simplePrompt({promptMessage: 'Confirm fingerprint'})
   .then((resultObject) => {
     const { success } = resultObject
 
@@ -24,7 +23,7 @@ export function enableBiometrics(){
   })
 }
 export function enable_face_id(){
-  rnBiometrics.simplePrompt({promptMessage: 'Confirm fingerprint',cancelButtonText:"SwiftEx Pin"})
+  rnBiometrics.simplePrompt({promptMessage: 'Confirm fingerprint'})
 .then((resultObject) => {
   const { success } = resultObject
 
@@ -42,7 +41,7 @@ export function enable_face_id(){
 }
 
 export function useBiometrics(navigation){ 
-    rnBiometrics.simplePrompt({promptMessage: 'Confirm fingerprint',cancelButtonText:"SwiftEx Pin"})
+    rnBiometrics.simplePrompt({promptMessage: 'Confirm fingerprint'})
   .then((resultObject) => {
     const { success } = resultObject
 
@@ -60,7 +59,7 @@ export function useBiometrics(navigation){
 
 export async function useBiometrics_run() {
   try {
-    const result = await rnBiometrics.simplePrompt({ promptMessage: 'Confirm fingerprint',cancelButtonText:"SwiftEx Pin" })
+    const result = await rnBiometrics.simplePrompt({ promptMessage: 'Confirm fingerprint' })
     if (result.success) {
       console.log('successful biometrics provided')
       return true
@@ -74,7 +73,7 @@ export async function useBiometrics_run() {
 }
 
 export function useBiometricsForAppLock(navigation){ 
-  rnBiometrics.simplePrompt({promptMessage: 'Confirm fingerprint',cancelButtonText:"SwiftEx Pin"})
+  rnBiometrics.simplePrompt({promptMessage: 'Confirm fingerprint'})
 .then((resultObject) => {
   const { success } = resultObject
 
@@ -113,7 +112,7 @@ export function getBiometrics(){
 }
 
 export function useBiometricsForSendTransaction(Function){ 
-  rnBiometrics.simplePrompt({promptMessage: 'Confirm fingerprint',cancelButtonText:"SwiftEx Pin"})
+  rnBiometrics.simplePrompt({promptMessage: 'Confirm fingerprint'})
 .then((resultObject) => {
   const { success } = resultObject
 
@@ -131,7 +130,7 @@ export function useBiometricsForSendTransaction(Function){
 }
 
 export async function useBiometricsForSwapTransaction(Function){ 
-  rnBiometrics.simplePrompt({promptMessage: 'Confirm fingerprint',cancelButtonText:"SwiftEx Pin"})
+  rnBiometrics.simplePrompt({promptMessage: 'Confirm fingerprint'})
 .then(async (resultObject) => {
   const { success } = resultObject
 

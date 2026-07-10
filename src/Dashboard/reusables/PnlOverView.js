@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, Alert } from 'react-native';
 import Modal from 'react-native-modal';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -12,6 +12,39 @@ import {
 import { colors } from '../../Screens/ThemeColorsConfig';
 import { buildXlsxZip } from '../../utilities/PnlGenrate';
 import CustomInfoProvider from '../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
+import PnlShareCard from './PnlShareCard';
+import Svg, { Polyline } from 'react-native-svg';
+
+const dummyProfitTrend = [4, 6, 5, 8, 7, 10, 12];
+const dummyLossTrend = [12, 10, 11, 8, 9, 6, 4];
+const Sparkline = ({ data = [], width = 60, height = 28, color = '#39de4a' }) => {
+    if (!data || data.length < 2) return null;
+
+    const max = Math.max(...data);
+    const min = Math.min(...data);
+    const range = max - min || 1;
+
+    const points = data
+        .map((val, i) => {
+            const x = (i / (data.length - 1)) * width;
+            const y = height - ((val - min) / range) * height;
+            return `${x},${y}`;
+        })
+        .join(' ');
+
+    return (
+        <Svg width={width} height={height}>
+            <Polyline
+                points={points}
+                fill="none"
+                stroke={color}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </Svg>
+    );
+};
 
 const TIMELINES = [
     { label: '1 Week', value: '1week' },
@@ -51,9 +84,29 @@ const formatDateString = (d) => {
     return `${dd}/${mm}/${yy}`;
 };
 
-const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
-    const theme = activeTheme ? colors.dark : colors.light;
+const inFlightRequests = new Map();
 
+const dedupedGet = (url) => {
+    if (inFlightRequests.has(url)) {
+        return inFlightRequests.get(url);
+    }
+
+    const promise = apiHelper.get(url)
+        .finally(() => {
+            inFlightRequests.delete(url);
+        });
+
+    inFlightRequests.set(url, promise);
+    return promise;
+};
+
+const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
+    const pnlCardRef = useRef();
+    const lastFetchKey = useRef(null);
+    const [hideTotalPnL,setHideTotalPnL]=useState(false);
+    const [isPnlVisible, setIsPnlVisible] = useState(false);
+    const theme = activeTheme ? colors.dark : colors.light;
+    const [isEyeOpen,setIsEyeOpen]=useState(true);
     const [pnlInfo, setPnlInfo] = useState(null);
     const [pnlLoading, setPnlLoading] = useState(false);
     const [selectedTimeline, setSelectedTimeline] = useState('1week');
@@ -87,9 +140,12 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
         setPnlLoading(true);
         const { from, to } = getDateRange(timeline);
 
+        const summaryUrl = `${FOLIO_BASE_ROUTE}/pnl?address=${stellarKey}&from=${from}&to=${to}&nocache=true&summary=true`;
+        const excelUrl = `${FOLIO_BASE_ROUTE}/pnl?address=${stellarKey}&from=${from}&to=${to}&nocache=true&summary=false&excel=true`;
+
         try {
-            const result = await apiHelper.get(`${FOLIO_BASE_ROUTE}/pnl?address=${stellarKey}&from=${from}&to=${to}&nocache=true&summary=true`);
-            const excleData = await apiHelper.get(`${FOLIO_BASE_ROUTE}/pnl?address=${stellarKey}&from=${from}&to=${to}&nocache=true&summary=false&excel=true`);
+            const result = await dedupedGet(summaryUrl);
+            const excleData = await dedupedGet(excelUrl);
 
             if (!isActiveSignal.current) return;
             if (result.success) {
@@ -138,6 +194,13 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
     };
 
     useEffect(() => {
+        if (!stellarKey) return;
+
+        const fetchKey = `${stellarKey}-${selectedTimeline}-${refresh}`;
+        if (lastFetchKey.current === fetchKey) return;
+        lastFetchKey.current = fetchKey;
+
+        setHideTotalPnL(false);
         const isActiveSignal = { current: true };
         getPnl(selectedTimeline, isActiveSignal);
         return () => { isActiveSignal.current = false; };
@@ -182,9 +245,10 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
     const topStats = [{
         label: 'Total P&L',
         value: formatUSD(totalPnL, 3),
-        icon: isLoss ? 'trending-down-outline' : 'trending-up-outline',
+        icon: isLoss ? 'arrow-down-outline' : 'arrow-up-outline',
         color: isLoss ? '#ef4444' : '#10b981',
         isPnL: true,
+        pnLPct:pnlInfo?.openPnLPct ?? 0,
     }];
 
     const stats = [
@@ -200,7 +264,35 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
     return (
         <View style={[styles.wrapper, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }]}>
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={[styles.heading, { color: theme.headingTx }]}>PnL Overview</Text>
+                <View>
+                    <Text style={[styles.heading, { color: theme.headingTx }]}>PnL Overview</Text>
+                    <Text style={[styles.subHeading, { color: theme.headingTx }]}>Freshness: ~15 mins.</Text>
+                </View>
+                <View style={{flexDirection:"row",alignSelf:"flex-end"}}>
+                    <TouchableOpacity
+                        style={[styles.downloadBtn, { backgroundColor: theme.smallCardBg, borderColor: theme.smallCardBorderColor, marginRight: wp(3) }]}
+                        disabled={pnlInfo === null || pnlLoading}
+                        onPress={() => {setIsPnlVisible(true)}}
+                    >
+                        <Text style={styles.timelineTextActive}>Share </Text>
+                        <Icon name={'share-outline'} size={20} color={'#4052D6'} type={'ionicon'} />
+                    </TouchableOpacity>
+
+                    {pnlInfo && (
+                        <View style={styles.hiddenCardWrapper} pointerEvents="none">
+                            <PnlShareCard
+                                ref={pnlCardRef}
+                                brandName="SwiftEx Wallet"
+                                days={selectedTimeline}
+                                totalPnlPercent={pnlInfo?.openPnLPct}
+                                totalPnlDollar={formatUSD(totalPnL, 3)}
+                                winRate={pnlInfo?.winRate}
+                                trades={tradeCount}
+                                bestTrade={pnlInfo?.bestTrade?.pnl}
+                                hideTotal={hideTotalPnL}
+                            />
+                        </View>
+                    )}
                 <TouchableOpacity
                     style={[styles.downloadBtn, { backgroundColor: theme.smallCardBg, borderColor: theme.smallCardBorderColor }]}
                     disabled={pnlInfo === null || pnlLoading}
@@ -208,19 +300,59 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
                 >
                     <Text style={styles.timelineTextActive}>Download</Text>
                 </TouchableOpacity>
+
+                </View>
             </View>
 
             <View style={styles.container}>
                 {topStats.map((stat, index) => (
-                    <View key={index} style={[styles.topCard, { backgroundColor: theme.bg, borderColor: theme.smallCardBorderColor }, stat.isPnL && isLoss ? styles.lossCard : styles.profitCard]}>
-                        <View>
-                            <Text style={[styles.topCardlabel, { color: theme.headingTx }]}>{stat.label}</Text>
-                            <Text style={[styles.value, stat.isPnL && isLoss ? styles.lossValue : { color: theme.inactiveTx }]}>
-                                {pnlLoading ? '...' : stat.value}
+                    <View
+                        key={index}
+                        style={[
+                            styles.topCard,
+                            { backgroundColor: theme.bg, borderColor: theme.smallCardBorderColor },
+                            stat?.isPnL && isLoss ? styles.lossCard : styles.profitCard
+                        ]}
+                    >
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.topCardlabel, { color: theme.headingTx }]}>
+                                {stat?.label}
                             </Text>
+
+                            <Text style={[styles.valuePnl, stat?.isPnL && isLoss ? styles.lossValue : { color: theme.inactiveTx }]}>
+                                {pnlLoading ? '...' : stat?.value}
+                            </Text>
+
+                            {stat?.isPnL && !pnlLoading && (
+                                <View style={[styles.pctBadge, isLoss ? styles.pctBadgeLoss : styles.pctBadgeProfit]}>
+                                    <Icon
+                                        name={isLoss ? 'arrow-down-outline' : 'arrow-up-outline'}
+                                        size={11}
+                                        color={isLoss ? '#f06262' : '#39de4a'}
+                                        type={'ionicon'}
+                                    />
+                                    <Text style={[styles.pctBadgeText, { color: isLoss ? '#f06262' : '#39de4a' }]}>
+                                        {isEyeOpen?stat?.pnLPct:"X.XX"}%
+                                    </Text>
+                                    {/* <Icon
+                                        name={!isEyeOpen ? "eye-off" : "eye"}
+                                        type="ionicon"
+                                        size={23}
+                                        color={theme.inactiveTx}
+                                        onPress={() => {setIsEyeOpen(isEyeOpen?false:true)}}
+                                    /> */}
+                                </View>
+                            )}
                         </View>
-                        <View style={[styles.iconBox, { backgroundColor: `${stat.color}20`, marginBottom: 2 }]}>
-                            <Icon name={stat.icon} size={24} color={stat.color} type={"ionicon"} />
+
+                        <View style={{justifyContent:"center",alignItems:"center"}}>
+                            <View style={[styles.iconBox, { backgroundColor: `${stat?.color}20` }]}>
+                                <Icon name={stat?.icon} size={20} color={stat?.color} type={'ionicon'} />
+                            </View>
+                            <Sparkline
+                                data={isLoss ? dummyLossTrend : dummyProfitTrend}
+                                color={isLoss ? '#f06262' : '#39de4a'}
+                            />
                         </View>
                     </View>
                 ))}
@@ -335,6 +467,107 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
                     </TouchableOpacity>
                 </View>
             </Modal>
+
+            <Modal
+                isVisible={isPnlVisible}
+                onBackdropPress={() => setIsPnlVisible(false)}
+                onBackButtonPress={() => setIsPnlVisible(false)}
+                style={styles.modalStructure}
+                backdropOpacity={0.5}
+                useNativeDriverForBackdrop
+            >
+                <View style={[styles.sheetContent, { backgroundColor: theme.bg }]}>
+                    <View style={styles.dragHandle} />
+                    <Text style={[styles.sheetTitle, { color: theme.headingTx }]}>Share</Text>
+
+                    <Text style={{ color: isValidRange ? theme.inactiveTx : '#ef4444', fontSize: 12, marginBottom: hp(2.5), textAlign: 'center', fontWeight: isValidRange ? '400' : '600' }}>
+                        {isValidRange ? "Select an exact period. Maximum statements up to 3 months supported." : "⚠️ Error: Selected window exceeds the 3-month limit!"}
+                    </Text>
+
+                    <View style={[styles.calendarInputContainer,{ marginBottom: hp(0),}]}>
+                        <TouchableOpacity style={[styles.dateInputBox, { backgroundColor: theme.smallCardBg, borderColor: theme.smallCardBorderColor }]} onPress={() => setShowFromPicker(true)}>
+                            <Text style={styles.inputBoxSub}>From Date</Text>
+                            <Text style={[styles.dateValueText, { color: theme.headingTx }]}>{fromDate.toLocaleDateString()}</Text>
+                        </TouchableOpacity>
+
+                        <Icon name="arrow-forward-outline" size={20} color={theme.inactiveTx} type="ionicon" style={{ alignSelf: 'center' }} />
+
+                        <TouchableOpacity style={[styles.dateInputBox, { backgroundColor: theme.smallCardBg, borderColor: theme.smallCardBorderColor }]} onPress={() => setShowToPicker(true)}>
+                            <Text style={styles.inputBoxSub}>To Date</Text>
+                            <Text style={[styles.dateValueText, { color: theme.headingTx }]}>{toDate.toLocaleDateString()}</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {showFromPicker && (
+                        <DateTimePicker
+                            value={fromDate}
+                            mode="date"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            maximumDate={new Date()}
+                            onChange={(event, selectedDate) => {
+                                setShowFromPicker(Platform.OS === 'ios');
+                                if (selectedDate) setFromDate(selectedDate);
+                            }}
+                        />
+                    )}
+
+                    {showToPicker && (
+                        <DateTimePicker
+                            value={toDate}
+                            mode="date"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            maximumDate={new Date()}
+                            minimumDate={fromDate}
+                            onChange={(event, selectedDate) => {
+                                setShowToPicker(Platform.OS === 'ios');
+                                if (selectedDate) setToDate(selectedDate);
+                            }}
+                        />
+                    )}
+
+                    <View style={styles.pnlDisplay}>
+                        <Text style={{ color: theme.inactiveTx, fontSize: 16, fontWeight: '400',marginRight:wp(14)}}>
+                            Do not display the total P&L amount
+                        </Text>
+                        <TouchableOpacity
+                            onPress={() => setHideTotalPnL(prev => !prev)}
+                            style={{
+                                width: 44,
+                                height: 26,
+                                borderRadius: 13,
+                                backgroundColor: hideTotalPnL ? 'green' : 'gray',
+                                padding: 2,
+                                justifyContent: 'center',
+                            }}
+                        >
+                            <View
+                                style={{
+                                    width: 22,
+                                    height: 22,
+                                    borderRadius: 11,
+                                    backgroundColor: '#fff',
+                                    alignSelf: hideTotalPnL ? 'flex-end' : 'flex-start',
+                                }}
+                            />
+                        </TouchableOpacity>
+                    </View>
+
+
+                    <TouchableOpacity
+                        style={[styles.actionBtn, { backgroundColor: isValidRange ? '#4052D6' : 'rgba(100,100,100,0.4)' }]}
+                        onPress={async () => {
+                            try {
+                                await pnlCardRef.current?.share();
+                            } catch (err) {
+                                console.log('Share error:', err);
+                            }
+                            setTimeout(() => setIsPnlVisible(false), 300);
+                        }}
+                    >
+                            <Text style={styles.actionBtnText}>Share</Text>
+                    </TouchableOpacity>
+                </View>
+            </Modal>
             <View style={styles.betaTagCon}>
                 <Text style={styles.betaTagTxt}>BETA</Text>
             </View>
@@ -386,8 +619,11 @@ const styles = StyleSheet.create({
     },
     topCardlabel: {
         fontSize: 11,
-        marginBottom: 2,
-        fontWeight: "900"
+        marginBottom: 6,
+        fontWeight: "600",
+        textTransform: 'uppercase',
+        letterSpacing: 0.4,
+        opacity: 0.7
     },
     lossCard: {
         borderColor: 'rgba(235, 59,59,0.3)',
@@ -415,6 +651,11 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '700',
         alignSelf: "center"
+    },
+    valuePnl: {
+        fontSize: 22,
+        fontWeight: '700',
+        marginBottom: 8
     },
     lossValue: {
         color: '#f06262ff',
@@ -451,7 +692,9 @@ const styles = StyleSheet.create({
         paddingVertical: 7,
         borderRadius: 10,
         alignItems: 'center',
-        borderWidth: 1
+        borderWidth: 1,
+        flexDirection:"row",
+        justifyContent:"center",
     },
     modalStructure: {
         justifyContent: 'flex-end',
@@ -547,6 +790,39 @@ const styles = StyleSheet.create({
         color:"#ed920aff",
         textAlign:"left",
         marginLeft:4
-    }
+    },
+    hiddenCardWrapper: {
+        position: 'absolute',
+        top: -9999,
+        left: -9999,
+    },
+    pnlDisplay:{
+        flexDirection:"row",
+        paddingVertical:hp(2)
+    },
+    pctBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        gap: 3,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 999
+    },
+    pctBadgeProfit: {
+        backgroundColor: 'rgba(57, 222, 74, 0.15)'
+    },
+    pctBadgeLoss: {
+        backgroundColor: 'rgba(240, 98, 98, 0.15)'
+    },
+    pctBadgeText: {
+        fontSize: 14,
+        fontWeight: '600'
+    },
+    subHeading: {
+        marginTop:hp(0.3),
+        fontSize: 14,
+        fontWeight: "500"
+    },
 });
 export default React.memo(PnlOverView);

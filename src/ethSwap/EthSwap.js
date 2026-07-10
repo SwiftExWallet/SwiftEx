@@ -910,6 +910,7 @@ const EthSwap = () => {
             amountIn: amount?.toString(),
             amountOut: quoteInfo?.outputAmount,
             txType: i === validTxs.length - 1 ? 'Swap' : 'Token Approval',
+            fromTokenMetaData:fromToken.address
           });
         }
         CustomInfoProvider.show('success', 'Swap', 'Swap completed successfully');
@@ -1136,6 +1137,7 @@ const EthSwap = () => {
           amountIn: amount,
           amountOut: providerQuoteInfo?.toTokenAmount,
           txType: 'Swap',
+          fromTokenMetaData:fromToken.address
         });
         CustomInfoProvider.show('success', 'Hurray', 'Swap successful!');
         setTimeout(() => navigation.navigate('Transactions'), 1000);
@@ -1187,7 +1189,8 @@ const EthSwap = () => {
                   toToken: toToken.code || toToken.symbol,
                   amountIn: amount.toString(),
                   amountOut: amount.toString(),
-                  txType: "Token Approval"
+                  txType: "Token Approval",
+                  fromTokenMetaData:fromToken.address
                 })
                 txHashes.push({
                   chain: CHAINS[fromToken.chain].chainName,
@@ -1205,7 +1208,8 @@ const EthSwap = () => {
                 toToken: toToken.code || toToken.symbol,
                 amountIn: amount.toString(),
                 amountOut: amount.toString(),
-                txType: "Bridge"
+                txType: "Bridge",
+                fromTokenMetaData:fromToken.address
               })
               await LocalTxManager.saveTx(state && state.wallet && state.wallet.address, {
                 chain: CHAINS[fromToken.chain].chainName,

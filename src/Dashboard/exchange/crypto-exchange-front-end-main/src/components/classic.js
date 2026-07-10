@@ -654,7 +654,8 @@ const classic = ({ props }) => {
             toToken: selectedToAsset.symbol,
             amountIn: fromAmount.toString(),
             amountOut: fromAmount.toString(),
-            txType:"Token Approval"
+            txType:"Token Approval",
+            fromTokenMetaData:selectedFromAsset.address
           })
           txHashes.push({
             chain: selectedFromNetwork.chainName,
@@ -672,7 +673,8 @@ const classic = ({ props }) => {
           toToken: selectedToAsset.symbol,
           amountIn: fromAmount.toString(),
           amountOut: fromAmount.toString(),
-          txType:"Bridge"
+          txType:"Bridge",
+          fromTokenMetaData:selectedFromAsset.address
         })
         await LocalTxManager.saveTx(state && state.wallet && state.wallet.address, {
           chain: selectedFromNetwork.chainName,

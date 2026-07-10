@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,8 @@ import {
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
 import { colors } from '../../../../../../Screens/ThemeColorsConfig';
+import { GetAquariusSwapQuote, ExecuteAquariusSwap } from '../../../../../../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/stellar/AquariusUtil';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   const state=useSelector((state)=>state);
@@ -57,6 +59,14 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
     icon: "https://stellar.myfilebase.com/ipfs/QmUjsGiNcUFTbiKoMZyBtgkSwfndBXSbRKFpGrYKvHC1fX",
     decimals: 7
   },);
+  const slippageScale = [
+    { value: "0.1", key: "0.1%" },
+    { value: "0.5", key: "0.5%" },
+    { value: "1", key: "1%" },
+    { value: "1.5", key: "1.5%" },
+    { value: "2", key: "2%" },
+    { value: "2.5", key: "2.5%" },
+  ];
   const navigation=useNavigation();
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
@@ -71,6 +81,30 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   const [showReverse,setshowReverse]=useState(false);
   const isFocused=useIsFocused();
   const [findToken, setfindToken] = useState('');
+  const [activeProvider, setActiveProvider] = useState("SDEX");
+  const [isOptionsVisible, setIsOptionsVisible] = useState(false);
+  const [isAquaSwapUse, setIsAquaSwapUse] = useState(true);
+  const [optionalSlippage, setOptionalSlippage] = useState(slippageScale[2].key);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await AsyncStorage.getItem("isAquaSwapUse");
+        if (saved !== null) {
+          setIsAquaSwapUse(saved === 'true');
+        }
+      } catch (e) {
+        console.error('Error loading isAquaSwapUse preference:', e);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem("isAquaSwapUse", String(isAquaSwapUse)).catch((e) => {
+      console.error('Error saving isAquaSwapUse preference:', e);
+    });
+  }, [isAquaSwapUse]);
+  
   
   useEffect(()=>{
     setassetTrustRequired([]);
@@ -121,6 +155,13 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
       handleInputChange(fromAmount)
     }
   },[fromToken,toToken])
+
+  useEffect(()=>{
+    if (isValidNumber(fromAmount) && fromAmount !== "null") {
+      setIsLoading(true)
+      handleQoutesFeatch(fromToken.code, fromToken.issuer, toToken.code, toToken.issuer, fromAmount);
+    }
+  },[isAquaSwapUse, optionalSlippage])
   
 
   function isAssetData(state) {
@@ -186,21 +227,86 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
     }
   };
   // Handle input change and calculate the output amount
+  const handleQoutesFeatchRef = useRef();
+  useEffect(() => {
+    handleQoutesFeatchRef.current = handleQoutesFeatch;
+  });
+
   const fetchQuote = useCallback(
     debounce((fromTokenCode,fromTokenIssuer,toTokenCode,toTokenIssuer,value) => {
       setIsLoading(true)
-      handleQoutesFeatch(fromTokenCode,fromTokenIssuer,toTokenCode,toTokenIssuer,value)
+      handleQoutesFeatchRef.current(fromTokenCode,fromTokenIssuer,toTokenCode,toTokenIssuer,value)
     }, 400),
     []
   );
 
+  const toStellarAsset = (code, issuer) => {
+    if (code === "XLM" || code === "native") return StellarSdk.Asset.native();
+    return new StellarSdk.Asset(code, issuer);
+  };
+
+  const buildAquariusExchangeRes = (aquariusQuote, sourceAmount, fromCode, fromIssuer, toCode, toIssuer) => {
+    const rate = parseFloat(aquariusQuote.exchangeRate);
+    const destinationAmount = rate * parseFloat(sourceAmount);
+    return {
+      status: true,
+      network: "SDEX (Aquarius)",
+      source: {
+        code: fromCode,
+        issuer: fromIssuer,
+        amount: parseFloat(sourceAmount).toFixed(7),
+      },
+      destination: {
+        code: toCode,
+        issuer: toIssuer,
+        amount: destinationAmount.toFixed(7),
+      },
+      exchangeRate: {
+        rate: `1 ${fromCode} = ${rate.toFixed(7)} ${toCode}`,
+        inverse: `1 ${toCode} = ${(1 / rate).toFixed(7)} ${fromCode}`,
+      },
+      swapDetails: {
+        slippageTolerance: aquariusQuote.slippageTolerance,
+        minReceived: aquariusQuote.minimumReceived,
+      },
+    };
+  };
+
   const handleQoutesFeatch=async(fromName,fromAdd,toName,toAdd,amount) => {
       const res=await getSwapQuote(fromName,fromAdd,toName,toAdd,amount)
-      if(res.status===true)
-      {
+
+      let aquariusRes = null;
+      if (isAquaSwapUse) {
+        try {
+          const assetIn = toStellarAsset(fromName, fromAdd);
+          const assetOut = toStellarAsset(toName, toAdd);
+          const aquariusQuote = await GetAquariusSwapQuote({
+            assetIn,
+            assetOut,
+            amount,
+            slippageBps: Math.round(parseFloat(optionalSlippage) * 100),
+          });
+          aquariusRes = buildAquariusExchangeRes(aquariusQuote, amount, fromName, fromAdd, toName, toAdd);
+        } catch (err) {
+          console.error("error in aquarius quote:", err?.message || err);
+          aquariusRes = null;
+        }
+      }
+
+      const sdexAmount = res?.status === true ? parseFloat(res?.destination?.amount) : null;
+      const aquariusAmount = aquariusRes?.status === true ? parseFloat(aquariusRes?.destination?.amount) : null;
+
+      if (aquariusAmount !== null && (sdexAmount === null || aquariusAmount > sdexAmount)) {
+        setshowReverse(false)
+        setexchangeRes(aquariusRes)
+        setToAmount(aquariusRes?.destination?.amount);
+        setActiveProvider("Aquarius");
+        setIsLoading(false)
+      } else if (sdexAmount !== null) {
         setshowReverse(false)
         setexchangeRes(res)
         setToAmount(res?.destination?.amount);
+        setActiveProvider("SDEX");
         setIsLoading(false)
       }
       else{
@@ -383,6 +489,32 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
 
   const handleSwap=async()=>{
     settokenBurn(true)
+
+    if (activeProvider === "Aquarius") {
+      const assetIn = toStellarAsset(fromToken.code, fromToken.issuer);
+      const assetOut = toStellarAsset(toToken.code, toToken.issuer);
+
+      const respo = await ExecuteAquariusSwap({
+        assetIn,
+        assetOut,
+        amount: fromAmount,
+        publicKey: state?.STELLAR_PUBLICK_KEY,
+      });
+
+      if (respo.status === true) {
+        CustomInfoProvider.show("success", "Transaction successful!");
+        settokenBurn(false)
+        setTimeout(() => {
+          navigation.navigate("Transactions", { txType: "STR" });
+        }, 2000)
+      } else {
+        settokenBurn(false)
+        console.log("error in aquarius execute", respo.error)
+        CustomInfoProvider.show("error", "!Opps", respo.error || "Transaction Failed.");
+      }
+      return;
+    }
+
     const respo=await AMMSWAPTESTNET(fromToken.code,fromToken.issuer,toToken.code,toToken.issuer,state?.STELLAR_PUBLICK_KEY,fromAmount,assetTrustRequired)
     if(respo.status===true)
     {
@@ -428,7 +560,19 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
         style={{ flex: 1, backgroundColor: theme.bg }}
       >
         <ScrollView contentContainerStyle={styles.scrollView}>
-          
+          <View style={styles.headerCon}>
+            <View style={[styles.activeProviderContainer, { backgroundColor: theme.cardBg }]}>
+              <Text style={[styles.cardLabel, { color: theme.inactiveTx }]}>
+                Swap handled by{' '}
+                <Text style={[styles.cardLabel, styles.providerName, { color: theme.headingTx }]}>
+                  {activeProvider}
+                </Text>
+              </Text>
+            </View>
+            <TouchableOpacity style={[styles.optionContainer, { backgroundColor: theme.cardBg }]} onPress={() => { setIsOptionsVisible(true) }}>
+              <Ionicons name="options-sharp" size={25} color={theme.headingTx} />
+            </TouchableOpacity>
+          </View>
           {/* From Token Input */}
           <View style={[styles.card,{backgroundColor:theme.cardBg}]}>
             <View style={styles.cardHeader}>
@@ -516,7 +660,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
 
             <View style={styles.detailRow}>
               <Text style={[styles.detailLabel,{color:theme.headingTx}]}>Slippage Tolerance</Text>
-              <Text style={[styles.detailValue,{color:theme.headingTx}]}>{exchangeRes?.swapDetails?.slippageTolerance}</Text>
+              <Text style={[styles.detailValue, { color: theme.headingTx }]}>{`${exchangeRes?.network === "Stellar"? exchangeRes?.swapDetails?.slippageTolerance ?? "0.5": optionalSlippage}`}</Text>
             </View>
 
             <View style={styles.detailRow}>
@@ -531,7 +675,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
               styles.swapActionButton,
               (!fromAmount || parseFloat(fromAmount) <= 0||parseFloat(fromBal)===0||parseFloat(fromAmount)>parseFloat(fromBal)) && styles.disabledButton,
             ]}
-            disabled={!fromAmount || parseFloat(fromAmount) <= 0 || isLoading||parseFloat(fromBal)===0||parseFloat(fromAmount)>parseFloat(fromBal)}
+            disabled={!fromAmount || parseFloat(fromAmount) <= 0 || isLoading || tokenBurn || parseFloat(fromBal)===0||parseFloat(fromAmount)>parseFloat(fromBal)}
             onPress={()=>{handleSwap()}}
           >
               {isLoading||tokenBurn ? (
@@ -547,7 +691,11 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
         visible={tokenModalVisible}
         onRequestClose={() => setTokenModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
+        <TouchableOpacity
+              style={styles.modalContainer}
+              activeOpacity={1}
+              onPress={() => setTokenModalVisible(false)}
+            >
           <View style={[styles.modalContent,{backgroundColor:theme.bg}]}>
             <View style={styles.modalHandle} />
             
@@ -597,8 +745,66 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
                 }
             />
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
+
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={isOptionsVisible}
+            onRequestClose={() => setIsOptionsVisible(false)}
+          >
+            <TouchableOpacity
+              style={styles.modalContainer}
+              activeOpacity={1}
+              onPress={() => setIsOptionsVisible(false)}
+            >
+              <TouchableOpacity
+                activeOpacity={1}
+                onPress={() => {}}
+                style={[styles.modalContent, { backgroundColor: theme.bg, height: '60%', }]}
+              >
+                <View style={styles.modalHandle} />
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, { color: theme.headingTx, fontSize: 19 }]}>Swap settings</Text>
+                  <TouchableOpacity style={[styles.optionContainer, { backgroundColor: theme.cardBg }]} onPress={() => setIsOptionsVisible(false)}>
+                    <MaterialIcons name="close" size={24} color={theme.headingTx} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.cardLabel, { color: theme.inactiveTx }]}>Liquidity source</Text>
+                <View style={[styles.infoCon, { backgroundColor: theme.cardBg }]}>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Image source={{ uri: "https://aqua.network/assets/img/aqua-logo.png" }} width={41} height={40} />
+                    <View style={{ marginLeft: wp(2) }}>
+                      <Text style={[styles.cardLabel, { color: theme.inactiveTx }]}>Aquarius AMM</Text>
+                      <Text style={[styles.cardLabel, { color: theme.inactiveTx,fontSize:12 }]}>Use Aquarius if better rate available</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setIsAquaSwapUse(prev => !prev)}
+                    style={[styles.toggleCon, { backgroundColor: isAquaSwapUse ? 'green' : 'gray' }]}
+                  >
+                    <View style={[styles.toggleView, { alignSelf: isAquaSwapUse ? 'flex-end' : 'flex-start' }]} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.cardLabel, { color: theme.inactiveTx }]}>Slippage tolerance</Text>
+                <View style={{flexDirection:"row",marginVertical:hp(1.5)}}>
+                  {slippageScale.map((item, index) => {
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      style={[styles.slippageCon, { backgroundColor: theme.cardBg,borderWidth:optionalSlippage===item.key?2:0 }]}
+                      onPress={() => {setOptionalSlippage(item?.key)}}
+                    >
+                      <Text style={[styles.tokenSymbol, { color: theme.headingTx }]}>{item?.key}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
+                </View>
+                <Text style={[styles.cardLabel, { color: theme.inactiveTx, fontWeight: "400" }]}>Your swap will fail if the exchange rate moves against you by more than your selected slippage tolerance before the transaction is confirmed. Increasing the slippage tolerance can improve the chances of success, but you may receive a less favorable exchange rate.</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </Modal>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -838,6 +1044,53 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 12,
     textAlign: 'center',
+  },
+  headerCon: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: hp(1),
+    marginHorizontal: wp(1.5)
+  },
+  optionContainer: {
+    borderRadius: 30,
+    padding: 10,
+  },
+  activeProviderContainer: {
+    alignItems: "center",
+    width: wp(60),
+    borderRadius: 15,
+    padding: 10,
+    justifyContent: "center"
+  },
+  infoCon: {
+    flexDirection: "row",
+    borderRadius: 10,
+    padding: 10,
+    marginVertical:hp(1.3),
+    alignItems:"center",
+    justifyContent:"space-between"
+  },
+  toggleCon: {
+    padding: 2,
+    justifyContent: 'center',
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+  },
+  toggleView: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#fff',
+  },
+  slippageCon: {
+    alignItems: 'center',
+    justifyContent:"center",
+    height:hp(4),
+    width:wp(14),
+    borderRadius:10,
+    marginRight:wp(2),
+    borderColor:"#4052D6"
   },
 });
 

@@ -194,7 +194,8 @@ export async function swapPepare(
           toToken: destTokenSymbol,
           amountIn: amount?.toString(),
           amountOut: amount?.toString(),
-          txType:"Bridge"
+          txType:"Bridge",
+          fromTokenMetaData:srcToken.tokenAddress
         })
 
       return { success: true, txHash: sent.hash };

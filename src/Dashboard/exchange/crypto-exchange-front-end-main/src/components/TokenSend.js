@@ -41,7 +41,7 @@ import TokenTxDetails from "./TokenTxDetails";
 import LinearGradient from "react-native-linear-gradient";
 import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
 import AccessNativeStorage from "../../../../Wallets/AccessNativeStorage";
-import { CHAINS } from "../../../../../utilities/TokenUtils";
+import { CHAINS, getProvider } from "../../../../../utilities/TokenUtils";
 const TokenSend = ({ route }) => {
   const { hasPermission, requestPermission } = useCameraPermission();
   const toast = useToast();
@@ -86,7 +86,7 @@ const TokenSend = ({ route }) => {
         'function transfer(address to, uint256 amount) returns (bool)',
       ];
 
-      const provider = new ethers.providers.JsonRpcProvider(activeChain.rpcUrl);
+      const provider = await getProvider(chain);
 
       const tokenInterface = new ethers.utils.Interface(ERC20_ABI);
       const formattedAmount = ethers.utils.parseUnits(amount, tokenDecimals);
@@ -141,7 +141,8 @@ const TokenSend = ({ route }) => {
           toToken: route?.params?.tokenSymbol || 'TOKEN',
           amountIn: amount?.toString(),
           amountOut: amount?.toString(),
-          txType: "Token Transfer"
+          txType: "Token Transfer",
+          fromTokenMetaData: route?.params?.tokenAddress
         });
         navigation.navigate("Transactions");
       } else {
@@ -546,7 +547,8 @@ const TokenSend = ({ route }) => {
           amount: amount,
           networkName: route?.params?.tokenType?.toLowerCase(),
           network: route?.params?.tokenType?.slice(0,3),
-          tokenDecimals:route?.params?.tokenDecimals
+          tokenDecimals:route?.params?.tokenDecimals,
+          metadata:route?.params
         }}
         theme={state.THEME.THEME === false ? "light" : "dark"}
         onNextStep={() => {

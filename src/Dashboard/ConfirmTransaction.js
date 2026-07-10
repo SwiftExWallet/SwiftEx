@@ -75,7 +75,8 @@ const ConfirmTransaction = (props) => {
             toToken: "ETH",
             amountIn: props?.route?.params?.info?.amount,
             amountOut: props?.route?.params?.info?.amount,
-            txType: "Native Transfer"
+            txType: "Native Transfer",
+            fromTokenMetaData:"native"
           });
           setLoading(false);
           setDisable(false);
@@ -110,7 +111,8 @@ const ConfirmTransaction = (props) => {
             toToken: "BSC",
             amountIn: props?.route?.params?.info?.amount,
             amountOut: props?.route?.params?.info?.amount,
-            txType: "Native Transfer"
+            txType: "Native Transfer",
+            fromTokenMetaData:"native"
           });
           setLoading(false);
           setDisable(false);
@@ -205,6 +207,7 @@ const ConfirmTransaction = (props) => {
         SaveTransaction={SaveTransaction}
         setLoading={setLoading}
         setDisable={setDisable}
+        txAmt={props?.route?.params?.info?.amount}
       />
     </View>
     </>

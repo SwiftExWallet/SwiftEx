@@ -16,7 +16,7 @@ import axios from 'axios';
 import { RPC } from '../../../../constants';
 import { REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL } from '../ExchangeConstants';
 import Icon from '../../../../../icon';
-import { CHAINS } from '../../../../../utilities/TokenUtils';
+import { callWithFallback, CHAINS } from '../../../../../utilities/TokenUtils';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -172,82 +172,87 @@ const TokenTxDetails = ({ visible, onClose, params, theme,onNextStep }) => {
     setResult(null);
 
     try {
-      const { walletAddress, tokenAddress, recipientAddress, amount, network, tokenDecimals } = params;
-
+      const {
+        walletAddress,
+        tokenAddress,
+        recipientAddress,
+        amount,
+        network,
+        tokenDecimals,
+        tokenSymbol,
+        tokenName,
+        metadata
+      } = params;
+      
       if (!ethers.utils.isAddress(walletAddress)) throw new Error('Invalid wallet address');
       if (!ethers.utils.isAddress(tokenAddress)) throw new Error('Invalid token address');
       if (!ethers.utils.isAddress(recipientAddress)) throw new Error('Invalid recipient address');
       if (parseFloat(amount) <= 0) throw new Error('Amount must be greater than 0');
 
       const config = CHAINS[network];
-      const [tokenInfo, balances, gasData] = await Promise.all([
-        getTokenInfo(tokenAddress,config),
-        getWalletBalances(walletAddress, tokenAddress, config),
-        getGasPrice(config)
+      const decimals = tokenDecimals ?? 18;
+
+      const [nativeBalanceWei, gasPrice, tokenBalanceRaw] = await Promise.all([
+        callWithFallback(network, (provider) => provider.getBalance(walletAddress)),
+        callWithFallback(network, (provider) => provider.getGasPrice()),
+        callWithFallback(network, (provider) => {
+          const tokenContract = new ethers.Contract(
+            tokenAddress,
+            ['function balanceOf(address) view returns (uint256)'],
+            provider
+          );
+          return tokenContract.balanceOf(walletAddress);
+        }),
       ]);
+
+      const nativeBalance = parseFloat(ethers.utils.formatEther(nativeBalanceWei));
+      const tokenBalance = parseFloat(ethers.utils.formatUnits(tokenBalanceRaw, decimals));
+      const gasPriceGwei = parseFloat(ethers.utils.formatUnits(gasPrice, 'gwei'));
+
       const estimatedGas = config.gasLimit;
-      const txFeeWei = BigInt(gasData.gasPrice) * BigInt(estimatedGas);
-      const txFee = ethers.utils.formatEther(txFeeWei);
-      const nativeBalance = parseFloat(balances.native.balance);
-      const tokenBalance = parseFloat(balances.token.balance);
+      const txFeeWei = BigInt(gasPrice.toString()) * BigInt(estimatedGas);
+      const txFeeAmount = parseFloat(ethers.utils.formatEther(txFeeWei));
+
       const sendAmount = parseFloat(amount);
-      const txFeeAmount = parseFloat(txFee);
       const hasSufficientNative = nativeBalance >= txFeeAmount;
       const hasSufficientToken = tokenBalance >= sendAmount;
       const canExecuteTransfer = hasSufficientNative && hasSufficientToken;
-      const warnings = [];
-      const errors = [];
 
+      const warnings = [];
       if (!hasSufficientNative) {
         warnings.push(`Insufficient ${txFeeAmount.toFixed(6)} ${config.symbol} for gas fee`);
-        errors.push('Insufficient native balance');
       }
-
       if (!hasSufficientToken) {
-        warnings.push(`Insufficient token balance. Required: ${sendAmount} ${tokenInfo.symbol}`);
-        errors.push('Insufficient token balance');
+        warnings.push(`Insufficient token balance. Required: ${sendAmount} ${metadata?.tokenSymbol || 'token'}`);
       }
 
       setResult({
         success: true,
         network: config.name,
-        token: {
-          symbol: tokenInfo.symbol,
-          name: tokenInfo.name,
-          decimals: tokenInfo.decimals
-        },
+        token: { symbol: metadata?.tokenSymbol || 'UNKNOWN', name: metadata?.tokenSymbol || 'Unknown Token', decimals },
         transaction: {
           from: walletAddress,
           to: recipientAddress,
           amount: sendAmount,
-          amountFormatted: `${sendAmount} ${tokenInfo.symbol}`
+          amountFormatted: `${sendAmount} ${metadata?.tokenSymbol || ''}`,
         },
         gas: {
           estimatedGas,
-          gasPrice: gasData.gasPriceGwei.toFixed(2),
+          gasPrice: gasPriceGwei.toFixed(2),
           txFee: txFeeAmount.toFixed(6),
-          symbol: config.symbol
+          symbol: config.symbol,
         },
         balances: {
-          native: {
-            current: nativeBalance.toFixed(6),
-            sufficient: hasSufficientNative,
-            symbol: config.symbol
-          },
-          token: {
-            current: tokenBalance,
-            sufficient: hasSufficientToken,
-            symbol: tokenInfo.symbol
-          }
+          native: { current: nativeBalance.toFixed(6), sufficient: hasSufficientNative, symbol: config.symbol },
+          token: { current: tokenBalance, sufficient: hasSufficientToken, symbol: metadata?.tokenSymbol || 'UNKNOWN' },
         },
         canExecute: canExecuteTransfer,
         warnings,
-        errors
+        errors: warnings.length ? ['Insufficient balance'] : [],
       });
     } catch (err) {
-      console.error("error in calculateFees", err);
-      const message =err?.reason || err?.message || 'Something went wrong';
-      setError(message);
+      console.error('error in calculateFees', err);
+      setError(err?.reason || err?.message || 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -324,7 +329,7 @@ const TokenTxDetails = ({ visible, onClose, params, theme,onNextStep }) => {
             <View style={styles.resultContainer}>
               <View style={[styles.section, { backgroundColor: colors.surface }]}>
                 <Text style={[styles.sectionTitle, { color: colors.text }]}>Transaction</Text>
-                <InfoRow label="Token" value={`${result.token.name} (${result.token.symbol})`} />
+                <InfoRow label="Token" value={`${result.token.symbol}`} />
                 <InfoRow label="Amount" value={result.transaction.amountFormatted} highlight />
                 <InfoRow label="From" value={`${result.transaction.from.slice(0, 6)}.....${result.transaction.from.slice(-6)}`} />
                 <InfoRow label="To" value={`${result.transaction.to.slice(0, 10)}.....${result.transaction.to.slice(-6)}`} />

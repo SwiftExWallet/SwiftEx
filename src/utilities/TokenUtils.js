@@ -6,8 +6,10 @@ import { FOLIO_BASE_ROUTE, REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL, REACT_APP_HOST
 import apiHelper from "../../src/Dashboard/exchange/crypto-exchange-front-end-main/src/apiHelper";
 import PancakeList from "../../src/Dashboard/tokens/pancakeSwap/PancakeList.json";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ethers } from "ethers";
 const BASEROUTE = `${REACT_APP_HOST}/v1/portfolio/`;
 
+const providerCache = new Map();
 const CONFIG = {
   TIMEOUT: 10000,
   APIS: {
@@ -714,7 +716,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:ARB.supportedForInterSwap,
     chainNameInThirdParty:ARB.chainNameInThirdParty,
-    eipId:ARB.eipId
+    eipId:ARB.eipId,
+    backupRPCUrls:ARB.backupRPCS
   },
   POL: {
     rpcUrl: POL.RPC,
@@ -745,7 +748,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:POL.supportedForInterSwap,
     chainNameInThirdParty:POL.chainNameInThirdParty,
-    eipId:POL.eipId
+    eipId:POL.eipId,
+    backupRPCUrls:POL.backupRPCS
   },
   OPT: {
     rpcUrl: OPT.RPC,
@@ -776,7 +780,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:OPT.supportedForInterSwap,
     chainNameInThirdParty:OPT.chainNameInThirdParty,
-    eipId:OPT.eipId
+    eipId:OPT.eipId,
+    backupRPCUrls:OPT.backupRPCS
   },
   AVAX: {
     rpcUrl: AVAX.RPC,
@@ -807,7 +812,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:AVAX.supportedForInterSwap,
     chainNameInThirdParty:AVAX.chainNameInThirdParty,
-    eipId:AVAX.eipId
+    eipId:AVAX.eipId,
+    backupRPCUrls:AVAX.backupRPCS
   },
   BASE: {
     rpcUrl: BASE.RPC,
@@ -838,7 +844,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:BASE.supportedForInterSwap,
     chainNameInThirdParty:BASE.chainNameInThirdParty,
-    eipId:BASE.eipId
+    eipId:BASE.eipId,
+    backupRPCUrls:BASE.backupRPCS
   },
   ETH: {
     rpcUrl: ETH.RPC,
@@ -869,7 +876,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:ETH.supportedForInterSwap,
     chainNameInThirdParty:ETH.chainNameInThirdParty,
-    eipId:ETH.eipId
+    eipId:ETH.eipId,
+    backupRPCUrls:ETH.backupRPCS
   },
   BNB: {
     rpcUrl: BSC.RPC,
@@ -900,7 +908,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:BSC.supportedForInterSwap,
     chainNameInThirdParty:BSC.chainNameInThirdParty,
-    eipId:BSC.eipId
+    eipId:BSC.eipId,
+    backupRPCUrls:BSC.backupRPCS
   },
   STR: {
     rpcUrl: STR.RPC,
@@ -930,7 +939,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:STR.supportedForInterSwap,
     chainNameInThirdParty:STR.chainNameInThirdParty,
-    eipId:STR.eipId
+    eipId:STR.eipId,
+    backupRPCUrls:STR.backupRPCS
   },
   DYDX: {
     rpcUrl: DYDX.RPC,
@@ -981,7 +991,8 @@ export const CHAINS = {
     importForSetupedApp:false,
     supportedForInterSwap:DYDX.supportedForInterSwap,
     chainNameInThirdParty:DYDX.chainNameInThirdParty,
-    eipId:DYDX.eipId
+    eipId:DYDX.eipId,
+    backupRPCUrls:DYDX.backupRPCS
   },
   BSC: {
     rpcUrl: BSC.RPC,
@@ -1012,7 +1023,8 @@ export const CHAINS = {
     importForSetupedApp:false,
     supportedForInterSwap:BSC.supportedForInterSwap,
     chainNameInThirdParty:BSC.chainNameInThirdParty,
-    eipId:BSC.eipId
+    eipId:BSC.eipId,
+    backupRPCUrls:BSC.backupRPCS
   },
 };
 
@@ -1067,4 +1079,105 @@ export const UI_CHAIN_NAME = {
   BSC: "BNB",
   SRB: "SRB",
   DYDX: "DYDX"
+};
+
+export async function CoinsToUSD(chainName, tokenAddress, amount) {
+  try {
+    const CHAIN_ALIASES = {
+      POL: "polygon",
+      ARB: "arbitrum",
+      OPT: "optimism",
+      AVA: "avax",
+      BAS: "base",
+      ETH: "ethereum",
+      BSC: "bsc",
+      SRB: "stellar"
+    };
+
+    const chain = CHAIN_ALIASES[chainName.toUpperCase()] || chainName.toLowerCase();
+    const NATIVE_ADDRESS = "0x0000000000000000000000000000000000000000";
+    const isNative = !tokenAddress || tokenAddress.toLowerCase() === "native";
+    const address = isNative ? NATIVE_ADDRESS : tokenAddress;
+
+    const key = `${chain}:${address}`;
+    const res = await fetch(`https://coins.llama.fi/prices/current/${key}`);
+    if (!res.ok) return 0;
+
+    const data = await res.json();
+    const coin = data.coins[key];
+    if (!coin || typeof coin.price !== "number") return 0;
+
+    return amount * coin.price;
+  } catch (err) {
+    return 0;
+  }
+}
+
+const testRpc = async (url, expectedChainId, timeoutMs = 4000) => {
+  const provider = new ethers.providers.JsonRpcProvider(url);
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('RPC timeout')), timeoutMs)
+  );
+
+  const network = await Promise.race([provider.getNetwork(), timeout]);
+
+  if (network.chainId !== expectedChainId) {
+    throw new Error(`Chain ID mismatch: expected ${expectedChainId}, got ${network.chainId}`);
+  }
+
+  return provider;
+};
+
+export const getProvider = async (chainKey) => {
+  const config = CHAINS[chainKey];
+  if (!config) throw new Error(`Unknown chain: ${chainKey}`);
+
+  const cached = providerCache.get(chainKey);
+  if (cached) return cached;
+
+  let lastError = null;
+
+  for (const url of config.backupRPCUrls) {
+    try {
+      const provider = await testRpc(url, config.chainId);
+      providerCache.set(chainKey, provider);
+      return provider;
+    } catch (err) {
+      lastError = err;
+      console.warn(`RPC failed: ${url} — ${err.message}, trying next...`);
+      continue; 
+    }
+  }
+
+  throw new Error(
+    `All RPC endpoints failed for ${config.name}. Last error: ${lastError?.message}`
+  );
+};
+
+export const callWithFallback = async (chainKey, fn) => {
+  const config = CHAINS[chainKey];
+  let lastError = null;
+
+  for (const url of config.backupRPCUrls) {
+    try {
+      const provider = new ethers.providers.JsonRpcProvider(url);
+      const result = await fn(provider);
+      providerCache.set(chainKey, provider);
+      return result;
+    } catch (err) {
+      lastError = err;
+      const isRateLimited =
+        err?.code === 429 ||
+        err?.message?.toLowerCase().includes('rate limit') ||
+        err?.message?.toLowerCase().includes('too many requests') ||
+        err?.message?.toLowerCase().includes('timeout');
+
+      console.warn(`RPC call failed on ${url}: ${err.message}`);
+
+      if (!isRateLimited) throw err;
+      continue;
+    }
+  }
+
+  throw new Error(`All RPC endpoints failed for ${config.name}: ${lastError?.message}`);
 };

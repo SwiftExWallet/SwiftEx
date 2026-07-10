@@ -468,7 +468,8 @@ const checkPermission = async () => {
                       toToken: selectedChain.symbol,
                       amountIn: amount?.toString(),
                       amountOut: amount?.toString(),
-                      txType: "Native Transfer"
+                      txType: "Native Transfer",
+                      fromTokenMetaData:"native"
                     });
                     CustomInfoProvider.show("success", "Transaction Successful","Transaction has been successfully sent to the receiver.");
                     setLoading(false);

@@ -790,7 +790,7 @@ export const NewOfferModal = () => {
 
           <View>
             <ScrollView contentContainerStyle={styles.scrollView}>
-              {!showOneTap && (
+              {/* {!showOneTap && (
                 <Animated.View
                   style={[styles.glowContainer, { borderColor }]}
                 >
@@ -808,7 +808,7 @@ export const NewOfferModal = () => {
                     </TouchableOpacity>
                   </View>
                 </Animated.View>
-              )}
+              )} */}
               {activeTab === SUB_TAB_CONFIG.TRADE.id && (
                 showOneTap?<CrossChainTx />:
                 activeTradeType === TAB_CONFIG.INSTANT_TRADE.id ? (

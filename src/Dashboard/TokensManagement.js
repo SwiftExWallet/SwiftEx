@@ -333,7 +333,7 @@ export const TokensManagement = () => {
         <View style={styles.container}>
             <Wallet_screen_header
                 elementestID={"tokensManagement"}
-                title="Token Manage"
+                title="Manage Assets"
                 onLeftIconPress={() => { navigation.goBack(); }}
                 rightIcon={"plus"}
                 onRightIconPress={() => {

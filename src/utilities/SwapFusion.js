@@ -120,7 +120,8 @@ export async function PerformeFusionSwap(quoteId, state, fromToken, toToken, amo
                     toToken: toToken.symbol,
                     amountIn: amount,
                     amountOut: ethers.utils.formatUnits(qouteInfo?.outputAmount||qouteInfo.dstTokenAmount, toToken?.decimals),
-                    txType: "Swap"
+                    txType: "Swap",
+                    fromTokenMetaData:fromToken.address
                 })
                 CustomInfoProvider.show("success", "Hurray", "Swap successful!");
                 return {
@@ -219,7 +220,8 @@ export async function PerformeFusionPlusNativeSwap(state, fromToken, toToken, am
                 toToken: toToken.symbol,
                 amountIn: amount,
                 amountOut: amount,
-                txType: "Swap"
+                txType: "Swap",
+                fromTokenMetaData:fromToken.address
             })
             }else{
                 await ShortTermStorage.syncTx({
@@ -233,7 +235,8 @@ export async function PerformeFusionPlusNativeSwap(state, fromToken, toToken, am
                 toToken: toToken.symbol,
                 amountIn: amount,
                 amountOut: ethers.utils.formatUnits(fusionPlusNative.response.quote.dstTokenAmount, toToken?.decimals),
-                txType: "Swap"
+                txType: "Swap",
+                fromTokenMetaData:fromToken.address
             })
             }
             CustomInfoProvider.show("success", "Hurray", "Swap successful!");

@@ -220,8 +220,17 @@ export const HomeView = () => {
     </TouchableOpacity>
   );
 
-  const chartData = apiData.map((item) => ({
-    value: parseFloat(item.close),
+  const rawCloses = apiData
+    ?.slice()
+    ?.reverse()
+    ?.map((item) => parseFloat(item?.close));
+
+  const minChartValue = rawCloses?.length ? Math.min(...rawCloses) : 0;
+  const maxChartValue = rawCloses?.length ? Math.max(...rawCloses) : 0;
+  const chartRangeValue = maxChartValue - minChartValue || 1;
+  const chartData = rawCloses?.map((val) => ({
+    value: 10 + ((val - minChartValue) / chartRangeValue) * 80,
+    originalValue: val,
   }));
 
 
@@ -400,6 +409,7 @@ export const HomeView = () => {
                 hideAxesAndRules
                 initialSpacing={0}
                 endSpacing={0}
+                maxValue={100}
                 pointerConfig={{
                   pointerStripHeight: hp(26),
                   pointerStripColor: "rgba(255,255,255,0.15)",
@@ -411,9 +421,9 @@ export const HomeView = () => {
                   activatePointersOnLongPress: false,
                   autoAdjustPointerLabelPosition: true,
                   pointerLabelComponent: (items) => {
-                    const val = items?.[0]?.value;
-                    if (prvValue.current !== val) {
-                      prvValue.current = val;
+                    const val = items?.[0]?.originalValue;
+                    if (prvValue?.current !== val) {
+                      prvValue?.current = val;
                       setTimeout(() => setPointsData(val), 0);
                     }
                     return null;

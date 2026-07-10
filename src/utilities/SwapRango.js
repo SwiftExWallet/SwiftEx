@@ -293,7 +293,8 @@ export async function performeRangoSwap(rangoQuoteInfo, state, fromToken, toToke
                         toToken: toToken.symbol,
                         amountIn: rangoQuoteInfo?.requestAmount,
                         amountOut: rangoQuoteInfo?.result?.outputAmount,
-                        txType:tx?.type==="approve"?"Token Approval":"Swap"
+                        txType:tx?.type==="approve"?"Token Approval":"Swap",
+                        fromTokenMetaData:fromToken.address
                     })
                 }
                 const isApprovalTx = swapPreparedTxRes.response.some(item => item?.transaction?.isApprovalTx === true);

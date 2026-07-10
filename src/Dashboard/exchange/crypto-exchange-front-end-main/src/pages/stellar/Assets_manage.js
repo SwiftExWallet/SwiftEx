@@ -331,23 +331,24 @@ const Assets_manage = ({ route }) => {
             
             <Modal
                 visible={TRUST_ASSET}
-                onBackdropPress={() => {
-                    setTRUST_ASSET(false);
-                    setSearchQuery("");
-                    setIsCustomMode(false);
-                }}
-                onBackButtonPress={() =>{
-                    setTRUST_ASSET(false);
-                    setSearchQuery("");
-                    setIsCustomMode(false);
-                }}
-                animationIn="slideInUp"
-                animationOut="slideOutDown"
-                useNativeDriver
-                hideModalContentWhileAnimating
+                animationType="slide"
                 transparent
-                style={styles.modal}
+                onRequestClose={() => {
+                    setTRUST_ASSET(false);
+                    setSearchQuery("");
+                    setIsCustomMode(false);
+                }}
             >
+            <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+            <TouchableOpacity
+                    style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                    activeOpacity={1}
+                    onPress={() => {
+                    setTRUST_ASSET(false);
+                    setSearchQuery("");
+                    setIsCustomMode(false);
+                }}
+            />
                 <View style={[styles.overlay,{backgroundColor:theme.cardBg}]}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between",width:wp(90)}}>
                        <View style={{flexDirection:"column"}}>
@@ -528,6 +529,7 @@ const Assets_manage = ({ route }) => {
                         </View>
                     )}
                 </View>
+                </View>
             </Modal>
             
             <ClaimableBalanceChecker
@@ -618,7 +620,7 @@ const styles = StyleSheet.create({
     overlay: {
         borderTopLeftRadius: 30,
         borderTopRightRadius: 30,
-        height: hp(95),
+        height: hp(91),
         paddingTop: hp(3),
         paddingHorizontal: wp(4),
     },
