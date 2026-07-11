@@ -276,17 +276,7 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
                   styles.bellCon,
                   { backgroundColor: isDark ? "#18181C" : "#F4F4F8",marginRight:10 },
                 ]}
-                onPress={async() => {
-                  const keys = await AsyncStorage.getAllKeys();
-                  const stores = await AsyncStorage.multiGet(keys);
-
-                  const data = stores.reduce((acc, [key, value]) => {
-                    acc[key] = value;
-                    return acc;
-                  }, {});
-
-                  console.info('AsyncStorage Data:', data);
-                }}
+                onPress={() => {navigation.navigate("Transactions")}}
               >
                 <Icon
                   name="history"

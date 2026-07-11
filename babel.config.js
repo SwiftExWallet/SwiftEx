@@ -5,5 +5,6 @@ module.exports = {
     '@babel/plugin-transform-numeric-separator',
     '@babel/plugin-proposal-optional-chaining',
     '@babel/plugin-proposal-nullish-coalescing-operator',
+    'transform-remove-console',
   ],
 };
