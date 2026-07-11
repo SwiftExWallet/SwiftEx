@@ -422,8 +422,8 @@ export const HomeView = () => {
                   autoAdjustPointerLabelPosition: true,
                   pointerLabelComponent: (items) => {
                     const val = items?.[0]?.originalValue;
-                    if (prvValue?.current !== val) {
-                      prvValue?.current = val;
+                    if (prvValue.current !== val) {
+                      prvValue.current = val;
                       setTimeout(() => setPointsData(val), 0);
                     }
                     return null;

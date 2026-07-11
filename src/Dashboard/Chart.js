@@ -46,17 +46,12 @@ export default function Chart({ name, setPercent, percent }) {
         const lastTrade = trades.slice(-1)[0];
         percent = (((lastTrade - firstTrade) / firstTrade) * 100).toFixed(2);
 
-        //console.log(resp)
-        console.log(name);
-        console.log(percent);
-        console.log(lastTrade);
         setData(trades);
         setPercent(percent);
         chooseStyle(percent);
       })
       .catch((err) => {
-        console.log(err);
-        //alert('failed to load charts')
+        console.error(err);
       });
   }
 

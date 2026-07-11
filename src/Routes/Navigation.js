@@ -9,7 +9,6 @@ import { Register } from "../../Register";
 import { LoginPage } from "../Login/Login";
 import MyWallet from "../Dashboard/MyWallet";
 import { useDispatch, useSelector } from "react-redux";
-import CreateWallet from "../Dashboard/CreateWallet";
 import ImportWallet from "../Dashboard/ImportWallet";
 import MyHeader from "../Dashboard/MyHeader";
 import MyHeader2 from "../Dashboard/MyHeader2";
@@ -157,18 +156,6 @@ const AuthStack = () => {
         name="MyWallet"
         component={MyWallet}
         options={{headerShown:false}}
-      />
-      <Stack.Screen
-        name="CreateWallet"
-        component={CreateWallet}
-        options={{
-          headerShown: true,
-          headerStyle: { backgroundColor: "#000C66" },
-          headerTintColor: "white",
-          headerTitleStyle: {
-            fontWeight: "bold",
-          },
-        }}
       />
 
       <Stack.Screen

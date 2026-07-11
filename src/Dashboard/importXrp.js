@@ -29,7 +29,7 @@ import {
   setProvider,
   setWalletType,
 } from "../components/Redux/actions/auth";
-import { encryptFile, Paste } from "../utilities/utilities";
+import { Paste } from "../utilities/utilities";
 import DialogInput from "react-native-dialog-input";
 import { urls } from "./constants";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";

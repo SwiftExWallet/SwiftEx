@@ -132,7 +132,7 @@ const Asset_info = ({ route }) => {
       setPriceChange(result.market_data.price_change_percentage_24h);
       setLoading(false);
     } catch (error) {
-      console.log("XLM data error:", error);
+      console.error("XLM data error:", error);
       setLoading(false);
     }
   };

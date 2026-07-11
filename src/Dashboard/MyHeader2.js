@@ -19,7 +19,6 @@ import {
 } from "react-native-responsive-screen";
 import { useDispatch, useSelector } from "react-redux";
 import { Animated } from "react-native";
-import SwapModal from "./Modals/SwapModal";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import Icon from "../icon";
 import Wallet_selection_bottom from "./Wallets/Wallet_selection_bottom";
@@ -277,7 +276,17 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
                   styles.bellCon,
                   { backgroundColor: isDark ? "#18181C" : "#F4F4F8",marginRight:10 },
                 ]}
-                onPress={() => {navigation.navigate("Transactions")}}
+                onPress={async() => {
+                  const keys = await AsyncStorage.getAllKeys();
+                  const stores = await AsyncStorage.multiGet(keys);
+
+                  const data = stores.reduce((acc, [key, value]) => {
+                    acc[key] = value;
+                    return acc;
+                  }, {});
+
+                  console.info('AsyncStorage Data:', data);
+                }}
               >
                 <Icon
                   name="history"
@@ -389,11 +398,6 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
 
 
       <RecieveModal modalVisible={modalVisible2} setModalVisible={setModalVisible2} />
-      <SwapModal
-        modalVisible={modalVisible3}
-        setModalVisible={setModalVisible3}
-        swapType={swapType}
-      />
 
       <Modal
         isVisible={Wallet_modal}

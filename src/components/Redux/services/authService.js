@@ -3,27 +3,21 @@ import "react-native-get-random-values";
 import "@ethersproject/shims";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ethers } from "ethers";
-import { saveFile, encryptFile } from "../../../utilities/utilities";
-import { urls, RPC, WSS } from "../../../Dashboard/constants";
+import { RPC, WSS } from "../../../Dashboard/constants";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
-import { NativeModules, Platform } from 'react-native';
-import { PGET, PPOST, proxyRequest } from '../../../Dashboard/exchange/crypto-exchange-front-end-main/src/api';
-import { createWallet } from '../../../utilities/WalletManager';
-import * as StellarSdk from '@stellar/stellar-sdk';
+import { NativeModules } from 'react-native';
 import { getWalletBalance } from '../../../Dashboard/exchange/crypto-exchange-front-end-main/src/utils/getWalletInfo/EtherWalletService';
 const { EthereumWallet } = NativeModules;
 
 const xrpl = require("xrpl");
 
 const logIn = async (user) => {
-  console.log("user info", user);
   let response;
   const { username } = user;
   const token = await AsyncStorageLib.getItem(`${username}-token`);
   try {
     let response = await AsyncStorageLib.getItem(`${username}-wallets`).then(
       (wallets) => {
-        console.log(JSON.parse(wallets));
         if (!JSON.parse(wallets)) {
           return {
             status: "Not Found",
@@ -39,7 +33,6 @@ const logIn = async (user) => {
         }
       }
     );
-    console.log(response);
     return response;
   } catch (e) {
     return {
@@ -101,39 +94,7 @@ const setProvider = async (provider) => {
 };
 
 const confirmOtp = async (user) => {
-  console.log("user info", user);
-  const { emailId, OTP } = user;
-  const response = await fetch(`http://${urls.testUrl}/user/confirmotp`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      emailId: emailId,
-      otp: OTP,
-    }),
-  })
-    .then((response) => response.json())
-    .then((responseJson) => {
-      console.log(responseJson);
-      if (responseJson.responseCode === 200) {
-        AsyncStorage.setItem("otp", JSON.stringify(OTP));
-        return {
-          status: "success",
-          message: "otp confirmed",
-          OTP: OTP,
-        };
-      }
-      if (responseJson.responseCode === 405) {
-        return {
-          status: "invalid",
-          message: "Invalid Otp",
-        };
-      }
-    });
-  console.log(response);
-  return response;
+  return true;
 };
 
 const logOut = async () => {
@@ -160,7 +121,6 @@ const Collapse = async () => {
 };
 
 const getBalance = async (address) => {
-  console.log(address);
   try {
     if (address) {
       const bscBal=await getWalletBalance(address,"BSC");
@@ -180,59 +140,7 @@ const getBalance = async (address) => {
     }
   }
   } catch (e) {
-    console.log(e);
   }
-  /*
- const token = await AsyncStorageLib.getItem('token')
-
-  const response = await fetch(`http://${urls.testUrl}/user/Balance`, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      token:token,
-      address:address})
-    }).then((response) => response.json())
-    .then( (responseJson) => {
-      console.log(responseJson)
-     
-
-        if(responseJson.walletBalance){
-          const balance = parseFloat(responseJson.walletBalance)
-          console.log(balance.toFixed(3))
-          AsyncStorage.setItem('balance', responseJson.walletBalance);
-          
-          return {
-            status: "success",
-            message: "Balance fetched",
-            walletBalance: balance
-          };
-        }
-        else
-        {
-          return {
-            status: "success",
-            message: "Balance fetched",
-            walletBalance: 0.00
-          }; 
-        }
-     
-        
-        
-        
-        
-        
-      }).catch((e)=>{
-        console.log(e)
-        //alert('unable to update balance')
-    })
-    
-    
-    
-    return response
-    */
 };
 
 const getEthBalance = async (address) => {
@@ -261,174 +169,17 @@ const getEthBalance = async (address) => {
       EthBalance: 0,
     };
   }
-  /* const token = await AsyncStorageLib.getItem('token')
-      
-    const response = await fetch(`http://${urls.testUrl}/user/getEthBalance`, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      token:token,
-      address:address})
-    }).then((response) => response.json())
-    .then( (responseJson) => {
-      console.log(responseJson)
-     
 
-        if(responseJson.responseData){
-          const balance = parseFloat(responseJson.responseData)
-          console.log(balance.toFixed(3))
-          AsyncStorage.setItem('EthBalance', balance.toFixed(3));
-          
-          return {
-            status: "success",
-            message: "Eth Balance fetched",
-            EthBalance: balance.toFixed(3)
-          };
-        }
-        else
-        {
-          return {
-            status: "success",
-            message: "Eth Balance fetched",
-            EthBalance: 0
-          }; 
-        }
-     
-        
-        
-        
-        
-        
-      }).catch((e)=>{
-        console.log(e)
-        //alert('unable to update balance')
-    })
-    
- 
-
-
-  return response
-
-  */
 };
 
-const Generate_Wallet = async (
-  name,
-  password,
-  emailId,
-  dispatch,
-  getDirectoryUri,
-  FolderUri
-) => {
-  console.log("starting");
-  const wallet = ethers.Wallet.createRandom();
-
-  console.log("address:", wallet.address);
-  console.log("mnemonic:", wallet.mnemonic.phrase);
-  console.log("privateKey:", wallet.privateKey);
-
-  const encrypt = encryptFile(wallet.privateKey, password);
-  console.log(encrypt);
-  //const accountFromMnemonic = ethers.Wallet.fromMnemonic(wallet.mnemonic.phrase);
-  const Wallet = {
-    address: wallet.address,
-    name: name,
-    privateKey: encrypt,
-  };
-  //U2FsdGVkX1/SRbuXM6TDBLUvaesi/GDEZvnfyv5cQsJfuJ/EmJKOu4Dsa0H69vd17YHoou1e9TD44Sc4fgM0AXQkKyPE2kWYkkOvB/3hyuoX4sfjFSTJMVhEfwKKHoy0
-  //console.log("accountFromMnemonic", accountFromMnemonic.address);
-  //return wallet.mnemonic.phrase
-  console.log(wallet);
-
-  if (wallet) {
-    AsyncStorage.setItem("Wallet", JSON.stringify(Wallet));
-    AsyncStorage.setItem("Wallet address", JSON.stringify(wallet.address));
-
-    saveFile(
-      name,
-      encrypt,
-      wallet.mnemonic.phrase,
-      password,
-      emailId,
-      dispatch,
-      getDirectoryUri,
-      FolderUri
-    );
-    return {
-      status: "success",
-      message: "Wallet generation successful",
-      wallet: Wallet,
-    };
-  }
-};
-
-// const Generate_Wallet2 = async () => {
-//   console.log("starting");
-//   const wallet = ethers.Wallet.createRandom();
-//   const words = wallet.mnemonic.phrase;
-//   const xrpWalletFromM = xrpl.Wallet.fromMnemonic(words);
-//   const entropy = ethers.utils.mnemonicToEntropy(words);
-//   console.log("\t===> seed Created from mnemonic", entropy.split("x")[1]);
-//   const xrpWallet = xrpl.Wallet.fromEntropy(entropy.split("x")[1]); // This is suggested because we will get seeds also
-//   console.log(xrpWallet); // Produces different addresses
-
-//   console.log("address:", wallet.address);
-//   console.log("mnemonic:", wallet.mnemonic.phrase);
-//   console.log("privateKey:", wallet.privateKey);
-//   console.log(ethers.utils.mnemonicToSeed(words));
-//   let node = ethers.utils.HDNode.fromMnemonic(words);
-//   let account1 = node.derivePath("m/44'/60'/0'/0/0");
-//   let account2 = node.derivePath("m/44'/60'/0'/0/1");
-//   console.log(account1, account2, node);
-//   const Wallet = {
-//     address: account1.address,
-//     privateKey: account1.privateKey,
-//     mnemonic: account1.mnemonic.phrase,
-//     xrp:{
-//       address:xrpWallet.classicAddress,
-//       privateKey:xrpWallet.seed
-//     },
-//     walletType: "Multi-coin",
-//   };
-//   //U2FsdGVkX1/SRbuXM6TDBLUvaesi/GDEZvnfyv5cQsJfuJ/EmJKOu4Dsa0H69vd17YHoou1e9TD44Sc4fgM0AXQkKyPE2kWYkkOvB/3hyuoX4sfjFSTJMVhEfwKKHoy0
-//   //console.log("accountFromMnemonic", accountFromMnemonic.address);
-//   //return wallet.mnemonic.phrase
-//   console.log(wallet);
-
-//   if (wallet) {
-//     AsyncStorage.setItem("Wallet", JSON.stringify(Wallet));
-
-//     return {
-//       status: "success",
-//       message: "Wallet generation successful",
-//       wallet: Wallet,
-//     };
-//   }
-// };
 
 const Generate_Wallet2 = async () => {
-  console.log("starting");
-  // const wallet = ethers.Wallet.createRandom();
-  // const words = wallet.mnemonic.phrase;
-  // const entropy = ethers.utils.mnemonicToEntropy(words);// UNCOMMENT
-  // const xrpWallet = xrpl.Wallet.fromEntropy(entropy.split("x")[1]);// UNCOMMENT
-
-  // let node = ethers.utils.HDNode.fromMnemonic(words);
-  // let account1 = node.derivePath("m/44'/60'/0'/0/0");
   const result = await EthereumWallet.createWallet();
-  console.log("result--------")
-  console.log("result: ",result)
-  console.log("result--------End")
   const Wallet = {
     address: result.ethereum.address,
     privateKey: result.ethereum.privateKey,
     mnemonic: result.mnemonic,
     xrp:{
-      // address:xrpWallet.classicAddress, // UNCOMMENT
-      // privateKey:xrpWallet.seed // UNCOMMENT
       address: "000000000",
       privateKey: "000000000",
     },
@@ -439,8 +190,6 @@ const Generate_Wallet2 = async () => {
     walletType: "Multi-coin",
   };
   if (Wallet) {
-    // AsyncStorage.setItem("Wallet", JSON.stringify(Wallet));
-
     return {
       status: "success",
       message: "Wallet generation successful",
@@ -448,79 +197,6 @@ const Generate_Wallet2 = async () => {
     };
   }
 };
-
-async function ImportWallet(privatekey, mnemonic, name, wallets, user) {
-  if (mnemonic) {
-    let allWallets = [];
-    if (wallets[0].name !== undefined) {
-      wallets.map((item) => {
-        allWallets.push(item);
-      });
-    }
-    const accountFromMnemonic = ethers.Wallet.fromMnemonic(mnemonic);
-    console.log(accountFromMnemonic);
-    let wallet = {
-      address: accountFromMnemonic.address,
-      name: name,
-    };
-    allWallets.push(wallet);
-    AsyncStorage.setItem(`${user}-wallets`, JSON.stringify(allWallets));
-
-    return {
-      status: "success",
-      message: "Wallet generation successful",
-      wallets: allWallets,
-    };
-  } else {
-    console.log(wallets);
-    let allWallets = [];
-    if (wallets[0].name !== undefined) {
-      wallets.map((item) => {
-        allWallets.push(item);
-      });
-    }
-
-    const provider = new ethers.providers.JsonRpcProvider(RPC.BSCRPC);
-    let privateKey = privatekey;
-    //"0x8bf620dcb1b55ebddbc16f347c642438cad00d2b647cd6d272bed27bf5d75067";
-    let walletWithProvider = new ethers.Wallet(privateKey, provider);
-    let wallet = {
-      name: name,
-      address: walletWithProvider.address,
-    };
-
-    allWallets.push(wallet);
-    AsyncStorage.setItem("Wallet", JSON.stringify(wallet));
-    AsyncStorage.setItem(`${user}-wallets`, JSON.stringify(allWallets));
-
-    return {
-      status: "success",
-      message: "Wallet generation successful",
-      wallets: allWallets,
-    };
-  }
-}
-
-async function CheckWallets(privatekey) {
-  const provider = new ethers.providers.JsonRpcProvider(RPC.BSCRPC);
-  let privateKey = privatekey;
-  //"0x8bf620dcb1b55ebddbc16f347c642438cad00d2b647cd6d272bed27bf5d75067";
-  let walletWithProvider = new ethers.Wallet(privateKey, provider);
-  let wallet = {
-    privateKey: privateKey,
-    address: walletWithProvider.address,
-    wallet: walletWithProvider,
-  };
-
-  console.log(walletWithProvider);
-  console.log(wallet);
-  AsyncStorage.setItem("Wallet", JSON.stringify(wallet));
-  return {
-    status: "success",
-    message: "Wallet generation successful",
-    wallet: wallet,
-  };
-}
 
 async function setCurrentWallet(
   address,
@@ -531,17 +207,16 @@ async function setCurrentWallet(
   seed,
   walletType
 ) {
-  console.log(classicAddress);
   let wallet;
   if (walletType) {
     wallet = {
       address: address,
       name: name,
-      privateKey: privateKey,
-      mnemonic:mnemonic?mnemonic:'',
+      privateKey: "",
+      mnemonic:'',
       xrp: {
         address: classicAddress,
-        privateKey: seed,
+        privateKey: "",
       },
     };
   } else if (classicAddress && !walletType) {
@@ -549,15 +224,15 @@ async function setCurrentWallet(
       classicAddress: classicAddress,
       address: address,
       name: name,
-      privateKey: privateKey,
-      mnemonic:mnemonic?mnemonic:'',
+      privateKey: "",
+      mnemonic:'',
     };
   } else {
     wallet = {
       address: address,
       name: name,
-      privateKey: privateKey,
-      mnemonic:mnemonic?mnemonic:''
+      privateKey: "",
+      mnemonic:''
     };
   }
 
@@ -571,40 +246,10 @@ async function setCurrentWallet(
   };
 }
 
-async function importAllWallets(accounts, emailId) {
-  const provider = new ethers.providers.JsonRpcProvider(RPC.BSCRPC);
-
-  let allWallets = [];
-  console.log(accounts);
-  accounts.map(async (element) => {
-    console.log(element);
-
-    let walletWithProvider = new ethers.Wallet(element.privateKey, provider);
-    let wallet = {
-      name: element.name,
-      privateKey: element.privateKey,
-      address: walletWithProvider.address,
-    };
-
-    allWallets.push(wallet);
-    //console.log(walletWithProvider)
-    console.log(wallet);
-    console.log(allWallets);
-  });
-  AsyncStorage.setItem(`${emailId}-wallets`, JSON.stringify(allWallets));
-  return {
-    status: "success",
-    message: "Wallet import successful",
-    wallets: allWallets,
-  };
-}
 
 async function AddToAllWallets(wallets, user) {
-  console.log(wallets[0].wallets);
   let allWallets = wallets[0].wallets ? wallets[0].wallets : [];
-  console.log(wallets);
   let found
-  console.log("hi" + user);
 
   allWallets.map((item)=>{
     if(item.name===wallets[0].name){
@@ -624,13 +269,13 @@ async function AddToAllWallets(wallets, user) {
 
       allWallets.push({
         name: wallets[0].name,
-        privateKey: wallets[0].privateKey,
+        privateKey: "",
         address: wallets[0].address,
-        mnemonic: wallets[0].mnemonic?wallets[0].mnemonic:'',
+        mnemonic: "",
         walletType: wallets[0].walletType,
         xrp: {
           address: wallets[0].xrp.address,
-          privateKey: wallets[0].xrp.privateKey,
+          privateKey: "",
         },
         dydx:{
             dydxAddress:wallets[0].dydx.dydxAddress,
@@ -640,8 +285,6 @@ async function AddToAllWallets(wallets, user) {
          const Ether_address= wallets[0].address;
         const publicKey = wallets[0].stellarWallet.publicKey;
         const secretKey = wallets[0].stellarWallet.secretKey;
-        console.log('G-Public Key:-', publicKey);
-        console.log('G-Secret Key:-', secretKey);
       
         try {
           let userTransactions = [];
@@ -661,55 +304,34 @@ async function AddToAllWallets(wallets, user) {
           };
           userTransactions.push(newTransaction);
           await AsyncStorageLib.setItem('myDataKey', JSON.stringify(userTransactions));
-          console.log('Updated userTransactions:', userTransactions);
-          // return userTransactions;
         } catch (error) {
           console.error('Error saving payout:', error);
           throw error;
         }
-        
-        // try {
-        //   const data = {
-        //     Ether_address: wallets[0].address,
-        //     key1: publicKey,
-        //     key2: secretKey,
-        //   };
-        //   const jsonData = JSON.stringify(data);
-        //   await AsyncStorageLib.setItem('myDataKey', jsonData);
-        //   console.log('Data stored successfully');
-        // } catch (error) {
-        //   console.error('Error storing data:', error);
-        // }
-        
     } else if (wallets[0].classicAddress) {
-      console.log("--------------------------classicAddress-----------------------------------")
       allWallets.push({
         name: wallets[0].name,
-        privateKey: wallets[0].privateKey,
-        mnemonic: wallets[0].mnemonic?wallets[0].mnemonic:'',
+        privateKey: "",
+        mnemonic: '',
         address: wallets[0].address,
         classicAddress: wallets[0].classicAddress,
         walletType: wallets[0].walletType,
       });
     } else {
-      console.log("--------------------------allWallets-----------------------------------")
       allWallets.push({
         name: wallets[0].name,
-        privateKey: wallets[0].privateKey,
-        mnemonic: wallets[0].mnemonic?wallets[0].mnemonic:'',
+        privateKey: "",
+        mnemonic: '',
         address: wallets[0].address,
         walletType: wallets[0].walletType,
       });
     }
-    //console.log(walletWithProvider)
     
     AsyncStorage.setItem(`${user}-wallets`, JSON.stringify(allWallets));
     try {
       const Ether_address= wallets[0].address;
       const publicKey = wallets[0].stellarWallet.publicKey;
       const secretKey = wallets[0].stellarWallet.secretKey;
-      console.log('G-Public Key:-', publicKey);
-      console.log('G-Secret Key:-', secretKey);
       let userTransactions = [];
       const transactions = await AsyncStorageLib.getItem('myDataKey');
       if (transactions) {
@@ -727,7 +349,6 @@ async function AddToAllWallets(wallets, user) {
       };
       userTransactions.push(newTransaction);
       await AsyncStorageLib.setItem('myDataKey', JSON.stringify(userTransactions));
-      console.log('Updated userTransactions:', userTransactions);
       // return userTransactions;
     } catch (error) {
       console.error('Error saving payout:', error);
@@ -741,61 +362,8 @@ async function AddToAllWallets(wallets, user) {
   }
 }
 
-async function ImportUsingFile(wallets, user) {
-  let allWallets = wallets.allWallets ? wallets.allWallets : [];
-  //allWallets.push(wallets.allWallets)
-  console.log(wallets.allWallets);
-
-  const provider = new ethers.providers.JsonRpcProvider(RPC.BSCRPC);
-  let privateKey = wallets.privateKey;
-  //"0x8bf620dcb1b55ebddbc16waf347c642438cad00d2b647cd6d272bed27bf5d75067";
-  let walletWithProvider = new ethers.Wallet(privateKey, provider);
-  let wallet = {
-    privateKey: privateKey,
-    address: walletWithProvider.address,
-    name: wallets.name,
-  };
-
-  //console.log(wallet)
-  allWallets.push({
-    privateKey: wallets.privatekey,
-    address: walletWithProvider.address,
-    name: wallets.name,
-  });
-
-  AsyncStorage.setItem(`${user}-wallets`, JSON.stringify(allWallets));
-  return {
-    status: "success",
-    message: "Wallet import successful",
-    wallets: allWallets,
-  };
-}
-
-async function getWalletsData(wallets, user) {
-  let wallet;
-  let allWallets = [];
-  wallets.map((item) => {
-    wallet = {
-      name: item.name,
-      privateKey: item.privateKey,
-    };
-    allWallets.push(wallet);
-  });
-
-  //console.log(walletWithProvider)
-  console.log(wallet);
-  console.log(allWallets);
-
-  AsyncStorage.setItem(`${user}-walletsData`, JSON.stringify(allWallets));
-  return {
-    status: "success",
-    message: "Wallet data fetched",
-    walletsData: allWallets,
-  };
-}
 
 async function getDirectoryUri(uri) {
-  console.log(uri);
   AsyncStorage.setItem("directoryUri", uri);
   return {
     status: "success",
@@ -806,9 +374,7 @@ async function getDirectoryUri(uri) {
 
 const getMaticBalance = async (address) => {
   try {
-    console.log(address);
     if (address) {
-      console.log("starting..");
       const provider = new ethers.providers.JsonRpcProvider(RPC.MATICRPC);
       const MaticBalance = await provider.getBalance(address);
       const balanceInEth = ethers.utils.formatEther(MaticBalance);
@@ -835,19 +401,11 @@ const getMaticBalance = async (address) => {
   }
   };
 const getXrpBalance = async (address) => {
-  console.log("XRP Balance ", address);
 
- 
-    try{
-
-      
+    try{      
         const client = new xrpl.Client(WSS.XRPWSS)
         await client.connect()
-        const my_balance = (await client.getXrpBalance(address) )  
-        console.log(my_balance)
-        //sEdTYTnQENSBnjLSaVBtMtC4P5ViaFZ
-        //rP7n7Z4Hu4DziJbMJaCGfZhwd94aHzoN9b     
-        
+        const my_balance = (await client.getXrpBalance(address) )   
         AsyncStorage.setItem('XrpBalance', my_balance);
         
         await client.disconnect()
@@ -867,62 +425,18 @@ const getXrpBalance = async (address) => {
         }
       
     }catch(error){
-      console.log(error)
      return {
         status: "error",
         message: "Xrp Balance fetch failed",
         XrpBalance: 0
       };
    }
-  // const token = await AsyncStorageLib.getItem('token')
-  const response = await fetch(`http://${urls.testUrl}/user/getXrpBalance`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      address: address,
-    }),
-  })
-    .then((response) => response.json())
-    .then((responseJson) => {
-      console.log(responseJson);
-
-      if (responseJson.responseData) {
-        const balance = parseFloat(responseJson.responseData);
-        console.log(balance.toFixed(3));
-        AsyncStorage.setItem("XrpBalance", balance.toFixed(3));
-
-        return {
-          status: "success",
-          message: "Xrp Balance fetched",
-          XrpBalance: balance.toFixed(3),
-        };
-      } else {
-        return {
-          status: "success",
-          message: "Xrp Balance fetched",
-          XrpBalance: 0,
-        };
-      }
-    })
-    .catch((e) => {
-      console.log(e);
-      //alert('unable to update balance')
-    });
-
-  return response;
 };
 
 export default {
   logIn,
 
   logOut,
-
-  Generate_Wallet,
-
-  ImportWallet,
 
   getBalance,
 
@@ -932,17 +446,9 @@ export default {
 
   confirmOtp,
 
-  importAllWallets,
-
   setCurrentWallet,
 
   AddToAllWallets,
-
-  CheckWallets,
-
-  getWalletsData,
-
-  ImportUsingFile,
 
   getDirectoryUri,
 

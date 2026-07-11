@@ -27,7 +27,7 @@ export default function BiometricPage()
   useEffect(()=>{
     AsyncStorageLib.getItem('Biometric')
     .then((response)=>{
-      console.log(response)
+      console.error(response)
       if(response==='SET'){
         setCheckBox(true)
       }
