@@ -231,7 +231,7 @@ const updateWallet=async(stellarAdd,WalletAdd)=>{
             <Icon type={'entypo'} name='info-with-circle' color={"#ECB742"} size={20} />
             <Text style={[style.coinSubText, { color: "#ECB742", marginLeft: 5 }]}>Never share this phrase. Enter it here only to recover your wallet.</Text>
           </View>
-      <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C" }]}>
+      <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F" }]}>
           <View style={{flexDirection:"row",justifyContent:"space-between"}}>
            <Text style={[style.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>Wallet Name</Text>
            </View>
@@ -249,7 +249,7 @@ const updateWallet=async(stellarAdd,WalletAdd)=>{
             />
             </View>
           </View>
-    <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",marginTop:hp(1) }]}>
+    <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",marginTop:hp(1) }]}>
           <View style={{flexDirection:"row",justifyContent:"space-between"}}>
            <Text style={[style.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>Secret Key</Text>
             <TouchableOpacity

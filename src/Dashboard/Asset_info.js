@@ -27,6 +27,7 @@ import TokenQrCode from "./Modals/TokensQrCode";
 import InfoComponent from "./exchange/crypto-exchange-front-end-main/src/components/InfoComponent";
 import LinearGradient from "react-native-linear-gradient";
 import { CHAINTOCHARTID } from "../utilities/TokenUtils";
+import { colors } from "../Screens/ThemeColorsConfig";
 
 const Asset_info = ({ route }) => {
   const prvValue = useRef(null);
@@ -346,7 +347,7 @@ const fetchBinanceData = async (symbol) => {
       <View
         style={[
           styles.actionIcon,
-          { backgroundColor: isDark ? "#242426" : "#F4F4F8" },
+          { backgroundColor: isDark ? colors.dark.cardBg : colors.light.cardBg },
         ]}
       >
         <Icon
@@ -374,7 +375,7 @@ const fetchBinanceData = async (symbol) => {
         {
           backgroundColor:
             selectedTimeframe === value
-              ? isDark ? "#242426" : "#F4F4F8"
+              ? isDark ? colors.dark.bg : colors.light.bg
               : "transparent",
         },
       ]}
@@ -412,12 +413,12 @@ const fetchBinanceData = async (symbol) => {
       <View
         style={[
           styles.container,
-          { backgroundColor: isDark ? "#1B1B1C" : "#FFFFFF" },
+          { backgroundColor: isDark ? colors.dark.bg : colors.light.bg },
         ]}
       >
         <ScrollView showsVerticalScrollIndicator={false}>
           <Animated.View style={{ opacity: fadeAnim }}>
-          <View style={[styles.chartContainer,{backgroundColor:isDark?"#242426":"#F4F4F8"}]}>
+          <View style={[styles.chartContainer,{backgroundColor:isDark?colors.dark.bg:colors.light.bg}]}>
             <View style={styles.headerSection}>
               <View style={styles.assetHeader}>
                   {!(assetImage?.uri||assetImage?.source||assetImage?.imageUrl)?<LinearGradient
@@ -540,7 +541,7 @@ const fetchBinanceData = async (symbol) => {
                 )}
               </View>
 
-              <View style={[styles.timeframeContainer,{backgroundColor:isDark?"#1B1B1C":"#FFFFFF"}]}>
+              <View style={[styles.timeframeContainer,{backgroundColor:isDark?colors.dark.cardBg : colors.light.cardBg}]}>
                 <TimeframeButton label="1H" value="1h" />
                 <TimeframeButton label="1D" value="1d" />
                 <TimeframeButton label="1W" value="1w" />
@@ -551,7 +552,7 @@ const fetchBinanceData = async (symbol) => {
             <View
               style={[
                 styles.actionsContainer,
-                { backgroundColor: isDark ? "#1B1B1C" : "#FFFFFF" },
+                { backgroundColor: isDark ? colors.dark.bg : colors.light.bg },
               ]}
             >
               <ActionButton
@@ -583,7 +584,7 @@ const fetchBinanceData = async (symbol) => {
             </View>
 
             {loading ? (
-              <View style={[styles.statsLoader,{backgroundColor: isDark ? "#242426" : "#F4F4F8"}]}>
+              <View style={[styles.statsLoader,{backgroundColor: isDark ? colors.dark.bg : colors.light.bg}]}>
                 <ActivityIndicator
                   color={"#4052D6"}
                   size="large"
@@ -591,7 +592,7 @@ const fetchBinanceData = async (symbol) => {
               </View>
             ): assetData && (
               <>
-              <View style={[styles.aboutSection,{ backgroundColor: isDark ? "#242426" : "#F4F4F8" },]}>
+              <View style={[styles.aboutSection,{ backgroundColor: isDark ? colors.dark.bg : colors.light.bg },]}>
               <Text
                 style={[
                   styles.aboutTitle,
@@ -602,7 +603,7 @@ const fetchBinanceData = async (symbol) => {
               </Text>
 
                 <View style={styles.statRow}>
-                  <View style={[styles.statItem,{backgroundColor:isDark?"#1B1B1C":"#FFFFFF"}]}>
+                  <View style={[styles.statItem,{backgroundColor:isDark?colors.dark.cardBg : colors.light.cardBg}]}>
                     <Text
                       style={[
                         styles.statLabel,
@@ -622,7 +623,7 @@ const fetchBinanceData = async (symbol) => {
                         : "Info unavailable"}
                     </Text>
                   </View>
-                  <View style={[styles.statItem,{backgroundColor:isDark?"#1B1B1C":"#FFFFFF"}]}>
+                  <View style={[styles.statItem,{backgroundColor:isDark?colors.dark.cardBg : colors.light.cardBg}]}>
                     <Text
                       style={[
                         styles.statLabel,
@@ -643,7 +644,7 @@ const fetchBinanceData = async (symbol) => {
                 </View>
 
                 <View style={styles.statRow}>
-                  <View style={[styles.statItem,{backgroundColor:isDark?"#1B1B1C":"#FFFFFF"}]}>
+                  <View style={[styles.statItem,{backgroundColor:isDark?colors.dark.cardBg : colors.light.cardBg}]}>
                     <Text
                       style={[
                         styles.statLabel,
@@ -661,7 +662,7 @@ const fetchBinanceData = async (symbol) => {
                       {isNaN(assetData.high_24h)?"Info unavailable":`$${assetData.high_24h?.toLocaleString()}`}
                     </Text>
                   </View>
-                  <View style={[styles.statItem,{backgroundColor:isDark?"#1B1B1C":"#FFFFFF"}]}>
+                  <View style={[styles.statItem,{backgroundColor:isDark?colors.dark.cardBg : colors.light.cardBg}]}>
                     <Text
                       style={[
                         styles.statLabel,
@@ -812,7 +813,7 @@ const styles = StyleSheet.create({
   },
   aboutSection: {
     paddingHorizontal: wp(5),
-    marginTop: hp(1),
+    marginTop: hp(-3),
     paddingTop:hp(2)
   },
   aboutTitle: {

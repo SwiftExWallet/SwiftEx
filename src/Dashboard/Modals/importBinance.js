@@ -359,7 +359,7 @@ const ImportBinanceWallet = ({
                 </Text>
               </TouchableOpacity>
             </View>
-            <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C" }]}>
+            <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F" }]}>
               <Text style={[style.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>Wallet Name</Text>
               <View style={[style.inputContainer, {
                 backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426",
@@ -377,7 +377,7 @@ const ImportBinanceWallet = ({
               </View>
             </View>
 
-            <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C" }]}>
+            <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F" }]}>
               <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                 <Text style={[style.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>Phrase</Text>
                 <TouchableOpacity
@@ -436,7 +436,7 @@ const ImportBinanceWallet = ({
 
 
             {optionVisible ? (
-              <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C" }]}>
+              <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F" }]}>
                 <Text style={[style.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>Key</Text>
                 <View style={[style.inputContainer, {
                   backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426",

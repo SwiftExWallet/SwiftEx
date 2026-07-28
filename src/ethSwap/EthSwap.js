@@ -1880,9 +1880,9 @@ const EthSwap = () => {
               </View>
             )}
 
-            <Text style={styles.disclaimerText}>
+            {/* <Text style={styles.disclaimerText}>
               * This transaction may include extra fees if it involves multiple hops.
-            </Text>
+            </Text> */}
           </View>
         )}
 

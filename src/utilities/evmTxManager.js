@@ -2,70 +2,122 @@ import { NativeModules } from "react-native";
 import { ethers } from "ethers";
 import { CHAINS } from "./TokenUtils";
 
+const GAS_PRICE_BUFFER_PCT = 120; // 20% extra
+const GAS_LIMIT_BUFFER_PCT = 120; // 20% extra
+const NATIVE_TRANSFER_GAS_LIMIT = ethers.BigNumber.from(21000);
+
 export const evmTxManager = async (chainName, fromAddress, amount, toAddress) => {
     const chainConfig = CHAINS[chainName];
-    const txParams = {
-        to: toAddress,
-        value: ethers.utils.parseEther(amount),
-        data: "0x"
-    };
-
-    async function prepareUnsignedTxForNativeSign(config) {
-    const provider = new ethers.providers.JsonRpcProvider(config.rpcUrl);
-    const [balance, nonce, feeData] = await Promise.all([
-        provider.getBalance(fromAddress),
-        provider.getTransactionCount(fromAddress, 'pending'),
-        provider.getFeeData(),
-    ]);
-
-    const gasPrice = feeData.gasPrice.mul(120).div(100);
-    const gasLimit = await provider.estimateGas({
-        to: toAddress,
-        from: fromAddress,
-        value: txParams.value,
-        data: "0x",
-    });
-    const gasLimitBuffered = gasLimit.mul(120).div(100);
-
-    const gasCost = gasPrice.mul(gasLimitBuffered);
-    const totalRequired = txParams.value.add(gasCost);
-    if (balance.lt(totalRequired)) {
-        throw new Error("Insufficient balance to cover amount and gas");
+    if (!chainConfig) {
+        return { status: false, error: `Unsupported chain: ${chainName}` };
     }
 
-    const populatedTx = {
-        nonce: ethers.utils.hexlify(nonce),
-        gasPrice: ethers.utils.hexlify(gasPrice),
-        gasLimit: ethers.utils.hexlify(gasLimitBuffered),
-        to: toAddress,
-        value: ethers.utils.hexlify(txParams.value),
-        data: "0x",
-        chainId: config.chainId,
-    };
+    let requestedValue;
+    try {
+        requestedValue = ethers.utils.parseEther(amount.toString());
+    } catch (e) {
+        return { status: false, error: "Invalid amount format" };
+    }
 
-    return JSON.stringify(populatedTx);
-}
+    if (requestedValue.lte(0)) {
+        return { status: false, error: "Amount must be greater than zero" };
+    }
+
+    async function prepareUnsignedTxForNativeSign(config) {
+        const provider = new ethers.providers.JsonRpcProvider(config.rpcUrl);
+
+        const [balance, nonce, feeData] = await Promise.all([
+            provider.getBalance(fromAddress),
+            provider.getTransactionCount(fromAddress, "pending"),
+            provider.getFeeData(),
+        ]);
+
+        if (!feeData.gasPrice) {
+            throw new Error("Failed to fetch gas price from network");
+        }
+
+        const gasPrice = feeData.gasPrice.mul(GAS_PRICE_BUFFER_PCT).div(100);
+
+        const isPlainTransfer = true;
+        let gasLimit;
+        if (isPlainTransfer) {
+            gasLimit = NATIVE_TRANSFER_GAS_LIMIT;
+        } else {
+            const safeEstimateValue = requestedValue.gte(balance) ? balance : requestedValue;
+            gasLimit = await provider.estimateGas({
+                to: toAddress,
+                from: fromAddress,
+                value: safeEstimateValue,
+                data: "0x",
+            });
+        }
+
+        const gasLimitBuffered = gasLimit.mul(GAS_LIMIT_BUFFER_PCT).div(100);
+        const gasCost = gasPrice.mul(gasLimitBuffered);
+
+        if (balance.lte(gasCost)) {
+            throw new Error("Balance too low to cover gas fees");
+        }
+
+        let finalValue;
+        let isMaxSend = false;
+
+        if (requestedValue.gte(balance)) {
+            isMaxSend = true;
+            finalValue = balance.sub(gasCost);
+            if (finalValue.lte(0)) {
+                throw new Error("Balance too low to cover gas fees");
+            }
+        } else {
+            const totalRequired = requestedValue.add(gasCost);
+            if (balance.lt(totalRequired)) {
+                throw new Error("Insufficient balance to cover amount and gas");
+            }
+            finalValue = requestedValue;
+        }
+
+        const populatedTx = {
+            nonce: ethers.utils.hexlify(nonce),
+            gasPrice: ethers.utils.hexlify(gasPrice),
+            gasLimit: ethers.utils.hexlify(gasLimitBuffered),
+            to: toAddress,
+            value: ethers.utils.hexlify(finalValue),
+            data: "0x",
+            chainId: config.chainId,
+        };
+
+        return {
+            rawTx: JSON.stringify(populatedTx),
+            finalValue,
+            isMaxSend,
+        };
+    }
 
     try {
-        const rawUnsignedTx = await prepareUnsignedTxForNativeSign(chainConfig);
+        const { rawTx, finalValue, isMaxSend } = await prepareUnsignedTxForNativeSign(chainConfig);
+
         const signedResult = await NativeModules.TransactionSigner.signTransaction(
             chainConfig.nativeChainKey,
             fromAddress,
-            rawUnsignedTx,
+            rawTx,
             chainConfig.chainId
         );
+
         const provider = new ethers.providers.JsonRpcProvider(chainConfig.rpcUrl);
         const txResponse = await provider.sendTransaction(signedResult.signedTx.slice(2));
-        return{
-            txResponse:txResponse,
-            status:true,
-        }
+
+        return {
+            status: true,
+            txResponse,
+            actualAmountSent: ethers.utils.formatEther(finalValue),
+            wasMaxSend: isMaxSend,
+        };
     } catch (error) {
         console.error(`${chainName} Error:`, error.message);
-        return{
-            error:error.message,
-            status:false,
-        }
+        return {
+            status: false,
+            error: error.message,
+        };
     }
 };
 

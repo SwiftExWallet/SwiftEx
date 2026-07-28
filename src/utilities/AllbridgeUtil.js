@@ -68,6 +68,7 @@ export async function getChainTokenData(sourceChain, destChain, sourceToken, des
         slippageTolerance: 1,
         completionTime: trasTM + " Min",
         fee: feeObj,
+        provider:"Allbridge"
       }
     };
   } catch (error) {

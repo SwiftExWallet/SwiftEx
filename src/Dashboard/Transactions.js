@@ -26,12 +26,13 @@ import CustomInfoProvider from './exchange/crypto-exchange-front-end-main/src/co
 import ShortTermStorage from '../utilities/ShortTermStorage';
 import { CHAINS, CheckTxStatus, TXSTATUS } from '../utilities/TokenUtils'
 import { AllbridgeCoreSdk, nodeRpcUrlsDefault } from "@allbridge/bridge-core-sdk";
+import { colors } from '../Screens/ThemeColorsConfig';
 const sdk = new AllbridgeCoreSdk(nodeRpcUrlsDefault);
 const ThemeContext = React.createContext();
 const themes = {
   light: {
-    background: "#FFFFFF",
-    cardBackground: "#F4F4F8",
+    background: colors.light.bg,
+    cardBackground: colors.light.cardBg,
     textPrimary: '#1A1A1A',
     textSecondary: '#6B7280',
     textTertiary: '#9CA3AF',
@@ -47,8 +48,8 @@ const themes = {
     divider: '#F3F4F6',
   },
   dark: {
-    background: "#1B1B1C",
-    cardBackground: "#242426",
+    background: colors.dark.bg,
+    cardBackground: colors.dark.cardBg,
     textPrimary: '#F1F5F9',
     textSecondary: '#94A3B8',
     textTertiary: '#64748B',
@@ -266,9 +267,10 @@ const TransactionCard = ({ item, walletAddress, activeChain, activeFilter, navig
 
   const txType = getTransactionType(item);
   const isPending = item.isPending === true || ['pending', 'created', 'partially_filled'].includes(item.status);
-  const isFailed = item.isFailed === true || ['failed', 'cancelled', 'expired', 'invalid', 'refunding', 'refunded'].includes(item.status);
+  const isFailed = item.isFailed === true || ['failed', 'cancelled', 'expired', 'invalid', 'refunding', 'refunded', 'exhausted'].includes(item.status);
   const isSuccess = item.isSuccess === true || ['completed', 'executed', 'filled'].includes(item.status);
   const isApprove = item.isApprove === true || item.typeTx?.toLowerCase() === 'approve';
+  const isExhausted = item.status === 'exhausted';
 
   const getStatusConfig = () => {
     switch (item.status) {
@@ -284,6 +286,7 @@ const TransactionCard = ({ item, walletAddress, activeChain, activeFilter, navig
       case 'invalid': return { text: 'Invalid', color: colors.error, icon: 'alert-circle' };
       case 'refunding': return { text: 'Refunding', color: colors.warning, icon: 'refresh' };
       case 'refunded': return { text: 'Refunded', color: colors.warning, icon: 'cash-refund' };
+      case 'exhausted': return { text: 'Exhausted', color: colors.error, icon: 'alert-octagon-outline' };
       default: break;
     }
     if (isFailed) return { text: 'Failed', color: colors.error, icon: 'close-circle' };
@@ -301,6 +304,7 @@ const TransactionCard = ({ item, walletAddress, activeChain, activeFilter, navig
     if (item.provider) {
       switch (item.provider) {
         case 'RANGO': return `https://explorer.rango.exchange/swap/${item.requestId}`;
+        case 'NEARINTENT': return `https://explorer.near-intents.org/transactions/${item.txHash}`;
         case "ALLBRIDGE":
           CustomInfoProvider.show("waiting", "Please Wait", "Collecting information.");
           const getUrl = await sdk.getTransferStatus(item.fromChain, item.txHash);

@@ -19,6 +19,7 @@ import { LineChart } from "react-native-gifted-charts";
 import { useNavigation } from "@react-navigation/native";
 import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import Icon from "../icon";
+import { colors } from "../Screens/ThemeColorsConfig";
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export const CoinDetails = (props) => {
@@ -155,12 +156,12 @@ export const CoinDetails = (props) => {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: isDark ? "#1B1B1C" : "#FFFFFF"}]}>
+    <View style={[styles.container, { backgroundColor: isDark ? colors.dark.bg : colors.light.bg}]}>
       <Wallet_screen_header title="Coin-Detail" onLeftIconPress={() => navigation.goBack()} />
-      <ScrollView showsVerticalScrollIndicator={false} style={[styles.scrollView,{backgroundColor:isDark?"#242426":"#F4F4F8"}]}>
+      <ScrollView showsVerticalScrollIndicator={false} style={[styles.scrollView,{backgroundColor:isDark?colors.dark.bg:colors.light.bg}]}>
         <Animated.View style={{ opacity: fadeAnim }}>
           {/* Main Card */}
-          <View style={[styles.mainCard, { backgroundColor: isDark ? "#242426" : "#F4F4F8" }]}>
+          <View style={[styles.mainCard, { backgroundColor: isDark ? colors.dark.bg : colors.light.bg }]}>
             {/* Coin Header */}
             <View style={styles.coinHeader}>
               <Image source={{ uri: image }} style={styles.coinIcon} />
@@ -243,7 +244,7 @@ export const CoinDetails = (props) => {
             </View>
 
             {/* Timeframe Buttons */}
-            <View style={[styles.timeframeContainer,{backgroundColor:isDark?"#1B1B1C":"#FFFFFF"}]}>
+            <View style={[styles.timeframeContainer,{backgroundColor:isDark?"#0B0B0F":"#FFFFFF"}]}>
               {timeFrames.map((tf) => (
                 <TouchableOpacity
                   key={tf.index}
@@ -251,7 +252,7 @@ export const CoinDetails = (props) => {
                     styles.timeframeButton,
                     pressed === tf.index && [
                       {backgroundColor:
-                          isDark ? "#242426" : "#F4F4F8"}
+                          isDark ? colors.dark.bg : colors.light.bg}
                     ],
                   ]}
                   onPress={() => {
@@ -278,7 +279,7 @@ export const CoinDetails = (props) => {
 
           {/* Info Cards Grid */}
           <View style={styles.infoGrid}>
-            <View style={[styles.infoCard, { backgroundColor: isDark ? "#1B1B1C" : "#FFFFFF" }]}>
+            <View style={[styles.infoCard, { backgroundColor: isDark ? "#0B0B0F" : "#FFFFFF" }]}>
               <Text style={[styles.infoLabel, { color: isDark ? "#8E8E93" : "#8E8E93" }]}>
               Price change 24H
               </Text>
@@ -287,7 +288,7 @@ export const CoinDetails = (props) => {
               </Text>
             </View>
 
-            <View style={[styles.infoCard, { backgroundColor: isDark ? "#1B1B1C" : "#FFFFFF" }]}>
+            <View style={[styles.infoCard, { backgroundColor: isDark ? "#0B0B0F" : "#FFFFFF" }]}>
               <Text style={[styles.infoLabel, { color: isDark ? "#8E8E93" : "#8E8E93" }]}>
                 Last price (USD)
               </Text>
@@ -296,7 +297,7 @@ export const CoinDetails = (props) => {
               </Text>
             </View>
 
-            <View style={[styles.infoCard, { backgroundColor: isDark ? "#1B1B1C" : "#FFFFFF" }]}>
+            <View style={[styles.infoCard, { backgroundColor: isDark ? "#0B0B0F" : "#FFFFFF" }]}>
               <Text style={[styles.infoLabel, { color: isDark ? "#8E8E93" : "#8E8E93" }]}>
               24H high
               </Text>
@@ -305,7 +306,7 @@ export const CoinDetails = (props) => {
               </Text>
             </View>
 
-            <View style={[styles.infoCard, { backgroundColor: isDark ? "#1B1B1C" : "#FFFFFF" }]}>
+            <View style={[styles.infoCard, { backgroundColor: isDark ? "#0B0B0F" : "#FFFFFF" }]}>
               <Text style={[styles.infoLabel, { color: isDark ? "#8E8E93" : "#8E8E93" }]}>
               24H Low
               </Text>

@@ -13,45 +13,6 @@ import { colors } from '../../Screens/ThemeColorsConfig';
 import { buildXlsxZip } from '../../utilities/PnlGenrate';
 import CustomInfoProvider from '../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import PnlShareCard from './PnlShareCard';
-import Svg, { Polyline } from 'react-native-svg';
-
-const dummyProfitTrend = [4, 6, 5, 8, 7, 10, 12];
-const dummyLossTrend = [12, 10, 11, 8, 9, 6, 4];
-const Sparkline = ({ data = [], width = 60, height = 28, color = '#39de4a' }) => {
-    if (!data || data.length < 2) return null;
-
-    const max = Math.max(...data);
-    const min = Math.min(...data);
-    const range = max - min || 1;
-
-    const points = data
-        .map((val, i) => {
-            const x = (i / (data.length - 1)) * width;
-            const y = height - ((val - min) / range) * height;
-            return `${x},${y}`;
-        })
-        .join(' ');
-
-    return (
-        <Svg width={width} height={height}>
-            <Polyline
-                points={points}
-                fill="none"
-                stroke={color}
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </Svg>
-    );
-};
-
-const TIMELINES = [
-    { label: '1 Week', value: '1week' },
-    { label: '1 Month', value: '1month' },
-    { label: '2 Month', value: '2month' },
-    { label: '3 Month', value: '3month' },
-];
 
 const getRawDateRange = (timeline) => {
     const to = new Date();
@@ -84,6 +45,12 @@ const formatDateString = (d) => {
     return `${dd}/${mm}/${yy}`;
 };
 
+const formatUSD = (val, decimals = 2) => {
+    const num = Number(val) || 0;
+    const sign = num < 0 ? '-' : '';
+    return `${sign}$${Math.abs(num).toFixed(decimals)}`;
+};
+
 const inFlightRequests = new Map();
 
 const dedupedGet = (url) => {
@@ -100,27 +67,23 @@ const dedupedGet = (url) => {
     return promise;
 };
 
-const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
+const PnlOverView = ({ refresh = false, stellarKey, activeTheme, onSummaryUpdate, selectedTimeline }) => {
     const pnlCardRef = useRef();
     const lastFetchKey = useRef(null);
     const [hideTotalPnL,setHideTotalPnL]=useState(false);
     const [isPnlVisible, setIsPnlVisible] = useState(false);
     const theme = activeTheme ? colors.dark : colors.light;
-    const [isEyeOpen,setIsEyeOpen]=useState(true);
     const [pnlInfo, setPnlInfo] = useState(null);
     const [pnlLoading, setPnlLoading] = useState(false);
-    const [selectedTimeline, setSelectedTimeline] = useState('1week');
     const [isSheetVisible, setIsSheetVisible] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
-
-    // Default dates managed by selected timeline initially
     const [fromDate, setFromDate] = useState(() => getRawDateRange('1week').from);
     const [toDate, setToDate] = useState(() => getRawDateRange('1week').to);
+    const [showDownloadFromPicker, setShowDownloadFromPicker] = useState(false);
+    const [showDownloadToPicker, setShowDownloadToPicker] = useState(false);
+    const [showShareFromPicker, setShowShareFromPicker] = useState(false);
+    const [showShareToPicker, setShowShareToPicker] = useState(false);
 
-    const [showFromPicker, setShowFromPicker] = useState(false);
-    const [showToPicker, setShowToPicker] = useState(false);
-
-    // Jab bhi user screen par timeline badlega, calendar ki dates automatic us timeline ke hisab se set ho jayengi
     useEffect(() => {
         const { from, to } = getRawDateRange(selectedTimeline);
         setFromDate(from);
@@ -149,7 +112,7 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
 
             if (!isActiveSignal.current) return;
             if (result.success) {
-                setPnlInfo({
+                const summary = {
                     address: excleData.data?.address || result.data?.address,
                     rawCount: result.data?.rawCount,
                     collapsedCount: result.data?.collapsedCount,
@@ -181,9 +144,12 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
                     disposals: result.data?.disposals,
                     positions: result.data?.positions,
                     trades: result.data?.trade
-                });
+                };
+                setPnlInfo(summary);
+                onSummaryUpdate?.(summary);
             } else {
                 setPnlInfo(null);
+                onSummaryUpdate?.(null);
             }
         } catch (error) {
             console.error("Network crash in getPnl:", error);
@@ -230,47 +196,15 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
         setIsSheetVisible(false);
     };
 
-    const usdcSpent = pnlInfo?.usdcSpent ?? 0;
-    const usdcReceived = pnlInfo?.usdcReceived ?? 0;
     const tradeCount = pnlInfo?.tradeCount ?? 0;
-    const positionCount = pnlInfo?.positionCount ?? 0;
     const totalPnL = pnlInfo?.totalPnL ?? 0;
-    const netUSDCFlow = pnlInfo?.netUSDCFlow ?? 0;
-    const totalRealized = pnlInfo?.totalRealized ?? 0;
-    const totalUnrealized = pnlInfo?.totalUnrealized ?? 0;
-
-    const formatUSD = (val, decimals = 2) => `$${val.toFixed(decimals)}`;
-    const isLoss = totalPnL < 0;
-
-    const topStats = [{
-        label: 'Total P&L',
-        value: formatUSD(totalPnL, 3),
-        icon: isLoss ? 'arrow-down-outline' : 'arrow-up-outline',
-        color: isLoss ? '#ef4444' : '#10b981',
-        isPnL: true,
-        pnLPct:pnlInfo?.openPnLPct ?? 0,
-    }];
-
-    const stats = [
-        { label: `USDC\nSpent`, value: formatUSD(usdcSpent, 2), icon: 'cloud-upload-outline', color: '#6366f1' },
-        { label: `USDC\nReceived`, icon: 'cloud-download-outline', value: formatUSD(usdcReceived, 3), color: '#8b5cf6' },
-        { label: `Total\nTrades`, value: tradeCount.toString(), icon: 'swap-horizontal-outline', color: '#ec4899' },
-        { label: `Total\nPositions`, value: positionCount.toString(), icon: 'folder-open-outline', color: '#f59e0b' },
-        { label: `Net USDC\nFlow`, value: netUSDCFlow.toString(), icon: 'git-compare-outline', color: '#06b6d4' },
-        { label: `Total\nRealized`, value: totalRealized.toString(), icon: 'cash-outline', color: '#10b981' },
-        { label: `Total\nUnrealized`, value: totalUnrealized.toString(), icon: 'trending-up-outline', color: '#3b82f6' },
-    ];
 
     return (
-        <View style={[styles.wrapper, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }]}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <View>
-                    <Text style={[styles.heading, { color: theme.headingTx }]}>PnL Overview</Text>
-                    <Text style={[styles.subHeading, { color: theme.headingTx }]}>Freshness: ~15 mins.</Text>
-                </View>
+        <View >
+
                 <View style={{flexDirection:"row",alignSelf:"flex-end"}}>
                     <TouchableOpacity
-                        style={[styles.downloadBtn, { backgroundColor: theme.smallCardBg, borderColor: theme.smallCardBorderColor, marginRight: wp(3) }]}
+                        style={[styles.downloadBtn, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor, marginRight: wp(3) }]}
                         disabled={pnlInfo === null || pnlLoading}
                         onPress={() => {setIsPnlVisible(true)}}
                     >
@@ -294,7 +228,7 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
                         </View>
                     )}
                 <TouchableOpacity
-                    style={[styles.downloadBtn, { backgroundColor: theme.smallCardBg, borderColor: theme.smallCardBorderColor }]}
+                    style={[styles.downloadBtn, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }]}
                     disabled={pnlInfo === null || pnlLoading}
                     onPress={() => setIsSheetVisible(true)}
                 >
@@ -302,105 +236,24 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
                 </TouchableOpacity>
 
                 </View>
-            </View>
 
-            <View style={styles.container}>
-                {topStats.map((stat, index) => (
-                    <View
-                        key={index}
-                        style={[
-                            styles.topCard,
-                            { backgroundColor: theme.bg, borderColor: theme.smallCardBorderColor },
-                            stat?.isPnL && isLoss ? styles.lossCard : styles.profitCard
-                        ]}
-                    >
-                        <View style={{ flex: 1 }}>
-                            <Text style={[styles.topCardlabel, { color: theme.headingTx }]}>
-                                {stat?.label}
-                            </Text>
 
-                            <Text style={[styles.valuePnl, stat?.isPnL && isLoss ? styles.lossValue : { color: theme.inactiveTx }]}>
-                                {pnlLoading ? '...' : stat?.value}
-                            </Text>
-
-                            {stat?.isPnL && !pnlLoading && (
-                                <View style={[styles.pctBadge, isLoss ? styles.pctBadgeLoss : styles.pctBadgeProfit]}>
-                                    <Icon
-                                        name={isLoss ? 'arrow-down-outline' : 'arrow-up-outline'}
-                                        size={11}
-                                        color={isLoss ? '#f06262' : '#39de4a'}
-                                        type={'ionicon'}
-                                    />
-                                    <Text style={[styles.pctBadgeText, { color: isLoss ? '#f06262' : '#39de4a' }]}>
-                                        {isEyeOpen?stat?.pnLPct:"X.XX"}%
-                                    </Text>
-                                    {/* <Icon
-                                        name={!isEyeOpen ? "eye-off" : "eye"}
-                                        type="ionicon"
-                                        size={23}
-                                        color={theme.inactiveTx}
-                                        onPress={() => {setIsEyeOpen(isEyeOpen?false:true)}}
-                                    /> */}
-                                </View>
-                            )}
-                        </View>
-
-                        <View style={{justifyContent:"center",alignItems:"center"}}>
-                            <View style={[styles.iconBox, { backgroundColor: `${stat?.color}20` }]}>
-                                <Icon name={stat?.icon} size={20} color={stat?.color} type={'ionicon'} />
-                            </View>
-                            <Sparkline
-                                data={isLoss ? dummyLossTrend : dummyProfitTrend}
-                                color={isLoss ? '#f06262' : '#39de4a'}
-                            />
-                        </View>
-                    </View>
-                ))}
-            </View>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ backgroundColor: theme.cardBg }}>
-                <View style={styles.container}>
-                    {stats.map((stat, index) => (
-                        <View key={index} style={[styles.card, { backgroundColor: theme.bg, borderColor: theme.smallCardBorderColor }, stat.isPnL && isLoss && styles.lossCard]}>
-                            <View style={styles.iconCon}>
-                                <View style={[styles.iconBox, { backgroundColor: `${stat.color}20` }]}>
-                                    <Icon name={stat.icon} size={16} color={stat.color} type={"ionicon"} />
-                                </View>
-                                <Text style={[styles.label, { color: theme.headingTx }]}>{stat.label}</Text>
-                            </View>
-                            <Text style={[styles.value, { color: theme.inactiveTx }]} numberOfLines={1}>
-                                {pnlLoading ? '...' : stat.value}
-                            </Text>
-                        </View>
-                    ))}
-                </View>
-            </ScrollView>
-
-            <View style={styles.timelineContainer}>
-                {TIMELINES.map((item) => {
-                    const isActive = selectedTimeline === item.value;
-                    return (
-                        <TouchableOpacity
-                            key={item.value}
-                            onPress={() => setSelectedTimeline(item.value)}
-                            style={[styles.timelineBtn, { backgroundColor: theme.smallCardBg, borderColor: theme.smallCardBorderColor }, isActive && styles.timelineBtnActive]}
-                        >
-                            <Text style={[styles.timelineText, { color: theme.inactiveTx }, isActive && styles.timelineTextActive]}>
-                                {item.label}
-                            </Text>
-                        </TouchableOpacity>
-                    );
-                })}
-            </View>
-            <View style={styles.warningCon}>
-                <Icon name="alert-circle-outline" size={20} color={"#ed920aff"} type="ionicon" />
-                <Text style={styles.warningTxt}><Text style={{ fontSize: 14, fontWeight: "600" }}>Cost Basis Warning:</Text> Some asset prices were estimated or missing.</Text>
-            </View>
+           
 
             <Modal
                 isVisible={isSheetVisible}
-                onBackdropPress={() => !isDownloading && setIsSheetVisible(false)}
-                onBackButtonPress={() => !isDownloading && setIsSheetVisible(false)}
+                onBackdropPress={() => {
+                    if (isDownloading) return;
+                    setShowDownloadFromPicker(false);
+                    setShowDownloadToPicker(false);
+                    setIsSheetVisible(false);
+                }}
+                onBackButtonPress={() => {
+                    if (isDownloading) return;
+                    setShowDownloadFromPicker(false);
+                    setShowDownloadToPicker(false);
+                    setIsSheetVisible(false);
+                }}
                 style={styles.modalStructure}
                 backdropOpacity={0.5}
                 useNativeDriverForBackdrop
@@ -414,33 +267,33 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
                     </Text>
 
                     <View style={styles.calendarInputContainer}>
-                        <TouchableOpacity style={[styles.dateInputBox, { backgroundColor: theme.smallCardBg, borderColor: theme.smallCardBorderColor }]} onPress={() => setShowFromPicker(true)}>
+                        <TouchableOpacity style={[styles.dateInputBox, { backgroundColor: theme.bg, borderColor: theme.smallCardBorderColor }]} onPress={() => setShowDownloadFromPicker(true)}>
                             <Text style={styles.inputBoxSub}>From Date</Text>
-                            <Text style={[styles.dateValueText, { color: theme.headingTx }]}>{fromDate.toLocaleDateString()}</Text>
+                            <Text style={[styles.dateValueText, { color: theme.headingTx }]}>{fromDate?.toLocaleDateString()}</Text>
                         </TouchableOpacity>
 
                         <Icon name="arrow-forward-outline" size={20} color={theme.inactiveTx} type="ionicon" style={{ alignSelf: 'center' }} />
 
-                        <TouchableOpacity style={[styles.dateInputBox, { backgroundColor: theme.smallCardBg, borderColor: theme.smallCardBorderColor }]} onPress={() => setShowToPicker(true)}>
+                        <TouchableOpacity style={[styles.dateInputBox, { backgroundColor: theme.bg, borderColor: theme.smallCardBorderColor }]} onPress={() => setShowDownloadToPicker(true)}>
                             <Text style={styles.inputBoxSub}>To Date</Text>
                             <Text style={[styles.dateValueText, { color: theme.headingTx }]}>{toDate.toLocaleDateString()}</Text>
                         </TouchableOpacity>
                     </View>
 
-                    {showFromPicker && (
+                    {showDownloadFromPicker && (
                         <DateTimePicker
                             value={fromDate}
                             mode="date"
                             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                             maximumDate={new Date()}
                             onChange={(event, selectedDate) => {
-                                setShowFromPicker(Platform.OS === 'ios');
+                                setShowDownloadFromPicker(Platform.OS === 'ios');
                                 if (selectedDate) setFromDate(selectedDate);
                             }}
                         />
                     )}
 
-                    {showToPicker && (
+                    {showDownloadToPicker && (
                         <DateTimePicker
                             value={toDate}
                             mode="date"
@@ -448,7 +301,7 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
                             maximumDate={new Date()}
                             minimumDate={fromDate}
                             onChange={(event, selectedDate) => {
-                                setShowToPicker(Platform.OS === 'ios');
+                                setShowDownloadToPicker(Platform.OS === 'ios');
                                 if (selectedDate) setToDate(selectedDate);
                             }}
                         />
@@ -470,8 +323,16 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
 
             <Modal
                 isVisible={isPnlVisible}
-                onBackdropPress={() => setIsPnlVisible(false)}
-                onBackButtonPress={() => setIsPnlVisible(false)}
+                onBackdropPress={() => {
+                    setShowShareFromPicker(false);
+                    setShowShareToPicker(false);
+                    setIsPnlVisible(false);
+                }}
+                onBackButtonPress={() => {
+                    setShowShareFromPicker(false);
+                    setShowShareToPicker(false);
+                    setIsPnlVisible(false);
+                }}
                 style={styles.modalStructure}
                 backdropOpacity={0.5}
                 useNativeDriverForBackdrop
@@ -485,33 +346,33 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
                     </Text>
 
                     <View style={[styles.calendarInputContainer,{ marginBottom: hp(0),}]}>
-                        <TouchableOpacity style={[styles.dateInputBox, { backgroundColor: theme.smallCardBg, borderColor: theme.smallCardBorderColor }]} onPress={() => setShowFromPicker(true)}>
+                        <TouchableOpacity style={[styles.dateInputBox, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }]} onPress={() => setShowShareFromPicker(true)}>
                             <Text style={styles.inputBoxSub}>From Date</Text>
                             <Text style={[styles.dateValueText, { color: theme.headingTx }]}>{fromDate.toLocaleDateString()}</Text>
                         </TouchableOpacity>
 
                         <Icon name="arrow-forward-outline" size={20} color={theme.inactiveTx} type="ionicon" style={{ alignSelf: 'center' }} />
 
-                        <TouchableOpacity style={[styles.dateInputBox, { backgroundColor: theme.smallCardBg, borderColor: theme.smallCardBorderColor }]} onPress={() => setShowToPicker(true)}>
+                        <TouchableOpacity style={[styles.dateInputBox, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }]} onPress={() => setShowShareToPicker(true)}>
                             <Text style={styles.inputBoxSub}>To Date</Text>
                             <Text style={[styles.dateValueText, { color: theme.headingTx }]}>{toDate.toLocaleDateString()}</Text>
                         </TouchableOpacity>
                     </View>
 
-                    {showFromPicker && (
+                    {showShareFromPicker && (
                         <DateTimePicker
                             value={fromDate}
                             mode="date"
                             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                             maximumDate={new Date()}
                             onChange={(event, selectedDate) => {
-                                setShowFromPicker(Platform.OS === 'ios');
+                                setShowShareFromPicker(Platform.OS === 'ios');
                                 if (selectedDate) setFromDate(selectedDate);
                             }}
                         />
                     )}
 
-                    {showToPicker && (
+                    {showShareToPicker && (
                         <DateTimePicker
                             value={toDate}
                             mode="date"
@@ -519,7 +380,7 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
                             maximumDate={new Date()}
                             minimumDate={fromDate}
                             onChange={(event, selectedDate) => {
-                                setShowToPicker(Platform.OS === 'ios');
+                                setShowShareToPicker(Platform.OS === 'ios');
                                 if (selectedDate) setToDate(selectedDate);
                             }}
                         />
@@ -568,128 +429,18 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme }) => {
                     </TouchableOpacity>
                 </View>
             </Modal>
-            <View style={styles.betaTagCon}>
-                <Text style={styles.betaTagTxt}>BETA</Text>
-            </View>
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    wrapper: {
-        marginHorizontal: wp(2.6),
-        marginTop: hp(1),
-        borderWidth: 1,
-        borderRadius: 20,
-        paddingVertical: hp(2),
-        paddingHorizontal: wp(2.5)
-    },
-    heading: {
-        marginTop:hp(0.7),
-        fontSize: 16,
-        fontWeight: "600"
-    },
-    container: {
-        flexDirection: 'row',
-        paddingVertical: hp(1),
-        paddingHorizontal: 0.5,
-        gap: 12
-    },
-    card: {
-        width: wp(26),
-        paddingVertical: 14,
-        paddingHorizontal: 8,
-        borderRadius: 16,
-        borderWidth: 1
-    },
-    iconCon: {
-        flexDirection: "row",
-        justifyContent: "flex-start",
-        alignItems: 'center'
-    },
-    topCard: {
-        width: wp(89),
-        paddingHorizontal: 10,
-        paddingVertical: 10,
-        borderRadius: 16,
-        borderWidth: 1,
-        flexDirection: "row",
-        justifyContent: "space-between",
-        marginBottom: hp(-0.8)
-    },
-    topCardlabel: {
-        fontSize: 11,
-        marginBottom: 6,
-        fontWeight: "600",
-        textTransform: 'uppercase',
-        letterSpacing: 0.4,
-        opacity: 0.7
-    },
-    lossCard: {
-        borderColor: 'rgba(235, 59,59,0.3)',
-        backgroundColor: 'rgba(222, 57,57,0.05) '
-    },
-    profitCard: {
-        borderColor: 'rgba(45, 238,67,0.3) ',
-        backgroundColor: 'rgba(57, 222,74,0.05) '
-    },
-    iconBox: {
-        width: 30,
-        height: 30,
-        borderRadius: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 10
-    },
-    label: {
-        fontSize: 11,
-        marginBottom: 10,
-        fontWeight: "600",
-        marginLeft: wp(1.3)
-    },
-    value: {
-        fontSize: 15,
-        fontWeight: '700',
-        alignSelf: "center"
-    },
-    valuePnl: {
-        fontSize: 22,
-        fontWeight: '700',
-        marginBottom: 8
-    },
-    lossValue: {
-        color: '#f06262ff',
-        fontSize: 16
-    },
-    timelineContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 1,
-        gap: 9
-    },
-    timelineBtn: {
-        flex: 1,
-        paddingVertical: 7,
-        borderRadius: 10,
-        alignItems: 'center',
-        borderWidth: 1
-    },
-    timelineBtnActive: {
-        backgroundColor: 'rgba(86, 88,233,0.2) ',
-        borderColor: '#4052D6'
-    },
-    timelineText: {
-        fontSize: 12,
-        fontWeight: '500'
-    },
     timelineTextActive: {
         color: '#4052D6',
         fontWeight: '700'
     },
     downloadBtn: {
         width: wp(20),
-        paddingVertical: 7,
+        paddingVertical: 4,
         borderRadius: 10,
         alignItems: 'center',
         borderWidth: 1,
@@ -756,41 +507,6 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '600'
     },
-    betaTagCon: {
-        backgroundColor: '#e6eef5ff',
-        borderColor: '#a2afc4ff',
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 6,
-        borderWidth: 1,
-        alignSelf: 'flex-start',
-        justifyContent: 'center',
-        alignItems: 'center',
-        position:"absolute",
-        marginTop:hp(-0.8)
-    },
-    betaTagTxt: {
-        color: '#333d50ff',
-        fontSize: 11,
-        fontWeight: '700'
-    },
-    warningCon:{
-        marginTop:hp(1.4),
-        marginBottom:hp(-0.4),
-        paddingVertical:hp(1),
-        paddingHorizontal:wp(3),
-        backgroundColor:"#fe980035",
-        borderRadius:10,
-        flexDirection:"row",
-        alignItems:"flex-start"
-    },
-    warningTxt:{
-        fontSize:14,
-        fontWeight:"300",
-        color:"#ed920aff",
-        textAlign:"left",
-        marginLeft:4
-    },
     hiddenCardWrapper: {
         position: 'absolute',
         top: -9999,
@@ -799,30 +515,6 @@ const styles = StyleSheet.create({
     pnlDisplay:{
         flexDirection:"row",
         paddingVertical:hp(2)
-    },
-    pctBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        alignSelf: 'flex-start',
-        gap: 3,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 999
-    },
-    pctBadgeProfit: {
-        backgroundColor: 'rgba(57, 222, 74, 0.15)'
-    },
-    pctBadgeLoss: {
-        backgroundColor: 'rgba(240, 98, 98, 0.15)'
-    },
-    pctBadgeText: {
-        fontSize: 14,
-        fontWeight: '600'
-    },
-    subHeading: {
-        marginTop:hp(0.3),
-        fontSize: 14,
-        fontWeight: "500"
     },
 });
 export default React.memo(PnlOverView);

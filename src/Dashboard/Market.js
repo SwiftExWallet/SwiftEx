@@ -25,6 +25,7 @@ import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import { Wallet_market_loading } from "./reusables/Exchange_loading";
 import monkey from "../../assets/monkey.png"
 import apiHelper from "./exchange/crypto-exchange-front-end-main/src/apiHelper";
+import { colors } from "../Screens/ThemeColorsConfig";
 
 
 const Market = (props) => {
@@ -577,7 +578,7 @@ const Market = (props) => {
 
 
   return (
-    <View style={{ backgroundColor: state.THEME.THEME===false?"#fff":"#1B1B1C" }}>
+    <View style={{ backgroundColor: state.THEME.THEME===false?colors.light.bg:colors.dark.bg }}>
     <Wallet_screen_header elementestID={"market_back"} title="Discover" onLeftIconPress={() => navigation.goBack()} />
       <View style={{ height: hp(100) }}>
         <View style={[Styles.searchContainer,{backgroundColor:state.THEME.THEME===false?"#F4F4F8":"#242426",borderColor:"rgba(255, 255, 255, 0.2)"}]}>
@@ -635,7 +636,7 @@ const Market = (props) => {
         const image = item.image;
         const color = item.priceChange24h > 0 ? "green" : "red";
         const backgroundColor =
-          state.THEME.THEME === false ? "#F4F4F8" : "#242426";
+          state.THEME.THEME === false ? colors.light.cardBg : colors.dark.cardBg;
         const imgBgColor =
           state.THEME.THEME === false ? "#fff" : "#23262F1A";
 

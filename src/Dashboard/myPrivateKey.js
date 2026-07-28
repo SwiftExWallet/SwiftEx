@@ -89,7 +89,7 @@ const MyPrivateKey = () => {
             correct.
           </Text>
         </View>
-        <View style={{ marginTop: hp(3), backgroundColor: theme.smallCardBg }}>
+        <View style={{ marginTop: hp(3), backgroundColor: theme.bg }}>
           {walletInfo?.mnemonic?.length > 0 ?
             <FlatList
               data={walletInfo?.mnemonic}
@@ -118,7 +118,7 @@ const MyPrivateKey = () => {
           >Copy</Button>
         </View>
 
-        <View style={{backgroundColor: theme.smallCardBg }}>
+        <View style={{backgroundColor: theme.bg }}>
           <Text style={{ color: theme.headingTx, marginLeft: wp(4.7),marginVertical:hp(1.5) }}>
           dydx mnemonic
         </Text>

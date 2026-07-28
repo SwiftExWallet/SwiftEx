@@ -103,7 +103,7 @@ const TokenQrCode = ({ modalVisible, setModalVisible, iconType, qrvalue, isDark 
               style={[
                 styles.bottomSheet,
                 {
-                  backgroundColor: isDark ? '#1B1B1C' : '#F4F4F8',
+                  backgroundColor: isDark ? '#0B0B0F' : '#F4F4F8',
                   transform: [{ translateY: slideAnim }],
                 },
               ]}

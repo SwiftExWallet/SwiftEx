@@ -65,7 +65,7 @@ const Wallet_selection_bottom = ({ onClose }) => {
   const containerStyle = useMemo(
     () => [
       style.body,
-      { backgroundColor: isDarkTheme ? "#1B1B1C" : "#FFFFFF" }
+      { backgroundColor: isDarkTheme ? "#0B0B0F" : "#FFFFFF" }
     ],
     [isDarkTheme]
   );

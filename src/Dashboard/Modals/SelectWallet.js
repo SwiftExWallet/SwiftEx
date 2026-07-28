@@ -69,7 +69,7 @@ const SelectWallet = ({ props, visible, setVisible, setModalVisible }) => {
         setVisible(false);
       }}
     >
-      <View style={[style.body, { backgroundColor: state.THEME.THEME === false ? "#fff" : "#1B1B1C" }]}>
+      <View style={[style.body, { backgroundColor: state.THEME.THEME === false ? "#fff" : "#0B0B0F" }]}>
         <View style={{ marginTop: Platform.OS==="android"?hp(4.5):hp(3) }}>
           <Wallet_screen_header title="Select Wallet" onLeftIconPress={() => setVisible(false)} />
         </View>

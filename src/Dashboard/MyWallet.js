@@ -23,6 +23,7 @@ import CustomInfoProvider from "./exchange/crypto-exchange-front-end-main/src/co
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setCurrentWallet } from "../components/Redux/actions/auth";
 import { checkWalletExistOrNot } from "./Wallets/WalletManagement";
+import { colors } from "../Screens/ThemeColorsConfig";
 
 const MyWallet = (props) => {
   const dispatch=useDispatch();
@@ -131,14 +132,14 @@ const MyWallet = (props) => {
   }
 
   return (
-    <View style={[styles.mainView, { backgroundColor: state.THEME.THEME === false ? "#fff" : "#1B1B1C" }]}>
+    <View style={[styles.mainView, { backgroundColor: state.THEME.THEME === false ? colors.light.bg : colors.dark.bg }]}>
       <Wallet_screen_header title="Wallet" onLeftIconPress={() => navigation.goBack()} />
-      <View style={[styles.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
+      <View style={[styles.card, { backgroundColor: state.THEME.THEME === false ? colors.light.cardBg : colors.dark.cardBg }]}>
         <Text style={[styles.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
           Wallet Name
         </Text>
         <View style={[styles.inputContainer, {
-          backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+          backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
         }]}>
           <TextInput
             placeholder={user ? user : "Main Wallet 1"}
@@ -170,7 +171,7 @@ const MyWallet = (props) => {
         }
       </View>
       
-      <TouchableOpacity onPress={() => { setshowAuthRequest(!showAuthRequest) }} style={[styles.btnCard, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
+      <TouchableOpacity onPress={() => { setshowAuthRequest(!showAuthRequest) }} style={[styles.btnCard, { backgroundColor: state.THEME.THEME === false ? colors.light.cardBg : colors.dark.cardBg }]}>
         <View style={{ flexDirection: "row", }}>
           <View style={[styles.iconCon,{backgroundColor:"#5B65E133"}]}>
             <Icon name="eye" type={"materialCommunity"} color={"#5B65E1"} size={24} />

@@ -19,6 +19,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import LockAppModal from "./Modals/lockAppModal";
 import useFirebaseCloudMessaging from "./notifications/firebaseNotifications";
 import CustomInfoProvider from "./exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
+import { colors } from "../Screens/ThemeColorsConfig";
 
 const Home2 = ({ navigation }) => {
   const state = useSelector((state) => state);
@@ -124,8 +125,8 @@ const Home2 = ({ navigation }) => {
   );
 
   return (
-    <View style={{ backgroundColor: state.THEME.THEME === false ? "#fff" : "#1B1B1C" }}>
-      <View style={[Styles.container, { backgroundColor: state.THEME.THEME === false ? "#fff" : "#1B1B1C" }]}>
+    <View style={{ backgroundColor: state.THEME.THEME === false ? colors.light.bg : colors.dark.bg }}>
+      <View style={[Styles.container, { backgroundColor: state.THEME.THEME === false ? colors.light.bg : colors.dark.bg }]}>
         {/* <InvestmentChart/> */}
       </View>
       <LockAppModal pinViewVisible={visible} setPinViewVisible={setVisible} />

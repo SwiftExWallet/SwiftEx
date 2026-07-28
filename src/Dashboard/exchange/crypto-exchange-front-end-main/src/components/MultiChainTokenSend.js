@@ -38,6 +38,7 @@ import TokenTxDetails from "./TokenTxDetails";
 import LinearGradient from "react-native-linear-gradient";
 import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
 import { CHAINS, getProvider } from "../../../../../utilities/TokenUtils";
+import { colors } from "../../../../../Screens/ThemeColorsConfig";
 const MultiChainTokenSend = ({ route }) => {
   const { hasPermission, requestPermission } = useCameraPermission();
   const toast = useToast();
@@ -310,11 +311,11 @@ const MultiChainTokenSend = ({ route }) => {
         message="The scanned QR code contains an invalid public key. Please make sure you're scanning the correct QR code and try again."
       />
 
-      <View style={[styles.container, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C" }]}>
+      <View style={[styles.container, { backgroundColor: state.THEME.THEME === false ? colors.light.bg : colors.dark.bg }]}>
         <ScrollView showsVerticalScrollIndicator={false} >
 
           {/* Recipient Address Card */}
-          <View style={[styles.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
+          <View style={[styles.card, { backgroundColor: state.THEME.THEME === false ? colors.light.cardBg:colors.dark.cardBg }]}>
             <View style={{
               flexDirection: "row",
               justifyContent: "space-between",
@@ -332,7 +333,7 @@ const MultiChainTokenSend = ({ route }) => {
               </TouchableOpacity>
             </View>
             <View style={[styles.inputContainer, {
-              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
             }]}>
               <TextInput
                 value={address}
@@ -388,12 +389,12 @@ const MultiChainTokenSend = ({ route }) => {
           </View>
 
           {/* Amount Card */}
-          <View style={[styles.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
+          <View style={[styles.card, { backgroundColor: state.THEME.THEME === false ? colors.light.cardBg:colors.dark.cardBg }]}>
             <Text style={[styles.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
               Amount
             </Text>
             <View style={[styles.inputContainer, {
-              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
             }]}>
               <TextInput
                 value={amount}

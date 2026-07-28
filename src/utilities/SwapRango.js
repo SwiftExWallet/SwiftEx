@@ -431,10 +431,11 @@ export async function ensureFusionAllowance(tokenAddress, walletAddress, amountB
             rawTransaction = rawTransaction.replace(/^0x/, '');
         }
         const txHash = await rpcProvider.send('eth_sendRawTransaction', [rawTransaction]);
-        return { status: true, txHash };
+        const receipt = await rpcProvider.waitForTransaction(txHash, 2, 60_000);
+        return { status: true, txHash:txHash };
     } catch (error) {
         console.error('[ensureFusionAllowance] Error:', error);
-        return { status: false, error };
+        return { status: false,txHash:null ,error };
     }
 }
 

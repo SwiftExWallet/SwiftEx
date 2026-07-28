@@ -35,6 +35,50 @@ function calcMinimumReceived(routeAmount, slippageBps) {
     return (BigInt(routeAmount) * slippageFactor) / bpsDenominator;
 }
 
+async function submitWithTimeoutRecovery(horizon, signedTx, { attempts = 10, intervalMs = 2000 } = {}) {
+    const txHash = signedTx.hash().toString('hex');
+
+    try {
+        const response = await horizon.submitTransaction(signedTx);
+        return { id: response.id ?? txHash, hash: txHash, response };
+    } catch (submitErr) {
+        const status = submitErr?.response?.status;
+        const isTimeoutLike =
+            status === 504 ||
+            status === 502 ||
+            status === 503 ||
+            submitErr?.message?.toLowerCase().includes('timeout') ||
+            submitErr?.message?.toLowerCase().includes('network');
+
+        if (!isTimeoutLike) {
+            throw submitErr;
+        }
+
+        console.warn(`Submit returned ${status ?? 'network error'}; polling by hash instead of failing: ${txHash}`);
+
+        let confirmed = null;
+        for (let i = 0; i < attempts; i++) {
+            try {
+                confirmed = await horizon.transactions().transaction(txHash).call();
+                if (confirmed) break;
+            } catch (e) {
+                // not found yet (404) or transient - wait and retry
+            }
+            await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        }
+
+        if (!confirmed) {
+            throw new Error(`STATUS_UNKNOWN: transaction not confirmed after ${attempts} polls — check manually: ${txHash}`);
+        }
+
+        if (confirmed.successful === false) {
+            throw new Error(`Transaction failed on-chain (hash ${txHash}): ${JSON.stringify(confirmed.result_xdr ?? confirmed)}`);
+        }
+
+        return { id: confirmed.id ?? txHash, hash: txHash, response: confirmed };
+    }
+}
+
 async function GetAquariusSwapQuote({ assetIn, assetOut, amount, slippageBps = 100 }) {
     try {
         const amountStr = toStroops(amount);
@@ -65,7 +109,15 @@ async function GetAquariusSwapQuote({ assetIn, assetOut, amount, slippageBps = 1
     }
 }
 
-async function ExecuteAquariusSwap({ publicKey, assetIn, assetOut, amount, slippageBps = 100, networkPassphrase = StellarSdk.Networks.PUBLIC }) {
+async function ExecuteAquariusSwap({
+    publicKey,
+    assetIn,
+    assetOut,
+    amount,
+    slippageBps = 100,
+    networkPassphrase = StellarSdk.Networks.PUBLIC,
+    baseFeeStroops = '600000',
+}) {
     if (!assetIn) throw new Error('assetIn is required');
     if (!assetOut) throw new Error('assetOut is required');
     if (!amount) throw new Error('amount is required');
@@ -85,25 +137,34 @@ async function ExecuteAquariusSwap({ publicKey, assetIn, assetOut, amount, slipp
         const amountStr = toStroops(amount);
         const route = await fetchRoute({ assetIn, assetOut, amount: amountStr });
         const outMinValue = calcMinimumReceived(route.amount, slippageBps);
-        const account = await horizon.loadAccount(publicKey);
+        let account = await horizon.loadAccount(publicKey);
 
-        function isTrusted(asset) {
+        function isTrusted(asset, acct) {
             if (asset.isNative()) return true;
-            return account.balances.some(
+            return acct.balances.some(
                 (b) => b.asset_code === asset.code && b.asset_issuer === asset.issuer
             );
         }
 
-        if (!isTrusted(assetIn)) {
+        if (!isTrusted(assetIn, account)) {
             throw new Error(
                 `Trustline missing for ${assetIn.code}:${assetIn.issuer}.`
             );
         }
 
-        const balanceLine = account.balances.find(
-            (b) => b.asset_code === assetIn.code && b.asset_issuer === assetIn.issuer
-        );
-        const available = parseFloat(balanceLine.balance);
+        let available;
+        if (assetIn.isNative()) {
+            const nativeLine = account.balances.find((b) => b.asset_type === 'native');
+            available = nativeLine ? parseFloat(nativeLine.balance) : 0;
+        } else {
+            const balanceLine = account.balances.find(
+                (b) => b.asset_code === assetIn.code && b.asset_issuer === assetIn.issuer
+            );
+            if (!balanceLine) {
+                throw new Error(`No balance line found for ${assetIn.code}:${assetIn.issuer}.`);
+            }
+            available = parseFloat(balanceLine.balance);
+        }
         const required = Number(amountStr) / 1e7;
         if (available < required) {
             throw new Error(
@@ -111,21 +172,28 @@ async function ExecuteAquariusSwap({ publicKey, assetIn, assetOut, amount, slipp
             );
         }
 
-        const trustlineOps = [];
-        if (!isTrusted(assetOut)) {
-            trustlineOps.push(StellarSdk.Operation.changeTrust({ asset: assetOut }));
+        if (!isTrusted(assetOut, account)) {
+            const trustTx = new StellarSdk.TransactionBuilder(account, {
+                fee: baseFeeStroops,
+                networkPassphrase,
+            })
+                .addOperation(StellarSdk.Operation.changeTrust({ asset: assetOut }))
+                .setTimeout(300)
+                .build();
+
+            const signedTrust = await NativeModules.StellarSigner.signTransaction(trustTx.toXDR());
+            const trustSigBuffer = Buffer.from(signedTrust.signature, 'base64');
+            trustTx.addSignature(signedTrust.publicKey, trustSigBuffer.toString('base64'));
+            await submitWithTimeoutRecovery(horizon, trustTx);
+            account = await horizon.loadAccount(publicKey);
         }
 
-        const txBuilder = new StellarSdk.TransactionBuilder(account, {
-            fee: '10000',
+        const swapTxBuilder = new StellarSdk.TransactionBuilder(account, {
+            fee: baseFeeStroops,
             networkPassphrase,
         });
 
-        for (const op of trustlineOps) {
-            txBuilder.addOperation(op);
-        }
-
-        let swapTx = txBuilder
+        let swapTx = swapTxBuilder
             .addOperation(
                 new StellarSdk.Contract(router).call(
                     'swap_chained',
@@ -143,20 +211,20 @@ async function ExecuteAquariusSwap({ publicKey, assetIn, assetOut, amount, slipp
 
         const txXDR = swapTx.toXDR();
         const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
-        swapTx.addSignature(signedTx.publicKey, signedTx.signature);
-        const response = await horizon.submitTransaction(swapTx);
-
+        const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
+        swapTx.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
+        const { id: submittedId } = await submitWithTimeoutRecovery(horizon, swapTx);
         let txResult;
-        const maxAttempts = 5;
+        const maxAttempts = 10; 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            txResult = await soroban.getTransaction(response.id);
+            txResult = await soroban.getTransaction(submittedId);
             if (txResult.status !== 'NOT_FOUND') break;
-            await new Promise((resolve) => setTimeout(resolve, 1000));
+            await new Promise((resolve) => setTimeout(resolve, 1500));
         }
 
         if (!txResult || txResult.status === 'NOT_FOUND') {
             throw new Error(
-                `Transaction status unknown after ${maxAttempts}s — check txHash manually: ${response.id}`
+                `STATUS_UNKNOWN: Transaction status unknown after polling — check txHash manually: ${submittedId}`
             );
         }
         if (txResult.status !== 'SUCCESS') {
@@ -168,7 +236,7 @@ async function ExecuteAquariusSwap({ publicKey, assetIn, assetOut, amount, slipp
 
         return {
             status: true,
-            txHash: response.id,
+            txHash: submittedId,
             fromAsset: assetIn.code,
             toAsset: assetOut.code,
             amount: amount,

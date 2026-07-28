@@ -101,6 +101,9 @@ export async function PerformeFusionSwap(quoteId, state, fromToken, toToken, amo
                 extension: responses.response.extension,
                 quoteId: quoteId,
                 orderHash: responses?.response?.orderHash,
+                ...(resuleOfAllowance.txHash!==null && {
+                        requiresApprovalTransaction: true,
+                    }),
             });
             if (submitResult.err) {
                 CustomInfoProvider.show("error", "!Opps", submitResult.err.message || "Swap failed");

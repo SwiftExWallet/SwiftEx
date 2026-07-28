@@ -145,3 +145,20 @@ export const stellarWalletStatus = async (publicKey) => {
     return true;
   }
 };
+
+export const stellarWalletStatusWithUSDC = async (publicKey) => {
+  try {
+    const account = await server.loadAccount(publicKey);
+
+    const hasUsdcTrustline = account.balances.some(
+      (b) =>
+        b.asset_code === "USDC" &&
+        b.asset_issuer ===
+          "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+    );
+
+    return !hasUsdcTrustline;
+  } catch (error) {
+    return true;
+  }
+};

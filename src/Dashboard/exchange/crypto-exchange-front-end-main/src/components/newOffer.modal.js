@@ -372,35 +372,27 @@ export const NewOfferModal = () => {
     return { unavilabeAsset: unavilabeAsset, assetStatus: false }
   }, [supportedAssetsList]);
 
-  const get_stellar = useCallback(async (asset) => {
+  const get_stellar = useCallback(async (asset, issuer) => {
     return safeCall(async (signal) => {
       try {
         setbalance("");
         setreserveLoading(true);
 
-
         if (asset === stellarConfig.ASSET_TYPES.NATIVE || asset === stellarConfig.ASSET_TYPES.XLM) {
-          const result = await GetStellarAvilabelBalance(
-            state.STELLAR_PUBLICK_KEY,
-            { signal }
-          );
+          const result = await GetStellarAvilabelBalance(state.STELLAR_PUBLICK_KEY, { signal });
           if (!result) return;
-
           setbalance(result.availableBalance);
           setassetInfo(parseFloat(result.availableBalance) === 0);
         } else {
           const result = await GetStellarUSDCAvilabelBalance(
             state.STELLAR_PUBLICK_KEY,
             asset,
-            asset?stellarConfig.ISSUERS[asset]:stellarConfig.ISSUERS.USDC,
+            issuer,
             { signal }
           );
           if (!result) return;
-
           setbalance(result.availableBalance);
-          setassetInfo(
-            parseFloat(result.availableBalance) === 0 || result.status === false
-          );
+          setassetInfo(parseFloat(result.availableBalance) === 0 || result.status === false);
         }
 
         setreserveLoading(false);
@@ -526,7 +518,7 @@ export const NewOfferModal = () => {
       setACTIVATION_MODAL_PROD(walletStatus);
       checkToStatusTrust(top_value_0);
       getLastTradePrice(top_value, AssetIssuerPublicKey, top_value_0, AssetIssuerPublicKey1);
-      get_stellar(top_value);
+      get_stellar(top_value, AssetIssuerPublicKey);
     }, 350);
   }, [
     top_value,
@@ -592,7 +584,7 @@ export const NewOfferModal = () => {
 
         setTimeout(() => {
           const assetCodeToCheck = assetType === "XLM" ? "native" : assetType;
-          get_stellar(assetCodeToCheck);
+          get_stellar(assetCodeToCheck, incomingAsset.issuer);
           getLastTradePrice(assetCodeToCheck, incomingAsset.issuer, "USDC", usdcAsset.issuer);
         }, 300);
       }
@@ -660,7 +652,7 @@ export const NewOfferModal = () => {
   return (
     <View style={[styles.scrollView0, { backgroundColor: theme.bg }]}>
       <Exchange_screen_header 
-        title="" 
+        title="Trade" 
         onLeftIconPress={() => {showOneTap?setshowOneTap(false):navigation.goBack()}} 
         onRightIconPress={() => console.log('Pressed')} 
       />

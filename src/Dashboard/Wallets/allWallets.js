@@ -38,6 +38,7 @@ import apiHelper from "../exchange/crypto-exchange-front-end-main/src/apiHelper"
 import AuthRequest from "../reusables/AuthRequest";
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import { REACT_APP_HOST } from "../exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
+import { colors } from "../../Screens/ThemeColorsConfig";
 
 const WALLET_ICONS = {
   BSC: Bnbimage,
@@ -67,7 +68,7 @@ const AllWallets = () => {
   const containerStyle = useMemo(
     () => [
       style.body,
-      { backgroundColor: isDarkTheme ? "#1B1B1C" : "#FFFFFF" }
+      { backgroundColor: isDarkTheme ? colors.dark.bg : colors.light.bg }
     ],
     [isDarkTheme]
   );

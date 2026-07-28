@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { STELLAR_URL } from '../../../../constants';
+import { NEARINTENT, STELLAR_URL } from '../../../../constants';
 import { useNavigation } from '@react-navigation/native';
 import { authRequest, POST } from '../api';
 import AllbridgeTxTrack from '../components/AllbridgeTxTrack';
@@ -19,6 +19,8 @@ import LocalTxManager from '../../../../../utilities/LocalTxManager';
 import { useSelector } from 'react-redux';
 import { AllbridgeCoreSdk, nodeRpcUrlsDefault } from '@allbridge/bridge-core-sdk';
 import CustomInfoProvider from '../components/CustomInfoProvider';
+import { colors } from '../../../../../Screens/ThemeColorsConfig';
+import { configure, GetNearIntentStatus } from '../../../../../nearIntent/nearIntentUtil';
 
 const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
 const PAGE_SIZE = 10;
@@ -26,12 +28,12 @@ const INITIAL_LOAD = 10;
 const STELLAR_BATCH_SIZE = 30;
 
 const getThemeColors = (isDarkMode) => ({
-  background: isDarkMode ? '#1B1B1C' : '#F5F5F5',
-  cardBackground: isDarkMode ? '#242426' : '#FFFFFF',
+  background: isDarkMode ? colors.dark.bg : colors.light.bg,
+  cardBackground: isDarkMode ? colors.dark.cardBg : colors.light.cardBg,
   primaryText: isDarkMode ? '#FFFFFF' : '#333333',
   secondaryText: isDarkMode ? '#B0B0B0' : '#666666',
-  tabBarBackground: isDarkMode ? '#242426' : '#FFFFFF',
-  iconBackground: isDarkMode ? '#1B1B1C' : '#F5F5F5',
+  tabBarBackground: isDarkMode ? colors.dark.cardBg : colors.light.cardBg,
+  iconBackground: isDarkMode ? colors.dark.bg : colors.light.bg,
   divider: isDarkMode ? '#2D2D2D' : '#E0E0E0',
   shadow: isDarkMode ? '#000000' : '#000000',
   accent: '#4052D6',
@@ -129,6 +131,9 @@ const getTransactionType = (operation, userPublicKey, isReceived) => {
       case 'create_claimable_balance':
           return `${operation?.asset?.split(":")[0]||"Claimable Asset"}`;
       case 'wallet_tx':
+          if (operation.txType === 'nearIntent') {
+            return `NEAR Intent ${operation.symbol || ''}`.trim();
+          }
           if (operation.chain === 'SRB') {
             const assetSymbol = operation.symbol || 'USDC';
             return `Withdraw ${assetSymbol}`;
@@ -286,14 +291,18 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
   }
 
   const handleRefreshTx = async () => {
-    if (isWalletTx && operation.chain && operation.hash) {
+    if (isWalletTx && operation.hash) {
       setIsRefreshing(true);
-      await onRefreshTx(operation.chain, operation.hash);
+      await onRefreshTx(operation.chain, operation.hash, operation.txType, operation.depositMemo);
       setIsRefreshing(false);
     }
   };
 
   const txViewrManager = (txId, txType, isReceived) => {
+    if (operation.txType === 'nearIntent') {
+      Linking.openURL(`${NEARINTENT.EXPLORER}${txId}`);
+      return;
+    }
     if (txType === "invoke_host_function" && !isReceived) {
       setshowTxHash([{ chain: "SRB", hash: txId }]);
       setshowTx(true);
@@ -312,7 +321,7 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
           styles.transactionCard,
           { backgroundColor: colors.cardBackground, shadowColor: colors.shadow }
         ]}
-        disabled={operation.type === 'sellCry' || operation.type === 'buyCry' || (isWalletTx && item.success === "pending")}
+        disabled={operation.type === 'sellCry' || operation.type === 'buyCry' || (isWalletTx && item.success === "pending" && operation.txType !== 'nearIntent')}
         onPress={() => {
           item.success === false || item.success === "failed" || item.success === "Failed"?CustomInfoProvider.show("error","Opps!","Transaction failed try again."):
           txViewrManager(item?.operations?.records[0]?.transaction_hash || item?.operations?.records[0]?.hash,operation.type,isReceived);
@@ -589,6 +598,40 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
     }
   };
 
+  const refreshNearIntentTx = async (chainSymbol, depositAddress, depositMemo) => {
+    try {
+      configure();
+      const { status: mappedStatus, statusColor } = await GetNearIntentStatus(depositAddress,depositMemo);
+
+      await LocalTxManager.updateTxStatus(state?.wallet?.address, {
+        chain: chainSymbol,
+        hash: depositAddress,
+        status: mappedStatus,
+        statusColor: statusColor
+      });
+
+      const updateTransactions = (txList) => txList.map(tx => {
+        const op = tx.operations.records[0];
+        if (tx.id === `wallet_tx_${depositAddress}` && op.txType === 'nearIntent') {
+          return {
+            ...tx,
+            success: mappedStatus,
+            operations: { records: [{ ...op, status: mappedStatus, statusColor }] }
+          };
+        }
+        return tx;
+      });
+
+      setAllTransactions(prev => updateTransactions(prev));
+      setDisplayedTransactions(prev => updateTransactions(prev));
+
+      return { status: mappedStatus, statusColor };
+    } catch (err) {
+      console.error('error refreshing near intent tx:', err);
+      return { status: "pending", statusColor: "#eec14fff" };
+    }
+  };
+
   useEffect(() => {
     const autoRefreshPendingTxs = async () => {
       try {
@@ -604,17 +647,19 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
           return (
             op?.type === 'wallet_tx' &&
             ['pending', 'processing', 'process'].includes(statusStr) &&
-            op?.chain &&
-            op?.hash
+            (
+              (op?.chain && op?.hash) ||
+              (op?.txType === 'nearIntent' && op?.hash)
+            )
           );
         });
-        
-        if (pendingWalletTxs.length === 0) return;
 
         await Promise.all(
           pendingWalletTxs.map(tx => {
             const op = tx.operations.records[0];
-            return refreshSingleTx(op.chain, op.hash);
+            return op.txType === 'nearIntent'
+              ? refreshNearIntentTx(op.chain, op.hash, op.depositMemo)
+              : refreshSingleTx(op.chain, op.hash);
           })
         );
       } catch (error) {
@@ -638,9 +683,9 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
       const lastRecord = transactionsData.records[transactionsData.records.length - 1];
       updateStellarCursor(lastRecord?.paging_token || null);
 
-      const processedTransactions = await Promise.all(
+      const processedTransactions = (await Promise.all(
         transactionsData.records.map(tx => processStellarTx(tx, publicKey))
-      );
+      )).filter(tx => tx.operations.records[0].type !== 'create_claimable_balance');
 
       const stellarHashes = new Set(
         transactionsData.records.map(tx => tx.hash).filter(Boolean)
@@ -718,11 +763,13 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
                     type: 'wallet_tx',
                     symbol: tx.symbol,
                     chain: tx.chain,
+                    txType: tx.txType,
+                    depositMemo: tx.depositMemo,
                     hash: tx.hash,
                     status: tx.status,
                     statusColor: tx.statusColor,
                     transaction_hash: tx.hash,
-                    timestamp: Date.now(),
+                    timestamp: txTimestamp,
                   }]
                 },
                 isReceived: true,
@@ -748,6 +795,8 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
                 type: 'wallet_tx',
                 symbol: tx.symbol,
                 chain: tx.chain,
+                depositMemo: tx.depositMemo,
+                txType: tx.txType,
                 hash: tx.hash,
                 status: finalStatus,
                 statusColor: finalStatusColor,
@@ -798,9 +847,9 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
         const lastRecord = transactionsData.records[transactionsData.records.length - 1];
         updateStellarCursor(lastRecord?.paging_token || null);
 
-        const processedTransactions = await Promise.all(
+        const processedTransactions = (await Promise.all(
           transactionsData.records.map(tx => processStellarTx(tx, publicKey))
-        );
+        )).filter(tx => tx.operations.records[0].type !== 'create_claimable_balance');
 
         return processedTransactions;
       }
@@ -937,6 +986,12 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
 
   const filteredDisplayedTransactions = getFilteredTransactions(displayedTransactions, selectedTab);
 
+  const refreshTxDispatcher = async (chain, hash, txType, depositMemo) => {
+    return txType === 'nearIntent'
+      ? refreshNearIntentTx(chain, hash, depositMemo)
+      : refreshSingleTx(chain, hash);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TabBar
@@ -952,7 +1007,7 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
             item={item}
             userPublicKey={publicKey}
             isDarkMode={isDarkMode}
-            onRefreshTx={refreshSingleTx}
+            onRefreshTx={refreshTxDispatcher}
           />
         )}
         keyExtractor={item => item.id}

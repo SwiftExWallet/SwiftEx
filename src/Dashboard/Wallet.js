@@ -1,300 +1,270 @@
-import React, { useEffect, useState, useRef } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   StyleSheet,
-  Text,
-  ActivityIndicator,
-  KeyboardAvoidingView,
   View,
-  Pressable,
-  Button,
-  Modal,
-  FlatList,
+  Text,
+  SafeAreaView,
   TouchableOpacity,
-  Alert,StatusBar,Platform,
-  ScrollView
-} from "react-native";
-import { TextInput } from "react-native-paper";
-import { useDispatch, useSelector } from "react-redux";
-import { Animated, AppState } from "react-native";
+  StatusBar,
+  ScrollView,
+  Animated,
+} from 'react-native';
+import SelectWallet from "./Modals/SelectWallet";
+import NewWalletModal from "./Modals/newWallet";
 import walletImage from "../../assets/walletImage.png";
-import { LinearGradient } from "react-native-linear-gradient";
-
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import {
   widthPercentageToDP as wp,
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
-import SelectWallet from "./Modals/SelectWallet";
-import "react-native-get-random-values";
-import "@ethersproject/shims";
-import NewWalletModal from "./Modals/newWallet";
-import MaterialCommunityIcon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useIsFocused } from "@react-navigation/native";
-import { Wallet_screen_header } from "./reusables/ExchangeHeader";
-import Icon from "../icon";
-var ethers = require("ethers");
-const xrpl = require("xrpl");
+import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { useSelector } from 'react-redux';
+import { colors } from '../Screens/ThemeColorsConfig';
+import { Wallet_screen_header } from './reusables/ExchangeHeader';
 
-const Wallet = ({ navigation }) => {
-  const foucuse=useIsFocused();
+const Wallet = () => {
+  const navigation = useNavigation();
+  const foucuse = useIsFocused();
   const [visible, setVisible] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [newWalletModal, setNewWalletModal] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const state=useSelector((state)=>state);
-  useEffect(()=>{
-      setNewWalletModal(false);
-  },[foucuse])
+  const state = useSelector((state) => state);
+  const theme = state.THEME.THEME ? colors.dark : colors.light;
+  const styles = useMemo(() => getStyles(theme), [theme]);
+
   useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 1,
-    }).start();
-  }, [fadeAnim]);
-
+    setNewWalletModal(false);
+  }, [foucuse])
   return (
-    <Animated.View>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+
       <Wallet_screen_header title="Wallet" onLeftIconPress={() => navigation.goBack()} />
-        <View style={{
-          paddingBottom:hp(13),
-          backgroundColor: state.THEME.THEME===false?"#fff":"#1B1B1C",
-        }}>
-        
-      <ScrollView>
-        <View style={[styles.topCon,{backgroundColor:state.THEME.THEME?"#242426":"#F4F4F8",}]}>
-        <Animated.Image
-          style={styles.imageCon}
-          source={walletImage}
-        />
-        <View
-          style={[styles.bigCard,{backgroundColor:state.THEME.THEME?"black":"#FFFFFF",}]}
-        >
-          <Text style={{ fontSize: 18, color: state.THEME.THEME===false?"black":"#fff",fontWeight:"500"}}>
-            Private and Secure
+
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+
+        <View style={styles.heroContainer}>
+          <View style={styles.illustrationPlaceholder}>
+            <Animated.Image
+              style={styles.imageCon}
+              source={walletImage}
+            />
+          </View>
+
+          <Text style={styles.title}>Private and Secure</Text>
+          <Text style={styles.subtitle}>
+            Buy crypto to get started{"\n"}and grow your portfolio
           </Text>
-          <Text style={{ color: state.THEME.THEME===false?"black":"#fff",fontWeight:"400",fontSize: 16 }}>
-            Private Keys never leave your device
-          </Text>
-        </View>
-        </View>
-        <TouchableOpacity onPress={() => {navigation.navigate("MyWallet")}} style={[styles.wallet,{backgroundColor:state.THEME.THEME===false?"#F4F4F8":"#242426"}]}>
-            <View style={styles.ConHeading}>
-              <View style={[styles.iconCon,{backgroundColor:state.THEME.THEME?"#1B1B1C":"#FFFFFF"}]}>
-              <MaterialCommunityIcon name="wallet-outline" size={hp("3")} color={state.THEME.THEME?"#E6E8EB":"#272729"}/>
-              </View>
-            <View>
-            <Text style={[styles.Heading,{color:state.THEME.THEME===false?"black":"#fff"}]}>My Wallet</Text>
-            <Text style={styles.subHeadinng}>View and manage your wallet</Text>
-            </View>
-            </View>
-          <Icon
-            name={"arrow-right"}
-            type={"materialCommunity"}
-            size={30}
-            color={state.THEME.THEME===false?"black":"#fff"}
-          />
 
-        </TouchableOpacity>
-        <View>
-        <TouchableOpacity onPress={() => {setNewWalletModal(true)}} style={[styles.wallet,{backgroundColor:state.THEME.THEME===false?"#F4F4F8":"#242426"}]}>
-            <View style={styles.ConHeading}>
-              <View style={[styles.iconCon,{backgroundColor:state.THEME.THEME?"#1B1B1C":"#FFFFFF"}]}>
-              <MaterialCommunityIcon name="plus" size={hp("3")} color={state.THEME.THEME?"#E6E8EB":"#272729"}/>
-              </View>
-            <View>
-            <Text style={[styles.Heading,{color:state.THEME.THEME===false?"black":"#fff"}]}>Create Wallet</Text>
-            <Text style={styles.subHeadinng}>Start fresh with new wallet</Text>
-            </View>
-            </View>
-          <Icon
-            name={"arrow-right"}
-            type={"materialCommunity"}
-            size={30}
-            color={state.THEME.THEME===false?"black":"#fff"}
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => {navigation.navigate("WalletNetworkSelection",{selectionType:"importForSetupedApp",backScreenName:"Home"})}} style={[styles.wallet,{backgroundColor:state.THEME.THEME===false?"#F4F4F8":"#242426"}]}>
-            <View style={styles.ConHeading}>
-              <View style={[styles.iconCon,{backgroundColor:state.THEME.THEME?"#1B1B1C":"#FFFFFF"}]}>
-              <MaterialCommunityIcon name="cloud-download-outline" size={hp("3")} color={state.THEME.THEME?"#E6E8EB":"#272729"}/>
-              </View>
-            <View>
-            <Text style={[styles.Heading,{color:state.THEME.THEME===false?"black":"#fff"}]}>Import Wallet</Text>
-            <Text style={styles.subHeadinng}>Restore from seed or private key</Text>
-            </View>
-            </View>
-          <Icon
-            name={"arrow-right"}
-            type={"materialCommunity"}
-            size={30}
-            color={state.THEME.THEME===false?"black":"#fff"}
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => {navigation.navigate("AllWallets")}} style={[styles.wallet,{backgroundColor:state.THEME.THEME===false?"#F4F4F8":"#242426"}]}>
-            <View style={styles.ConHeading}>
-              <View style={[styles.iconCon,{backgroundColor:state.THEME.THEME?"#1B1B1C":"#FFFFFF"}]}>
-              <MaterialCommunityIcon name="swap-horizontal" size={hp("3")} color={state.THEME.THEME?"#E6E8EB":"#272729"}/>
-              </View>
-            <View>
-            <Text style={[styles.Heading,{color:state.THEME.THEME===false?"black":"#fff"}]}>Choose Wallet</Text>
-            <Text style={styles.subHeadinng}>Select an existing wallet</Text>
-            </View>
-            </View>
-          <Icon
-            name={"arrow-right"}
-            type={"materialCommunity"}
-            size={30}
-            color={state.THEME.THEME===false?"black":"#fff"}
-          />
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.mainButton} onPress={()=>{navigation.navigate("payout")}}>
+            <Text style={styles.mainButtonText}>Buy Assets</Text>
+          </TouchableOpacity>
         </View>
+
+        <View style={styles.listCard}>
+          <ActionRow
+            styles={styles}
+            icon="wallet-outline"
+            title="My Wallet"
+            sub="View and manage your wallet"
+            IconLib={MaterialCommunityIcons}
+            onPress={() => navigation.navigate("MyWallet")}
+          />
+          <ActionRow
+            styles={styles}
+            icon="plus"
+            title="Create Wallet"
+            sub="Start fresh with new wallet"
+            IconLib={MaterialCommunityIcons}
+            onPress={() => setNewWalletModal(true)}
+          />
+          <ActionRow
+            styles={styles}
+            icon="cloud-download-outline"
+            title="Import Wallet"
+            sub="Restore from seed or private key"
+            IconLib={MaterialCommunityIcons}
+            onPress={() => navigation.navigate("WalletNetworkSelection", { selectionType: "importForSetupedApp", backScreenName: "Home" })}
+          />
+          <ActionRow
+            styles={styles}
+            icon="swap-horizontal"
+            title="Choose Wallet"
+            sub="Select an existing wallet"
+            IconLib={MaterialCommunityIcons}
+            isLast
+            onPress={() => { navigation.navigate("AllWallets") }}
+          />
+        </View>
+
       </ScrollView>
       <SelectWallet
         visible={visible}
         setVisible={setVisible}
         setModalVisible={setModalVisible}
-        />
+      />
       <NewWalletModal
         visible={newWalletModal}
-        onCrossPress={()=>{setNewWalletModal(false)}}
+        onCrossPress={() => { setNewWalletModal(false) }}
         setVisible={setNewWalletModal}
         setModalVisible={setModalVisible}
-        />
-        </View>
-    </Animated.View>
+      />
+    </View>
   );
 };
 
-export default Wallet;
+const ActionRow = ({ styles, icon, title, sub, IconLib, isLast, onPress }) => (
+  <TouchableOpacity
+    style={[styles.row, isLast && { borderBottomWidth: 0 }]}
+    onPress={onPress}
+  >
+    <View style={styles.rowIconBg}>
+      <IconLib name={icon} size={22} color={colors.dark.buttonColor} />
+    </View>
+    <View style={styles.rowTextContainer}>
+      <Text style={styles.rowTitle}>{title}</Text>
+      <Text style={styles.rowSubText}>{sub}</Text>
+    </View>
+    <Ionicons name="chevron-forward" size={18} color={styles.chevronColor.color} />
+  </TouchableOpacity>
+);
 
-const styles = StyleSheet.create({
-  btn: {
-    backgroundColor: "red",
-    width: wp(80),
+const getStyles = (theme) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: theme.bg,
   },
-  Text: {
-    marginTop: hp(1),
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  walletSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.cardBg,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  walletName: {
+    color: 'white',
+    fontWeight: '600',
+    marginHorizontal: 8,
     fontSize: 15,
-    fontWeight: "200",
-    color: "black",
-    fontWeight:"300"
   },
-  Button: {
-    display: "flex",
-    alignContent: "center",
-    alignItems: "center",
-    marginTop: hp(2),
+  headerIcons: {
+    flexDirection: 'row',
+    gap: 15,
   },
-  addButton: {
-    position: "absolute",
-    zIndex: 11,
-    right: 20,
-    bottom: 40,
-    backgroundColor: "red",
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 8,
+  iconCircle: {
+    padding: 4,
   },
-  addButton2: {
-    position: "absolute",
-    zIndex: 11,
-    left: 20,
-    bottom: 40,
-    backgroundColor: "green",
-    width: 80,
-    height: 70,
-    borderRadius: 35,
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 8,
+  scrollContent: {
+    alignItems: 'center',
+    paddingBottom: 50,
   },
-  addButtonText: {
-    color: "#fff",
+  heroContainer: {
+    alignItems: 'center',
+    width: '100%',
+    paddingVertical: 10,
+  },
+  illustrationPlaceholder: {
+    width: 200,
+    height: 160,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 1,
+  },
+  mockWallet: {
+    width: 120,
+    height: 80,
+    backgroundColor: theme.smallCardBg,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: theme.smallCardBorderColor,
+  },
+  mockCoin: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.smallCardBg,
+    marginBottom: -20,
+    zIndex: 1,
+  },
+  title: {
+    color: theme.headingTx,
+    fontSize: 23,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  subtitle: {
+    color: theme.cardSubTx,
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 15,
+  },
+  mainButton: {
+    backgroundColor: colors.dark.buttonColor,
+    width: '90%',
+    paddingVertical: 15,
+    borderRadius: 20,
+    alignItems: 'center',
+  },
+  mainButtonText: {
+    color: 'white',
     fontSize: 18,
+    fontWeight: '600',
   },
-  accountBox: {
-    alignItems: "center",
-    backgroundColor: "red",
-    width: wp(80),
+  listCard: {
+    backgroundColor: theme.cardBg,
+    width: '92%',
+    borderRadius: 24,
+    overflow: 'hidden',
+    marginTop: 2
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: theme.smallCardBorderColor,
+  },
+  rowIconBg: {
+    width: 44,
+    height: 44,
+    backgroundColor: theme.bg,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  rowTextContainer: {
+    flex: 1,
+  },
+  rowTitle: {
+    color: theme.headingTx,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  rowSubText: {
+    color: theme.cardSubTx,
+    fontSize: 14,
+    marginTop: 2,
+  },
+  imageCon: {
+    width: wp(65),
+    height: hp(18),
     alignSelf: "center",
+    marginTop: hp(1)
   },
-  text: {
-    color: "white",
-    fontSize: hp("2.3"),
-    fontWeight: "bold",
-    marginLeft: wp("20"),
+  chevronColor: {
+    color: theme.cardSubTx,
   },
-  PresssableBtn: {
-    backgroundColor: "#4CA6EA",
-    // padding: hp(),
-    height:hp(5),
-    justifyContent:"center",
-    width: wp(28),
-    alignSelf: "center",
-    paddingHorizontal: Platform.OS==="android"?wp(1):wp(2),
-    borderRadius: hp(0.8),
-    marginBottom: hp(2),
-    alignItems: "center",
-  },
-  wallet:{
-    borderRadius:19,
-    flexDirection:"row",
-    alignSelf:"center",
-    alignItems:"center",
-    justifyContent:"space-between",
-    marginTop:hp(0.9),
-    width:wp(95),
-    padding:hp(2),
-  },
-  ConHeading:{
-    flexDirection:"row",
-    alignItems:"center"
-  },
-  iconCon:{
-    backgroundColor:"#2164C140",
-    marginRight:wp(2.5),
-    borderRadius:20,
-    alignItems:"center",
-    justifyContent:"center",
-    padding:10
-  },
-  Heading:{
-    fontWeight:"600",
-    fontSize:16
-  },
-  subHeadinng:{
-    color:"gray",
-    fontWeight:"400",
-    fontSize:14
-  },
-  topCon:{
-    marginHorizontal:10,
-    borderRadius:20,
-    paddingVertical:hp(0.5),
-    marginBottom:hp(0.5)
-  },
-  imageCon:{
-    width: wp("70"),
-    height: hp(25),
-    alignSelf:"center"
-  },
-  bigCard:{
-    marginTop: hp(-2),
-    alignItems: "center",
-    alignSelf:"center",
-    paddingVertical:hp(2),
-    width:wp(80),
-    shadowColor: '#5B65E1',
-    shadowOffset: { width: 10, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 20,
-    marginBottom:10,
-    borderRadius:20
-  }
 });
+
+export default Wallet;

@@ -22,6 +22,10 @@ import { convertMultiple } from '../utils/UsdPriceHandler';
 import { colors } from '../../../../../Screens/ThemeColorsConfig';
 import { CHAINS } from '../../../../../utilities/TokenUtils'
 import { ethers } from 'ethers';
+import { configure, getQuote, NEARINTENT_ENUM, NearIntentSwapExecuteFromStellar } from '../../../../../nearIntent/nearIntentUtil';
+import { QuoteRequest } from '@defuse-protocol/one-click-sdk-typescript';
+import LocalTxManager from '../../../../../utilities/LocalTxManager';
+import ShortTermStorage from '../../../../../utilities/ShortTermStorage';
 
 const ExportUSDC = () => {
   const Focused = useIsFocused();
@@ -50,8 +54,13 @@ const ExportUSDC = () => {
     name: "USDC",
     image: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png",
     type:"sendAsset",
-    symbol:"USDC"
+    symbol:"USDC",
+    address: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    asset: "USDC (Centre)",
+    chain: "STR",
+    decimal:7
   });
+  const [provider, setProvider] = useState("ALLBRIDGE");
 
   useEffect(() => {
     setshowTx(false);
@@ -77,7 +86,7 @@ const ExportUSDC = () => {
     if (parseFloat(numericText) === 0 || !numericText) {
       return;
     }
-    getQuote(selectedNetworkDetils.chainName,selectedReciveNetworkDetils.chainName, selectedAssetDetils.symbol,selectedReciveAssetDetils.symbol, amount);
+    fetchBestQuote(selectedNetworkDetils.chainName, selectedReciveNetworkDetils.chainName, selectedAssetDetils.symbol, selectedReciveAssetDetils.symbol, amount, selectedAssetDetils.address, selectedReciveAssetDetils.address);
   }, [chooseReciveAsset,chooseReciveNetwork])
 
   const fetchStellarWalletdetails = async () => {
@@ -159,61 +168,195 @@ const ExportUSDC = () => {
       return;
     }
     setgetInfo(true)
-    getQuote(selectedNetworkDetils.chainName, selectedReciveNetworkDetils.chainName, selectedAssetDetils.symbol, selectedReciveAssetDetils.symbol,numericText);
+    fetchBestQuote(selectedNetworkDetils.chainName, selectedReciveNetworkDetils.chainName, selectedAssetDetils.symbol, selectedReciveAssetDetils.symbol, numericText, selectedAssetDetils.address, selectedReciveAssetDetils.address);
   }
 
-  const getQuote = useCallback(
-    debounce(async (sourceChain,destChain,sourceToken,destToken,value) => {
-      const qoutesRep = await getChainTokenData(sourceChain,destChain,sourceToken,destToken,value);
-      if (qoutesRep.success) {
-        // Keyboard.dismiss();
-        // setgetInfo(false);
-        const respo = await convertMultiple([
-          {
-            token:
-              qoutesRep.info.fee.native.symbol === "Native"
-                ? "XLM"
-                : qoutesRep.info.fee.native.symbol,
-            amount: qoutesRep.info.fee.native.amount,
-          },
-          {
-            token: qoutesRep.info.fee.stablecoin.symbol,
-            amount: qoutesRep.info.fee.stablecoin.amount,
-          },
-        ]);
-        const mergedQuotes = { ...qoutesRep.info };
-        for (const item of respo) {
-          if (item.success) {
-            const nativeToken =
-              qoutesRep.info.fee.native.symbol === "Native"
-                ? "XLM"
-                : qoutesRep.info.fee.native.symbol;
-            const stableToken = qoutesRep.info.fee.stablecoin.symbol;
+  const formatCompletionTime = (seconds) => {
+    const secs = Number(seconds || 0);
+    if (!secs || secs <= 0) return "~1 Min";
+    const mins = Math.ceil(secs / 60);
+    return `${mins} Min`;
+  };
 
-            if (item.token === nativeToken) {
-              mergedQuotes.fee.native = { ...mergedQuotes.fee.native, ...item };
-            } else if (item.token === stableToken) {
-              mergedQuotes.fee.stablecoin = { ...mergedQuotes.fee.stablecoin, ...item };
-            }
+  const fetchAllbridgeQuote = async (sourceChain, destChain, sourceToken, destToken, value) => {
+    try {
+      const qoutesRep = await getChainTokenData(sourceChain, destChain, sourceToken, destToken, value);
+      if (!qoutesRep.success) {
+        return { success: false, provider: "ALLBRIDGE", error: qoutesRep.error };
+      }
+
+      const respo = await convertMultiple([
+        {
+          token: qoutesRep.info.fee.native.symbol === "Native" ? "XLM" : qoutesRep.info.fee.native.symbol,
+          amount: qoutesRep.info.fee.native.amount,
+        },
+        {
+          token: qoutesRep.info.fee.stablecoin.symbol,
+          amount: qoutesRep.info.fee.stablecoin.amount,
+        },
+      ]);
+      const mergedQuotes = { ...qoutesRep.info };
+      for (const item of respo) {
+        if (item.success) {
+          const nativeToken = qoutesRep.info.fee.native.symbol === "Native" ? "XLM" : qoutesRep.info.fee.native.symbol;
+          const stableToken = qoutesRep.info.fee.stablecoin.symbol;
+          if (item.token === nativeToken) {
+            mergedQuotes.fee.native = { ...mergedQuotes.fee.native, ...item };
+          } else if (item.token === stableToken) {
+            mergedQuotes.fee.stablecoin = { ...mergedQuotes.fee.stablecoin, ...item };
           }
         }
-        setresQuotes(mergedQuotes);
-        Keyboard.dismiss();
-        setgetInfo(false);
-      } else {
-        Keyboard.dismiss();
-        alert("error", qoutesRep.error)
-        setresQuotes(null);
-        setgetInfo(false);
       }
+      return { success: true, provider: "ALLBRIDGE", data: mergedQuotes };
+    } catch (error) {
+      return { success: false, provider: "ALLBRIDGE", error: error.message };
+    }
+  };
+
+  const fetchNearIntentQuote = async (sourceChain, destChain, sourceToken, destToken, value, sourceTokenAddress, destTokenAddress) => {
+    try {
+      configure();
+      const response = await getQuote({
+        originBlockchain: NEARINTENT_ENUM[sourceChain],
+        originSymbol: sourceToken,
+        destinationBlockchain: NEARINTENT_ENUM[destChain],
+        destinationSymbol: destToken,
+        amount: value,
+        recipient: recieverAddress,
+        refundTo:state?.STELLAR_PUBLICK_KEY,
+        recipientType: QuoteRequest.recipientType.DESTINATION_CHAIN,
+        refundType:QuoteRequest.refundType.ORIGIN_CHAIN,
+        depositType:QuoteRequest.depositType.ORIGIN_CHAIN,
+        depositMode:QuoteRequest.depositMode.MEMO,
+        originSymbolAddress:sourceTokenAddress,
+        destinationSymbolAddress:destTokenAddress
+      });
+      if (!response.success) {
+        return { success: false, provider: "Near-Intent", error: response.error };
+      }
+      return {
+        success: true,
+        provider: "Near-Intent",
+        data: {
+          provider: "Near-Intent",
+          conversionRate: (
+            Number(response.data.quote.amountInFormatted) /
+            Number(response.data.quote.amountOutFormatted)
+          ).toFixed(6),
+          minimumAmountOut: parseFloat(
+            response.data.quote.minAmountOutFormatted ??
+            response.data.quote.amountOutFormatted ??
+            0
+          ).toFixed(6),
+          slippageTolerance: 1,
+          completionTime: formatCompletionTime(response.data.quote.timeEstimate),
+          fee: {
+            native: { amount: 0.0, symbol: "XLM", usdValue: 0.0 },
+            stablecoin: { amount: 0.0, symbol: selectedAssetDetils.symbol, usdValue: 0.0 },
+          },
+        },
+      };
+    } catch (error) {
+      return { success: false, provider: "Near-Intent", error: error.message };
+    }
+  };
+
+  const fetchBestQuote = useCallback(
+    debounce(async (sourceChain, destChain, sourceToken, destToken, value, sourceTokenAddress, destTokenAddress) => {
+      const [nearIntentResult] = await Promise.allSettled([
+        // fetchAllbridgeQuote(sourceChain, destChain, sourceToken, destToken, value),
+        fetchNearIntentQuote(sourceChain, destChain, sourceToken, destToken, value, sourceTokenAddress, destTokenAddress),
+      ]);
+
+      // const allbridgeQuote = allbridgeResult.status === "fulfilled" ? allbridgeResult.value : { success: false, error: allbridgeResult.reason?.message };
+      const nearIntentQuote = nearIntentResult.status === "fulfilled" ? nearIntentResult.value : { success: false, error: nearIntentResult.reason?.message };
+
+      // if (allbridgeQuote.success && nearIntentQuote.success) {
+      //   const allbridgeOut = parseFloat(allbridgeQuote.data.minimumAmountOut || 0);
+      //   const nearIntentOut = parseFloat(nearIntentQuote.data.minimumAmountOut || 0);
+
+      //   if (nearIntentOut > allbridgeOut) {
+      //     setresQuotes(nearIntentQuote.data);
+      //     setProvider("Near-Intent");
+      //   } else {
+      //     setresQuotes(allbridgeQuote.data);
+      //     setProvider("ALLBRIDGE");
+      //   }
+      // } else if (allbridgeQuote.success) {
+      //   setresQuotes(allbridgeQuote.data);
+      //   setProvider("ALLBRIDGE");
+      // } else
+        if (nearIntentQuote.success) {
+        setresQuotes(nearIntentQuote.data);
+        setProvider("Near-Intent");
+      } else {
+        setresQuotes(null);
+        alert("error", nearIntentQuote?.error?.body?.message||"Failed to fetch quotes.");
+      }
+
+      Keyboard.dismiss();
+      setgetInfo(false);
     }, 1000),
-    []
+    [recieverAddress, selectedAssetDetils]
   );
 
   const swapExecute = async () => {
     try {
       setbtnLoading(true);
       Keyboard.dismiss();
+      if (provider === "Near-Intent") {
+          const NearIntentSwapRes = await NearIntentSwapExecuteFromStellar({
+            originBlockchain: NEARINTENT_ENUM[selectedNetworkDetils.chainName],
+            originSymbol: selectedAssetDetils.symbol,
+            originAssetCode: selectedAssetDetils.symbol,
+            originAssetIssuer: selectedAssetDetils.address,
+            originDecimals: selectedAssetDetils.decimal,
+            destinationBlockchain: NEARINTENT_ENUM[selectedReciveNetworkDetils.chainName],
+            destinationSymbol: selectedReciveAssetDetils.symbol,
+            amount: amount,
+            recipient: recieverAddress,
+            refundTo: state?.STELLAR_PUBLICK_KEY,
+            recipientType: QuoteRequest.recipientType.DESTINATION_CHAIN,
+            activeWalletAddress: state?.STELLAR_PUBLICK_KEY,
+            destinationSymbolAddress:selectedReciveAssetDetils.address
+          });
+          if (NearIntentSwapRes.success) {
+            await LocalTxManager.saveTx(state && state.wallet && state.wallet.address, {
+              chain: selectedNetworkDetils.chainName,
+              hash: NearIntentSwapRes.data.depositAddress,
+              depositMemo:NearIntentSwapRes.data.depositMemo,
+              status: "pending",
+              statusColor: "#eec14fff",
+              timestamp: Date.now(),
+              symbol: selectedAssetDetils.symbol,
+              amount: amount.toString(),
+              txType: "nearIntent",
+            });
+            ShortTermStorage.syncTx({
+              txHash: NearIntentSwapRes.data.depositAddress,
+              memo:NearIntentSwapRes.data.depositMemo,
+              walletAddress: state.wallet.address,
+              provider: "NEARINTENT",
+              fromChain: selectedNetworkDetils.chainName,
+              fromToken: selectedAssetDetils.symbol,
+              toChain: selectedReciveNetworkDetils.chainName,
+              toToken: selectedReciveAssetDetils.symbol,
+              amountIn: amount,
+              amountOut: amount,
+              txType: "Bridge",
+              fromTokenMetaData: selectedAssetDetils.symbol,
+            })
+            setbtnLoading(false);
+            CustomInfoProvider.show("success", "Hurray", provider + " Order Placed Successfully.");
+            navigation.navigate("StellarTransactions");
+            return;
+          } else {
+            setbtnLoading(false);
+            CustomInfoProvider.show("error","!Oops", NearIntentSwapRes.error?.message || "Failed to Place Order.");
+            console.error("Near-Intent Swap Failed:-", NearIntentSwapRes);
+            return;
+          }
+      }
       const stellarWallet = {
         publicKey: state && state.STELLAR_PUBLICK_KEY,
         secretKey: state && state.STELLAR_SECRET_KEY
@@ -430,7 +573,7 @@ console.log("resQuotes-",resQuotes)
           <View style={[styles.quoteDetailsContainer]}>
             <View style={styles.quoteRow}>
               <Text style={[styles.quoteLabel,{color:theme.inactiveTx}]}>Provider</Text>
-              <Text style={[styles.quoteValue,{color:theme.headingTx}]}>Allbridge</Text>
+              <Text style={[styles.quoteValue,{color:theme.headingTx}]}>{provider === "Near-Intent" ? "Near-Intent" : "Allbridge"}</Text>
             </View>
 
             <View style={styles.quoteRow}>
