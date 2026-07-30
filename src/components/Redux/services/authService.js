@@ -11,6 +11,7 @@ import { PGET, PPOST, proxyRequest } from '../../../Dashboard/exchange/crypto-ex
 import { createWallet } from '../../../utilities/WalletManager';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { getWalletBalance } from '../../../Dashboard/exchange/crypto-exchange-front-end-main/src/utils/getWalletInfo/EtherWalletService';
+import store from '../Store';
 const { EthereumWallet } = NativeModules;
 
 const xrpl = require("xrpl");
@@ -806,74 +807,43 @@ async function getDirectoryUri(uri) {
 
 const getMaticBalance = async (address) => {
   try {
-    console.log(address);
-    if (address) {
-      console.log("starting..");
-      const provider = new ethers.providers.JsonRpcProvider(RPC.MATICRPC);
-      const MaticBalance = await provider.getBalance(address);
-      const balanceInEth = ethers.utils.formatEther(MaticBalance);
-      AsyncStorage.setItem("MaticBalance", balanceInEth);
-
-      return {
-        status: "success",
-        message: "Matic Balance fetched",
-        MaticBalance: balance.toFixed(3),
-      };
-    } else {
+    if (!address) {
       return {
         status: "error",
-        message: "Matic Balance fetch  failed",
+        message: "Matic Balance fetch failed",
         MaticBalance: 0,
       };
     }
+
+    const tokens = store.getState()?.activeWalletPortFolio || [];
+    const nativeToken = tokens.find((t) => t.chain === "POL" && t.contractAddress === "Native");
+
+    if (!nativeToken) {
+      return {
+        status: "error",
+        message: "Matic Balance not available yet in portfolio state",
+        MaticBalance: 0,
+      };
+    }
+
+    const balanceInEth = nativeToken.balance.toString();
+    AsyncStorage.setItem("MaticBalance", balanceInEth);
+
+    return {
+      status: "success",
+      message: "Matic Balance fetched",
+      MaticBalance: parseFloat(balanceInEth).toFixed(3),
+    };
   } catch (error) {
     return {
       status: "error",
-      message: "Matic Balance fetch  failed",
+      message: "Matic Balance fetch failed",
       MaticBalance: 0,
     };
   }
-  };
+};
 const getXrpBalance = async (address) => {
   console.log("XRP Balance ", address);
-
- 
-    try{
-
-      
-        const client = new xrpl.Client(WSS.XRPWSS)
-        await client.connect()
-        const my_balance = (await client.getXrpBalance(address) )  
-        console.log(my_balance)
-        //sEdTYTnQENSBnjLSaVBtMtC4P5ViaFZ
-        //rP7n7Z4Hu4DziJbMJaCGfZhwd94aHzoN9b     
-        
-        AsyncStorage.setItem('XrpBalance', my_balance);
-        
-        await client.disconnect()
-        if(my_balance){
-            
-          return {
-            status: "success",
-            message: "Xrp Balance fetched",
-            XrpBalance: my_balance
-          };
-        }else{
-          return {
-            status: "error",
-            message: "Xrp Balance fetch failed",
-            XrpBalance: 0
-          }; 
-        }
-      
-    }catch(error){
-      console.log(error)
-     return {
-        status: "error",
-        message: "Xrp Balance fetch failed",
-        XrpBalance: 0
-      };
-   }
   // const token = await AsyncStorageLib.getItem('token')
   const response = await fetch(`http://${urls.testUrl}/user/getXrpBalance`, {
     method: "POST",

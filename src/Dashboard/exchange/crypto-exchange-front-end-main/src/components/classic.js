@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,7 @@ import CustomInfoProvider from './CustomInfoProvider';
 import WalletActivationComponent from '../utils/WalletActivationComponent';
 import { swap_prepare } from '../../../../../../All_bridge';
 import { CHAINS } from '../../../../../utilities/TokenUtils';
+import { getHighestNativeBalanceToken, getBestAssetForChain, PORTFOLIO_CHAIN_TO_CHAINS_KEY } from '../../../../../utilities/portfolioSelectors';
 import ShortTermStorage from '../../../../../utilities/ShortTermStorage';
 import { Networks, StrKey } from '@stellar/stellar-sdk';
 import { configure, getQuote, NEARINTENT_ENUM, NearIntentSwapExecute, resolveAssetPair } from '../../../../../nearIntent/nearIntentUtil';
@@ -452,6 +453,30 @@ const classic = ({ props }) => {
     setSelectedFromAsset(CHAINS[selectedFromNetwork.symbol].bridgeSupportTokens[0])
     setSelectedToAsset(CHAINS[selectedToNetwork.symbol].bridgeSupportTokens[0]);
   }, [selectedToNetwork]);
+
+  const hasAutoSelectedFromRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoSelectedFromRef.current) return;
+
+    const topNativeToken = getHighestNativeBalanceToken(
+      state,
+      (chainKey) =>
+        CHAINS[chainKey]?.bridgeEnable &&
+        CHAINS[chainKey]?.swapEnable &&
+        chainKey !== selectedToNetwork.symbol
+    );
+    if (!topNativeToken) return;
+
+    const chainKey = PORTFOLIO_CHAIN_TO_CHAINS_KEY[topNativeToken.chain];
+    const chainConfig = chainKey && CHAINS[chainKey];
+    if (!chainConfig) return;
+
+    const matchedAsset = getBestAssetForChain(state, topNativeToken.chain, chainConfig);
+    if (!matchedAsset) return;
+    hasAutoSelectedFromRef.current = true;
+    setSelectedFromNetwork(chainConfig);
+    setSelectedFromAsset(matchedAsset);
+  }, [state.activeWalletPortFolio]);
 
   useEffect(() => {
     const initService = async () => {

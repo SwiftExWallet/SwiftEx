@@ -27,6 +27,7 @@ import ShortTermStorage from '../utilities/ShortTermStorage';
 import { CHAINS, CheckTxStatus, TXSTATUS } from '../utilities/TokenUtils'
 import { AllbridgeCoreSdk, nodeRpcUrlsDefault } from "@allbridge/bridge-core-sdk";
 import { colors } from '../Screens/ThemeColorsConfig';
+import { ethers } from 'ethers';
 const sdk = new AllbridgeCoreSdk(nodeRpcUrlsDefault);
 const ThemeContext = React.createContext();
 const themes = {
@@ -88,12 +89,30 @@ const formatNumber = (num) => {
   const value = Number(num);
   if (!Number.isFinite(value)) return "0";
   if (value === 0) return "0";
-  if (Math.abs(value) < 0.0001) return value.toExponential(2);
   if (Math.abs(value) > 1000000) return (value / 1000000).toFixed(2) + "M";
+
+  if (Math.abs(value) < 0.0001) {
+    return value.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
+  }
 
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 6,
   }).format(value);
+};
+
+const getExactAmount = (item) => {
+  const raw = item?.rawContract?.value;
+  const decimalStr = item?.rawContract?.decimal;
+
+  if (raw && decimalStr !== null && decimalStr !== undefined) {
+    try {
+      const decimals = Number(decimalStr);
+      return ethers.utils.formatUnits(raw, decimals);
+    } catch (e) {
+    }
+  }
+
+  return item?.value ?? item?.formattedAmount ?? item?.amountIn ?? 0;
 };
 
 const formatDate = (timestamp) => {
@@ -475,7 +494,7 @@ const TransactionCard = ({ item, walletAddress, activeChain, activeFilter, navig
               { color: isFailed ? colors.textTertiary : status.color }
             ]}>
               {txType === 'Send' ? '-' : txType === 'Receive' ? '+' : ''}
-              {formatNumber(item.value || item.formattedAmount || item.amountIn || 0)}
+              {formatNumber(getExactAmount(item))}
             </Text>
           )}
 

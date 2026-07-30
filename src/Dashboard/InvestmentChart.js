@@ -4,7 +4,7 @@ import {
   widthPercentageToDP as wp,
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
-import { useDispatch, useSelector } from "react-redux";
+import { useDispatch, useSelector, useStore } from "react-redux";
 import Icon from "../icon";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { PORTFOLIO_CONFIG, RAPID_STELLAR, SET_ASSET_DATA, WALLET_ACTIVATION_SHOW } from "../components/Redux/actions/type";
@@ -26,13 +26,16 @@ function InvestmentChart() {
   const state = useSelector((state) => state);
   const wallet = useSelector((state) => state.wallet);
   const dispatch = useDispatch();
+  const store = useStore();
   const [pull, setPull] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [tokenInfoList, setTokenInfoList] = useState([]);
   const [showCustomInfo,setshowCustomInfo]=useState(false);
+  const [portfolioError, setPortfolioError] = useState(false);
   const { mergeWithApiTokens } = useAssetManager(`${wallet?.address}_${state?.STELLAR_PUBLICK_KEY}`);
   const activeRequestWalletRef = useRef(null);
+  const hasLoadedOnceRef = useRef(false);
 
   const avilableSoonAsset={
     chain: 'BTC',
@@ -123,38 +126,43 @@ function InvestmentChart() {
   }
 
   useEffect(() => {
-    setLoading(true);
-    setTokenInfoList(TemporaryTokens);
+    if (!wallet?.address || !state?.STELLAR_PUBLICK_KEY) {
+      return;
+    }
 
-    dispatch({
-      type: PORTFOLIO_CONFIG,
-      payload: {
-        isTotalInUSDVisible: true,
-        totalInUSD: 0.0,
-        totalStellarInUSD: 0.0,
-      }
-    });
-
-    const requestForWallet = wallet?.address;
+    let isActive = true;
+    const requestForWallet = wallet.address;
     activeRequestWalletRef.current = requestForWallet;
+
+    if (!hasLoadedOnceRef.current) {
+      setLoading(true);
+    }
 
     const initService = async () => {
       await fetchDataDispatch();
-      if (wallet?.address && state?.STELLAR_PUBLICK_KEY) {
+
+      const freshState = store.getState();
+
         try {
           const storedData = await AsyncStorage.getItem('myDataKey');
-          const parsedData = JSON.parse(storedData);
+          const parsedData = storedData ? JSON.parse(storedData) : [];
           let matchedData = parsedData.find((item) => item.Ether_address === wallet.address);
           if (!matchedData) {
             const preser_backup = await AsyncStorage.getItem('wallet_backup');
             matchedData = parsedData.find((item) => item.Ether_address === preser_backup);
           }
 
-          const stellarKeyToUse = matchedData ? matchedData.publicKey : state.STELLAR_PUBLICK_KEY;
-          const dydxKeyToUse = matchedData?.dydxAddress || state.DYDX_ADDRESS_KEY;
-          const walletInfo = await GetWalletTokens(wallet?.address, stellarKeyToUse, dydxKeyToUse);
+          const stellarKeyToUse = matchedData ? matchedData.publicKey : freshState.STELLAR_PUBLICK_KEY;
+          const dydxKeyToUse = matchedData?.dydxAddress || freshState.DYDX_ADDRESS_KEY;
 
-          if (activeRequestWalletRef.current !== requestForWallet) return;
+        if (!stellarKeyToUse) {
+          if (isActive) setLoading(false);
+          return;
+        }
+
+        const walletInfo = await GetWalletTokens(wallet.address, stellarKeyToUse, dydxKeyToUse);
+
+          if (!isActive || activeRequestWalletRef.current !== requestForWallet) return;
 
           if (Array.isArray(walletInfo?.tokens)) {
             const userCustomTokens = await getCustomTokens();
@@ -162,6 +170,8 @@ function InvestmentChart() {
             await mergeWithApiTokens(margeArray);
             setTokenInfoList(margeArray);
             setLoading(false);
+            hasLoadedOnceRef.current = true;
+            setPortfolioError(false);
             dispatch({
               type: PORTFOLIO_CONFIG,
               payload: {
@@ -173,14 +183,16 @@ function InvestmentChart() {
           }
         } catch (error) {
           console.error("walletInfo_error", error);
+        if (isActive && activeRequestWalletRef.current === requestForWallet) {
+          setLoading(false);
+          setPortfolioError(true);
           CustomInfoProvider.show("info", "Portfolio currently unavailable, please try again");
-          if (activeRequestWalletRef.current === requestForWallet) setLoading(false);
         }
-      } else {
-        setLoading(false);
       }
     }
+
     initService();
+    return () => { isActive = false; };
   }, [state.STELLAR_PUBLICK_KEY, wallet.address, wallet.name, pull]);
 
   const dispatchStellarData = useCallback(

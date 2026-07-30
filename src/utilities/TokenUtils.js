@@ -23,7 +23,7 @@ const CONFIG = {
 };
 
 const CACHE_CONFIG = {
-  TTL: 60 * 1000,
+  TTL: 25 * 1000,
 };
 
 export const EVM_NETWORK_CONFIG = {
@@ -546,21 +546,21 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
       );
     }
 
-    if (dydxAddress) {
-      if (!isValidDydxAddress(dydxAddress)) {
-        console.warn('Invalid dYdX address format, skipping dYdX fetch:', dydxAddress);
-      } else {
-        fetchPromises.push(
-          getDydxBalance(dydxAddress, (update) => {
-            notifyProgress({
-              ...update,
-              allTokens: [...allTokens, ...update.tokens],
-              totalValueUSD: totalValueUSD + update.totalValueUSD
-            });
-          }, cacheKey)
-        );
-      }
-    }
+    // if (dydxAddress) {
+    //   if (!isValidDydxAddress(dydxAddress)) {
+    //     console.warn('Invalid dYdX address format, skipping dYdX fetch:', dydxAddress);
+    //   } else {
+    //     fetchPromises.push(
+    //       getDydxBalance(dydxAddress, (update) => {
+    //         notifyProgress({
+    //           ...update,
+    //           allTokens: [...allTokens, ...update.tokens],
+    //           totalValueUSD: totalValueUSD + update.totalValueUSD
+    //         });
+    //       }, cacheKey)
+    //     );
+    //   }
+    // }
 
     const results = await Promise.allSettled(fetchPromises);
     results.forEach(result => {
@@ -1050,7 +1050,7 @@ export const CHAINS = {
     },
     bridgeSupportTokens: DYDX.bridgeSupportTokens,
     sendEnable: false,
-    receiveEnable: true,
+    receiveEnable: false,
     bridgeEnable: false,
     swapEnable: false,
     importForSetupApp:false,

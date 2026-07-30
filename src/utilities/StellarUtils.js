@@ -77,7 +77,7 @@ export async function GetStellarUSDCAvilabelBalance(publicKey,coinName,coinIssue
     }
 
     const formatValue = (value) => {
-        return value < 0 ? "0.00000" : value;
+        return value < 0 ? "0.0000000" : value.toFixed(7);
     };
 
     let selectedAsset = null;

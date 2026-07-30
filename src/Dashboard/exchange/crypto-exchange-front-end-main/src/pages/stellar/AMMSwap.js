@@ -136,14 +136,14 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
     const res= await BridgeUSDCValidation(asset==="XLM"?"native":asset,assetIssuer);
     if(res!=null)
     {
-      setFromBal(parseFloat(res?.balance));
+      setFromBal(parseFloat(res?.balance)?.toFixed(7));
     }else{
       setFromBal(0.00);
     }
     const res1= await BridgeUSDCValidation(asset1==="XLM"?"native":asset1,asset1Issuer);
     if(res1!=null)
       {
-        setToBal(parseFloat(res1?.balance));
+        setToBal(parseFloat(res1?.balance)?.toFixed(7));
       }else{
         setToBal(0.00);
       }
@@ -623,7 +623,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
                 placeholder="0.00"
                 placeholderTextColor="#8A8A8A"
                 keyboardType="decimal-pad"
-                value={toAmount}
+                value={toAmount==="NaN"?"0.0":toAmount}
                 editable={false}
               />
               <TouchableOpacity style={[styles.tokenSelector,{backgroundColor:theme.bg}]} onPress={()=>{settokenTypeSelection(1),setTokenModalVisible(true),setfindToken("")}}>
@@ -665,7 +665,9 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
 
             <View style={styles.detailRow}>
               <Text style={[styles.detailLabel,{color:theme.headingTx}]}>Minimum Received</Text>
-              <Text style={[styles.detailValue,{color:theme.headingTx}]}>{exchangeRes?.swapDetails?.minReceived}</Text>
+              <Text style={[styles.detailValue,{color:theme.headingTx}]}>
+                {isNaN(Number(exchangeRes?.swapDetails?.minReceived)) ? "0.00" : exchangeRes?.swapDetails?.minReceived}
+              </Text>
             </View>
           </View> : null}
           
