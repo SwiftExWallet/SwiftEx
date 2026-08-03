@@ -7,6 +7,7 @@ import ShortTermStorage from './ShortTermStorage';
 import Web3 from 'web3';
 import { ensureFusionAllowance } from './SwapRango';
 import { fustionEvmTxManager } from './evmTxManager';
+import { getSafeErrorMessage } from './errorSanitizer';
 
 export const GetFusionSwapQuote = async (fromBlockchain, fromTokenAddress, toBlockchain, toTokenAddress, amount, walletAddress, fromSymbol, toSymbol) => {
     try {
@@ -44,8 +45,7 @@ export const GetFusionSwapQuote = async (fromBlockchain, fromTokenAddress, toBlo
 
         };
     } catch (error) {
-        console.error("error",error)
-        return { status: false, error };
+        return { status: false, error: getSafeErrorMessage(error, 'Failed to get quote.') };
     }
 };
 
@@ -61,19 +61,19 @@ const PripareFusionSwap = async (quoteId, walletAddress, txCount = 1) => {
         }
         return { status: true, response: response.res };
     } catch (error) {
-        return { status: false, error };
+        return { status: false, error: getSafeErrorMessage(error, 'Failed to prepare swap.') };
     }
 };
-
 
 export async function PerformeFusionSwap(quoteId, state, fromToken, toToken, amount, qouteInfo) {
     try {
         const responses = await PripareFusionSwap(quoteId, state?.wallet?.address, qouteInfo.presets["fast"].secretsCount);
         if (responses.status === false) {
-            CustomInfoProvider.show("error", "!Opps", responses.error || "Route confirmation failed.");
+            const safeRouteError = getSafeErrorMessage(responses.error, "Route confirmation failed.");
+            CustomInfoProvider.show("error", "!Opps", safeRouteError);
             return {
                 status: false,
-                error: responses.error || "Route confirmation failed."
+                error: safeRouteError
             };
         }
 
@@ -106,10 +106,11 @@ export async function PerformeFusionSwap(quoteId, state, fromToken, toToken, amo
                     }),
             });
             if (submitResult.err) {
-                CustomInfoProvider.show("error", "!Opps", submitResult.err.message || "Swap failed");
+                const safeSubmitError = getSafeErrorMessage(submitResult.err.message, "Swap failed");
+                CustomInfoProvider.show("error", "!Opps", safeSubmitError);
                 return {
                     status: false,
-                    error: submitResult.err.message || "Swap failed"
+                    error: safeSubmitError
                 };
             } else {
                 await ShortTermStorage.syncTx({
@@ -133,17 +134,17 @@ export async function PerformeFusionSwap(quoteId, state, fromToken, toToken, amo
                 };
             }
         } else {
-            CustomInfoProvider.show("error", "!Opps", resuleOfAllowance.error || "Swap fail");
+            const safeAllowanceError = getSafeErrorMessage(resuleOfAllowance.error, "Swap fail");
+            CustomInfoProvider.show("error", "!Opps", safeAllowanceError);
             return {
                 status: false,
-                error: resuleOfAllowance.error || "Swap fail"
+                error: safeAllowanceError
             };
         }
     } catch (error) {
-        console.error("error",error)
         return {
             status: false,
-            error: error
+            error: getSafeErrorMessage(error, "Swap failed. Please try again.")
         };
     }
 }
@@ -171,10 +172,11 @@ export async function PerformeFusionPlusNativeSwap(state, fromToken, toToken, am
     try {
         const fusionPlusNative = await PripareFusionPlusNativeSwap(fromToken.chain, toToken.chain, fromToken.address, toToken.address, state?.wallet?.address,ethers.utils.parseUnits(amount, fromToken?.decimals));
         if (fusionPlusNative.status === false) {
-            CustomInfoProvider.show("error", "!Opps", fusionPlusNative.error || "Route confirmation failed.");
+            const safeNativeRouteError = getSafeErrorMessage(fusionPlusNative.error, "Route confirmation failed.");
+            CustomInfoProvider.show("error", "!Opps", safeNativeRouteError);
             return {
                 status: false,
-                error: fusionPlusNative.error || "Route confirmation failed."
+                error: safeNativeRouteError
             };
         }
         const chainName = fromToken.chain;
@@ -205,10 +207,11 @@ export async function PerformeFusionPlusNativeSwap(state, fromToken, toToken, am
             srcChain: fromToken.chain==="BNB"?"BSC":fromToken.chain
         });
         if (submitResult.err) {
-            CustomInfoProvider.show("error", "!Opps", submitResult.err.message || "Swap failed");
+            const safeNativeSubmitError = getSafeErrorMessage(submitResult.err.message, "Swap failed");
+            CustomInfoProvider.show("error", "!Opps", safeNativeSubmitError);
             return {
                 status: false,
-                error: submitResult.err.message || "Swap failed"
+                error: safeNativeSubmitError
             };
         } else {
             if(submitResult.res.typeTx==="fusion"){
@@ -249,10 +252,9 @@ export async function PerformeFusionPlusNativeSwap(state, fromToken, toToken, am
             };
         }
     } catch (error) {
-        console.error("error", error)
         return {
             status: false,
-            error: error
+            error: getSafeErrorMessage(error, "Swap failed. Please try again.")
         };
     }
 }

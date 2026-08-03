@@ -482,9 +482,12 @@ console.log("resQuotes-",resQuotes)
 
         {/* perfect stellar usdc balance componet */}
         <View style={[styles.card,{backgroundColor:theme.cardBg,flexDirection:"column",borderBottomLeftRadius:0,borderBottomRightRadius:0}]}>
-        <View style={[styles.rowBtnCon, { paddingVertical: hp(-0.5),backgroundColor:theme.cardBg }]}>
-            <Text style={[styles.subInputText,{color:theme.inactiveTx,marginTop: hp(0),marginBottom:hp(1)}]}>USDC Amount</Text>
-            </View>
+          <View style={[styles.rowBtnCon, { backgroundColor: theme.cardBg}]}>
+            <Text style={[styles.subInputText, { color: theme.inactiveTx }]}>USDC Amount</Text>
+            <TouchableOpacity style={styles.maxCon} onPress={()=>{handleInputChange(!walletBalance?"0.00":walletBalance)}}>
+              <Text style={[styles.subInputText, {color:theme.headingTx}]}>MAX</Text>
+            </TouchableOpacity>
+          </View>
          <View style={[styles.modalOpen, { paddingVertical: hp(0.5),backgroundColor:theme.bg }]}>
             <TextInput maxLength={50} placeholder='Enter USDC Amount' placeholderTextColor={"gray"} keyboardType="numeric" value={amount} style={[styles.textInputForCrossChain,{fontSize: 18, color: theme.headingTx}]} onChangeText={(value) => { handleInputChange(value) }} returnKeyType="done" />
         </View>
@@ -505,7 +508,7 @@ console.log("resQuotes-",resQuotes)
         </View>
 
         <View style={[styles.card,{backgroundColor:theme.cardBg,flexDirection:"column"}]}>
-          <View style={{ flexDirection: "row", paddingLeft: wp(3) }}>
+          {/* <View style={{ flexDirection: "row", paddingLeft: wp(3) }}>
             <Icon name={"fire"} type={"materialCommunity"} size={25} color={"#4052D6"} />
             <Text style={[styles.subInputText, { fontSize: 16,color:theme.headingTx }]}> Relayer Fee</Text>
           </View>
@@ -518,7 +521,7 @@ console.log("resQuotes-",resQuotes)
               <Icon name={"fire"} type={"materialCommunity"} size={25} color={payFeeType==="stable"?"#fff":"#4052D6"} />
               <Text style={[styles.feePayTx,{color: payFeeType==="stable"?"#fff":theme.headingTx}]}>Stable-Coin </Text>
             </TouchableOpacity>
-            </View>
+            </View> */}
             
             <Text style={[styles.subInputText, { fontSize: 16,color:theme.headingTx,paddingLeft:wp(3.4),marginTop:hp(1.5) }]}>Reciever Address</Text>
             <View style={[styles.recieverAddressInput,{backgroundColor: theme.bg}]}>
@@ -723,7 +726,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#4052D6",
     borderRadius: 10,
     paddingVertical:5,
-    paddingHorizontal: wp(5),
+    paddingHorizontal: wp(3),
   },
   modalOpen: {
     width: '93%',
@@ -764,8 +767,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 10,
     alignSelf: "center",
-    paddingVertical: hp(1.8),
-    paddingHorizontal: wp(2)
+    paddingHorizontal: wp(2),
+    marginTop:hp(-1),
+    marginVertical:hp(1)
   },
   modalQoutesCon: {
     width: '100%',

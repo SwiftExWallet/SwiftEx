@@ -96,7 +96,7 @@ const ORIGIN_EXCLUDED_CHAIN_KEYS = ["STR"];
 // A chain only auto-qualifies as the default pick if the wallet holds at
 // least this much USDC/USDT on it (activation needs real stablecoin to swap
 // from — anything less isn't a usable default).
-const MIN_STABLE_BALANCE_FOR_AUTOSELECT = 1;
+const MIN_STABLE_BALANCE_FOR_AUTOSELECT = 0.5;
 
 const STEP_META = [
   { key: "activate", title: "Activate Stellar Account" },
@@ -540,7 +540,7 @@ export default function StellarSetupBottomSheet({
       destinationBlockchain: "stellar",
       destinationSymbol: "XLM",
       destinatTokenContract: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-      amount: "1",
+      amount: "0.5",
       recipient: stellarAcc,
       activeWalletAddress: evmAcc,
       refundType: QuoteRequest.refundType.ORIGIN_CHAIN,
@@ -633,6 +633,7 @@ export default function StellarSetupBottomSheet({
       rpcUrl: selectedChainEntry.chain.rpcUrl || selectedChainEntry.chain.backupRPCUrls?.[0],
       chain: selectedToken.name?.toLowerCase(),
       activeChain: selectedToken.chainId,
+      chainConfig:CHAINS[selectedChainEntry.chain.symbol]
     };
   }, [baseActivationParams, selectedChainEntry, selectedToken]);
   // ---------------------------------------------------------------------

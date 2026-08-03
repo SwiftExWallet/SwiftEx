@@ -165,7 +165,6 @@ const classic = ({ props }) => {
       fontSize: 20,
     },
     availableContainer: {
-      alignItems: 'flex-end',
       gap: 8,
       width:wp(19)
     },
@@ -416,6 +415,16 @@ const classic = ({ props }) => {
       paddingHorizontal: wp(2.4),
       backgroundColor: theme.bg,
     },
+    maxBtnCon: {
+      backgroundColor: theme.buttonColor,
+      paddingHorizontal: 13,
+      paddingVertical: 7,
+      borderRadius: 8
+    },
+    maxBtnTxt: {
+      color: "#fff",
+      fontSize: 16
+    }
   });
 
   const [fromAmount, setFromAmount] = useState(0.0);
@@ -738,7 +747,8 @@ const classic = ({ props }) => {
         activeChain: selectedFromAsset.chainId,
         refundType:QuoteRequest.refundType.ORIGIN_CHAIN,
         refundTo:state?.wallet?.address,
-        destinatTokenContract:selectedToAsset.address
+        destinatTokenContract:selectedToAsset.address,
+        chainConfig:CHAINS[selectedFromNetwork.symbol]
       })
       console.info("swap response of nearIntent:", responseOfNearIntent);
       if (responseOfNearIntent.success) {
@@ -977,7 +987,18 @@ const classic = ({ props }) => {
                 </View>
                 <Icon type="ionicon" name="chevron-down" size={20} color={theme.headingTx} />
               </TouchableOpacity>
-              {showOption && <View style={styles.optionCon}>
+              
+              <View style={{flexDirection:"row"}}>
+                {!showOption ? <View style={styles.availableContainer}>
+                <TouchableOpacity style={{ flexDirection: "row" }} onPress={async () => { await fetchSelectedTokenBalance() }}>
+                  <Text style={styles.availableLabel}>Available</Text>
+                  <Icon type="ionicon" name="refresh" size={16} color={theme.headingTx} />
+                </TouchableOpacity>
+                {balanceLoading ? <ActivityIndicator size={"small"} color={"green"} /> :
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <Text selectable={true} style={styles.availableAmount}>{fromBalance ? fromBalance?.tokenBalance : "0.000"}</Text>
+                  </ScrollView>}
+              </View> :<View style={styles.optionCon}>
                 <TouchableOpacity style={styles.optioBtn} onPress={() => { navigation.navigate("EthSwap", { activeNetwork: selectedFromNetwork.subName, activeAsset: selectedFromAsset }) }}>
                   <Text style={[styles.amountInput, { color: "#fff" }]}>Swap</Text>
                 </TouchableOpacity>
@@ -988,6 +1009,7 @@ const classic = ({ props }) => {
               <TouchableOpacity style={styles.addButton} onPress={() => { setShowOption(!showOption ? true : false) }}>
                 <Icon type="ionicon" name={showOption ? "close-circle-outline" : "add-circle-outline"} size={28} color={theme.headingTx} />
               </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.amountContainer}>
@@ -1000,16 +1022,9 @@ const classic = ({ props }) => {
                 keyboardType="numeric"
                 returnKeyType="done"
               />
-              <View style={styles.availableContainer}>
-                <TouchableOpacity style={{ flexDirection: "row" }} onPress={async () => { await fetchSelectedTokenBalance() }}>
-                  <Text style={styles.availableLabel}>Available</Text>
-                  <Icon type="ionicon" name="refresh" size={16} color={theme.headingTx} />
-                </TouchableOpacity>
-                {balanceLoading ? <ActivityIndicator size={"small"} color={"green"} /> :
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <Text selectable={true} style={styles.availableAmount}>{fromBalance ? fromBalance?.tokenBalance : "0.000"}</Text>
-                  </ScrollView>}
-              </View>
+              <TouchableOpacity style={styles.maxBtnCon} onPress={() => { handleInputChange(fromBalance ? fromBalance?.tokenBalance : "0.000") }}>
+                <Text style={styles.maxBtnTxt}>MAX</Text>
+              </TouchableOpacity>
             </View>
             <View style={{ flexDirection: "row" }}>
               <Text style={styles.walletAddress} numberOfLines={1}>Active Wallet : </Text>
@@ -1020,23 +1035,26 @@ const classic = ({ props }) => {
           </View>
 
           <View style={[styles.section, styles.toSection]}>
-            <View style={styles.headerRow}>
-              <View style={[styles.networkHeader, { marginTop: hp(-1.5) }]}>
-                <Text style={styles.labelText}>To Network</Text>
-
-              </View>
-              <View
-                style={styles.networkSelector}
-              >
-                <Image
-                  source={{ uri: selectedToNetwork?.imageUrl }}
-                  style={styles.networkIcon}
-                />
-                <Text style={styles.networkName}>{selectedToNetwork.subName}</Text>
-              </View>
+            <View style={[styles.networkHeader, { marginTop: hp(-0.4) }]}>
+              <Text style={styles.labelText}>To Network</Text>
             </View>
+            <View style={styles.headerRow}>
 
-            {selectedToAsset && (
+              <View style={styles.usdcContainer}>
+                <View
+                  style={styles.toAssetSelector}
+                >
+                  <Image
+                    source={{ uri: selectedToNetwork?.imageUrl }}
+                    style={styles.assetIconLarge}
+                  />
+                  <View style={styles.toAssetInfo}>
+                    <Text style={styles.assetLabel}>Network</Text>
+                    <Text style={styles.usdcName}>{selectedToNetwork.name}</Text>
+                  </View>
+                </View>
+              </View>
+
               <View style={styles.usdcContainer}>
                 <View
                   style={styles.toAssetSelector}
@@ -1050,49 +1068,8 @@ const classic = ({ props }) => {
                     <Text style={styles.usdcName}>{selectedToAsset.symbol}</Text>
                   </View>
                 </View>
-
-                {provider !== "Near-Intent"&&<View style={styles.relayerFeeContainer}>
-                  <Text style={styles.relayerFeeLabel}>Relayer Fee <Icon name={"gas-station"} type={"materialCommunity"} size={16} color={theme.headingTx} /></Text>
-                  <View style={styles.feeButtons}>
-                    <TouchableOpacity
-                      style={[
-                        styles.feeButton,
-                        selectedRelayerFee === 'native' && styles.feeButtonActive,
-                        styles.gasFeeNativeCon
-                      ]}
-                      onPress={() => setSelectedRelayerFee('native')}
-                    >
-                      <Image
-                        source={{ uri: selectedFromNetwork?.imageUrl }}
-                        style={styles.feeIconSmall}
-                      />
-                      <Text style={[
-                        styles.feeButtonText,
-                        selectedRelayerFee === 'native' && styles.feeButtonTextActive
-                      ]}> Native</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.feeButton,
-                        selectedRelayerFee === 'stablecoin' && styles.feeButtonActive,
-                        styles.gasFeeStableCon
-                      ]}
-                      onPress={() => setSelectedRelayerFee('stablecoin')}
-                    >
-                      <Image
-                        source={{ uri: selectedFromAsset.logoURI }}
-                        style={styles.feeIconSmall}
-                      />
-                      <Text style={[
-                        styles.feeButtonText,
-                        selectedRelayerFee === 'stablecoin' && styles.feeButtonTextActive
-                      ]}> {selectedFromAsset.symbol}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>}
               </View>
-            )}
+            </View>
 
             <Text style={[styles.labelText,{marginTop:hp(1.2),alignSelf:"flex-start"}]}>Reciever Address</Text>
             <View style={styles.recieverAddressInput}>

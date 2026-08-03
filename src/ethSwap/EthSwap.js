@@ -38,6 +38,7 @@ import { getChainTokenData, swapPepare } from '../utilities/AllbridgeUtil';
 import { swap_prepare } from '../../All_bridge';
 import LocalTxManager from '../utilities/LocalTxManager';
 import BottomSheetModal from '../Dashboard/reusables/BottomSheetModal';
+import { getSafeErrorMessage } from '../utilities/errorSanitizer';
 
 const ConfirmTx = ({
   visible,
@@ -626,10 +627,7 @@ const EthSwap = () => {
           CustomInfoProvider.show(
             'error',
             '!Opps',
-            (getRangoSwaps.error || getRangoSwaps.error?.message) ===
-              "Cannot read property 'swaps' of null"
-              ? 'Unable to get route'
-              : getRangoSwaps.error || 'Unable to get route'
+            getSafeErrorMessage(getRangoSwaps.error, 'Unable to get route')
           );
           setbtnDisable(true);
           setbtnMessage('No route found');
@@ -730,7 +728,7 @@ const EthSwap = () => {
           CustomInfoProvider.show(
             'error',
             '!Opps',
-            err.message || 'Failed to get quote. Please try again.'
+            getSafeErrorMessage(err.message, 'Failed to get quote. Please try again.')
           );
           return null;
         }
@@ -773,7 +771,10 @@ const EthSwap = () => {
         CustomInfoProvider.show(
           'error',
           '!Opps',
-          Array.isArray(err.message) ? err.message[0] : err.message || 'Failed to get quote. Please try again.'
+          getSafeErrorMessage(
+            Array.isArray(err.message) ? err.message[0] : err.message,
+            'Failed to get quote. Please try again.'
+          )
         );
         return null;
       }
@@ -815,8 +816,9 @@ const EthSwap = () => {
       });
 
       if (respo.err?.status) {
-        CustomInfoProvider.show('error', '!Opps', respo.err.message || 'Failed to prepare swap');
-        return { status: false, message: respo.err.message || 'Failed to prepare swap' };
+        const safePrepareError = getSafeErrorMessage(respo.err.message, 'Failed to prepare swap');
+        CustomInfoProvider.show('error', '!Opps', safePrepareError);
+        return { status: false, message: safePrepareError };
       }
 
       const rawTxs = respo.res.data;
@@ -891,8 +893,9 @@ const EthSwap = () => {
       });
 
       if (err?.status) {
-        CustomInfoProvider.show('error', '!Opps', err.message || 'Swap execution failed');
-        return { status: false, message: err.message || 'Broadcast failed' };
+        const safeBroadcastError = getSafeErrorMessage(err.message, 'Swap execution failed');
+        CustomInfoProvider.show('error', '!Opps', safeBroadcastError);
+        return { status: false, message: safeBroadcastError };
       }
 
       if (Array.isArray(res) && res.length > 0) {
@@ -1044,7 +1047,11 @@ const EthSwap = () => {
         setSwapExecuting(false);
         navigation.navigate('Transactions');
       } else {
-        CustomInfoProvider.show("error", "!Oops", swapResult.error);
+        CustomInfoProvider.show(
+          "error",
+          "!Oops",
+          getSafeErrorMessage(swapResult.error, 'Swap failed. Please try again.')
+        );
         setSwapExecuting(false);
       }
       return;
@@ -1070,7 +1077,7 @@ const EthSwap = () => {
         CustomInfoProvider.show(
           'error',
           '!Opps',
-          respo.err.message || 'Failed to prepare swap'
+          getSafeErrorMessage(respo.err.message, 'Failed to prepare swap')
         );
         return;
       }
@@ -1095,7 +1102,7 @@ const EthSwap = () => {
         CustomInfoProvider.show(
           'error',
           '!Opps',
-          resuleOfAllowance.error?.message || 'Token allowance failed'
+          getSafeErrorMessage(resuleOfAllowance.error?.message, 'Token allowance failed')
         );
         return;
       }
@@ -1122,7 +1129,7 @@ const EthSwap = () => {
         CustomInfoProvider.show(
           'error',
           '!Opps',
-          submitResult.err.message || 'Swap failed'
+          getSafeErrorMessage(submitResult.err.message, 'Swap failed')
         );
       } else {
         await ShortTermStorage.syncTx({
@@ -1143,11 +1150,10 @@ const EthSwap = () => {
         setTimeout(() => navigation.navigate('Transactions'), 1000);
       }
     } catch (error) {
-      console.error('Swap error:', error);
       CustomInfoProvider.show(
         'error',
         '!Opps',
-        error.message || 'Swap failed. Please try again'
+        getSafeErrorMessage(error, 'Swap failed. Please try again')
       );
     } finally {
       setSwapExecuting(false);
@@ -1229,8 +1235,11 @@ const EthSwap = () => {
               setSwapExecuting(false);
             } else {
               setSwapExecuting(false);
-              console.error("Transaction failed:", resultOfBidirectional?.res);
-              CustomInfoProvider.show("error", resultOfBidirectional?.res || "Bridge Faild.");
+              CustomInfoProvider.show(
+                "error",
+                "!Oops",
+                getSafeErrorMessage(resultOfBidirectional?.res, "Bridge Faild.")
+              );
             }
           } catch (error) {
             setSwapExecuting(false);
@@ -1256,8 +1265,7 @@ const EthSwap = () => {
             CustomInfoProvider.show("success", "Hurray", "Bridge Successfull.");
           } else {
             setSwapExecuting(false);
-            CustomInfoProvider.show("error", "!Oops", result.error || "Bridge Faild.");
-            console.info("Bridge__Faild:-", result);
+            CustomInfoProvider.show("error", "!Oops", getSafeErrorMessage(result.error, "Bridge Faild."));
           }
         }
       } catch (error) {
@@ -1279,7 +1287,11 @@ const EthSwap = () => {
           setSwapExecuting(false);
           navigation.navigate('Transactions');
         } else {
-          CustomInfoProvider.show("error", "!Oops", swapResult.error);
+          CustomInfoProvider.show(
+            "error",
+            "!Oops",
+            getSafeErrorMessage(swapResult.error, 'Swap failed. Please try again.')
+          );
           setSwapExecuting(false);
         }
       } else {
@@ -1345,10 +1357,8 @@ const EthSwap = () => {
     },
     input: {
       fontSize: 24,
-      padding: 12,
-      borderRadius: 8,
-      backgroundColor: theme.bg,
       color: theme.headingTx,
+      width:"80%"
     },
     quoteTextCon: {
       flexDirection: 'row',
@@ -1575,6 +1585,25 @@ const EthSwap = () => {
       backgroundColor: '#4F46E5',
       borderColor: '#4F46E5',
     },
+    textBtnCon: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      backgroundColor: theme.bg,
+      paddingHorizontal: 12,
+      paddingVertical:9,
+      borderRadius: 8,
+    },
+    maxBtnCon: {
+      backgroundColor: theme.buttonColor,
+      paddingHorizontal: 13,
+      paddingVertical: 7,
+      borderRadius: 8
+    },
+    maxBtnTxt:{
+      color:"#fff",
+      fontSize:16
+    }
   });
   const isAllbridgeTx = fromToken?.chain === CHAINS.STR.symbol || toToken?.chain === CHAINS.STR.symbol;
   
@@ -1608,7 +1637,8 @@ const EthSwap = () => {
               isLoadingBalance={fromBalanceLoading}
               showEmpty={toToken&&!fromToken?true:false}
             />
-            <TextInput
+            <View style={styles.textBtnCon}>
+              <TextInput
               maxLength={30}
               returnKeyType="done"
               style={styles.input}
@@ -1618,6 +1648,10 @@ const EthSwap = () => {
               keyboardType="decimal-pad"
               placeholderTextColor="#666"
             />
+            <TouchableOpacity disabled={!fromToken} style={styles.maxBtnCon} onPress={() => {handleAmount(fromTokenBalance?.toString())}}>
+              <Text style={styles.maxBtnTxt}>MAX</Text>
+            </TouchableOpacity>
+            </View>
           </View>
 
           <TouchableOpacity style={styles.switchButton} onPress={switchTokens}>

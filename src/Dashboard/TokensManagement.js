@@ -70,7 +70,11 @@ export const GetCryptoList = async (chainId, state) => {
                     !tokenAddr ||
                     tokenAddr === '0x0000000000000000000000000000000000000000';
 
-                const normalizeChain = (chain) => chain === 'STR' ? 'Stellar' : chain;
+                const normalizeChain = (chain) => {
+                    if (chain === 'STR') return 'Stellar';
+                    if (chain === 'BNB') return 'BSC';
+                    return chain;
+                };
                 const portfolioToken = isNative
                     ? activeWalletTokens.find(t =>
                         normalizeChain(t.chain) === normalizeChain(chainId) &&

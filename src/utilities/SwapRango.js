@@ -5,6 +5,7 @@ import { CHAINS, isNativeTokenAddress } from './TokenUtils';
 import CustomInfoProvider from '../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import ShortTermStorage from './ShortTermStorage';
 import Web3 from 'web3';
+import { getSafeErrorMessage } from './errorSanitizer';
 
 export const swapBestRoute = async (
     fromTokenBlockchain, fromTokenSymbol, fromTokenAddress,
@@ -238,10 +239,11 @@ export async function performeRangoSwap(rangoQuoteInfo, state, fromToken, toToke
         );
 
         if (!responses.status) {
-            CustomInfoProvider.show("error", "!Opps", responses.error || "Route confirmation failed.");
+            const safeRouteError = getSafeErrorMessage(responses.error, "Route confirmation failed.");
+            CustomInfoProvider.show("error", "!Opps", safeRouteError);
             return {
                 status: false,
-                error: responses.error || "Route confirmation failed."
+                error: safeRouteError
             };
         }
 
@@ -270,10 +272,14 @@ export async function performeRangoSwap(rangoQuoteInfo, state, fromToken, toToke
         const hasError = Array.isArray(swapPreparedTxRes.response) && swapPreparedTxRes.response.some(item => item?.ok === false);
         if (hasError || swapPreparedTxRes.status === false) {
             const firstError = Array.isArray(swapPreparedTxRes.response) ? swapPreparedTxRes.response.find(item => item.ok === false) : null;
-            CustomInfoProvider.show("error", "!Opps", firstError?.error || swapPreparedTxRes.error);
+            const safePrepareTxError = getSafeErrorMessage(
+                firstError?.error || swapPreparedTxRes.error,
+                "Failed to prepare transaction."
+            );
+            CustomInfoProvider.show("error", "!Opps", safePrepareTxError);
             return {
                 status: false,
-                error: firstError?.error || swapPreparedTxRes.error
+                error: safePrepareTxError
             };
         }
 
@@ -330,10 +336,11 @@ export async function performeRangoSwap(rangoQuoteInfo, state, fromToken, toToke
                 }
             }
         } else {
-            CustomInfoProvider.show("error", "!Opps", submitTx.error || "Swap failed");
+            const safeSubmitError = getSafeErrorMessage(submitTx.error, "Swap failed");
+            CustomInfoProvider.show("error", "!Opps", safeSubmitError);
             return {
                 status: false,
-                error: submitTx.error || "Swap failed."
+                error: safeSubmitError
             };
         }
     } catch (error) {

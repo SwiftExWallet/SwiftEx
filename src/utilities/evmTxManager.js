@@ -1,6 +1,7 @@
 import { NativeModules } from "react-native";
 import { ethers } from "ethers";
 import { CHAINS } from "./TokenUtils";
+import { PPOST, proxyRequest } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/api";
 
 const GAS_PRICE_BUFFER_PCT = 120; // 20% extra
 const GAS_LIMIT_BUFFER_PCT = 120; // 20% extra
@@ -124,30 +125,47 @@ export const evmTxManager = async (chainName, fromAddress, amount, toAddress) =>
 
 export const fustionEvmTxManager = async (chainName, fromAddress, amount, toAddress, data) => {
     const chainConfig = CHAINS[chainName];
-    
+
     const txParams = {
         to: toAddress,
-        value: ethers.BigNumber.from(amount), 
+        value: ethers.BigNumber.from(amount),
         data: data
     };
 
+    const rpcUrls = [chainConfig.rpcUrl, ...(chainConfig.backupRPCUrls || [])];
+
+    async function withRpcFallback(operationFn) {
+        let lastError;
+        for (const url of rpcUrls) {
+            try {
+                const provider = new ethers.providers.JsonRpcProvider(url);
+                return await operationFn(provider);
+            } catch (error) {
+                console.log(`RPC failed :`, error.message);
+                lastError = error;
+            }
+        }
+        throw lastError;
+    }
+
     async function prepareUnsignedTxForNativeSign(config) {
-        const provider = new ethers.providers.JsonRpcProvider(config.rpcUrl);
-        const [nonce, feeData, gasLimit] = await Promise.all([
-            provider.getTransactionCount(fromAddress, 'pending'),
-            provider.getFeeData(),
-            provider.estimateGas({
-                to: txParams.to,
-                from: fromAddress,
-                value: txParams.value,
-                data: txParams.data || '0x',
-            }),
-        ]);
-        const gasPrice = feeData.gasPrice.mul(120).div(100);
+        const [nonce, feeData, gasLimit] = await withRpcFallback((provider) =>
+            Promise.all([
+                provider.getTransactionCount(fromAddress, 'pending'),
+                provider.getFeeData(),
+                provider.estimateGas({
+                    to: txParams.to,
+                    from: fromAddress,
+                    value: txParams.value,
+                    data: txParams.data || '0x',
+                }),
+            ])
+        );
+        const gasPrice = feeData.gasPrice.mul(125).div(100);
         const populatedTx = {
             nonce: ethers.utils.hexlify(nonce),
             gasPrice: ethers.utils.hexlify(gasPrice),
-            gasLimit: ethers.utils.hexlify(gasLimit.mul(120).div(100)),
+            gasLimit: ethers.utils.hexlify(gasLimit.mul(125).div(100)),
             to: txParams.to,
             value: ethers.utils.hexlify(txParams.value),
             data: txParams.data || '0x',
@@ -165,13 +183,51 @@ export const fustionEvmTxManager = async (chainName, fromAddress, amount, toAddr
             chainConfig.chainId
         );
 
-        const provider = new ethers.providers.JsonRpcProvider(chainConfig.rpcUrl);
-        const txResponse = await provider.sendTransaction(signedResult.signedTx.slice(2));
-        console.info(txResponse);
-        return {
-            txResponse: txResponse,
-            status: true,
-        };
+        const { res, err } = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, {
+            signedTransactions: [signedResult.signedTx.slice(2)],
+            broadcastChain: chainConfig.subName === "BNB" ? "BSC" : chainConfig.subName
+        });
+
+        if (err?.status) {
+            return {
+                error: "Tx broadcast faild",
+                status: false,
+            };
+        }
+
+        const txHash = res?.results?.[0]?.transactionHash;
+        if (!txHash) {
+            return {
+                error: "No txHash in broadcast",
+                status: false,
+            };
+        }
+
+        console.log('Tx sent, hash:', txHash);
+
+        const TIMEOUT_MS = 90_000;
+        const receipt = await Promise.race([
+            withRpcFallback((provider) => provider.waitForTransaction(txHash, 1)),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error(`Tx confirmation timeout after ${TIMEOUT_MS}ms`)), TIMEOUT_MS)
+            ),
+        ]);
+
+        if (receipt.status === 1) {
+            console.log('Tx confirmed:', receipt.transactionHash);
+            return {
+                txResponse: { hash: txHash },
+                status: true,
+            };
+        } else {
+            console.info('Tx failed on-chain:', receipt.transactionHash);
+            return {
+                txResponse: { hash: txHash },
+                receipt: receipt,
+                status: false,
+                error: 'Transaction reverted on-chain',
+            };
+        }
     } catch (error) {
         console.error(`${chainName} Error:`, error.message);
         return {

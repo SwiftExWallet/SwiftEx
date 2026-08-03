@@ -30,7 +30,7 @@ function InvestmentChart() {
   const [pull, setPull] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [tokenInfoList, setTokenInfoList] = useState([]);
+  const [tokenInfoList, setTokenInfoList] = useState(TemporaryTokens);
   const [showCustomInfo,setshowCustomInfo]=useState(false);
   const [portfolioError, setPortfolioError] = useState(false);
   const { mergeWithApiTokens } = useAssetManager(`${wallet?.address}_${state?.STELLAR_PUBLICK_KEY}`);

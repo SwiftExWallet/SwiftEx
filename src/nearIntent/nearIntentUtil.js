@@ -17,6 +17,7 @@ import {
     StrKey,
 } from "@stellar/stellar-sdk";
 import { Buffer } from "buffer";
+import { PPOST, proxyRequest } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/api";
 
 const { TransactionSigner, StellarSigner } = NativeModules;
 
@@ -62,6 +63,27 @@ function instrumentProvider(provider) {
     };
     provider.__rpcCallCounts = counts;
     return provider;
+}
+
+/**
+ * Tries an EVM read/write operation against each RPC url in order (primary
+ * first, then backups). Switches automatically on ANY failure — 403s, rate
+ * limits, "archive node requires personal token" errors, timeouts, etc.
+ * Throws the last error only if every url fails.
+ */
+async function withRpcFallback(rpcUrls, operationFn, { label = "rpc-op" } = {}) {
+    let lastError;
+    for (const url of rpcUrls) {
+        try {
+            const provider = instrumentProvider(new ethers.providers.JsonRpcProvider(url));
+            provider.pollingInterval = 6000;
+            return await operationFn(provider);
+        } catch (error) {
+            logWarn(`${label} failed on RPC (${url}), trying next`, formatError(error));
+            lastError = error;
+        }
+    }
+    throw lastError ?? new Error(`${label}: no RPC urls provided`);
 }
 
 // ---------------------------------------------------------------------------
@@ -431,15 +453,32 @@ async function withRetry(fn, { retries = 3, baseDelayMs = 750, label = "operatio
     throw lastError;
 }
 
+function withTimeout(promise, ms, message) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+    ]);
+}
+
 // ---------------------------------------------------------------------------
 // EVM deposit execution
 // ---------------------------------------------------------------------------
 
+/**
+ * Builds, signs (via native module), and broadcasts (via backend proxy) an
+ * ERC-20 transfer depositing funds into the swap route. RPC reads (nonce,
+ * balances, chainId, gas estimate, fee data) go through `withRpcFallback`,
+ * trying rpcUrl + chainConfig.backupRPCUrls in order and switching
+ * automatically on failure (403s, rate limits, "archive node" errors,
+ * etc). The signed tx itself is broadcast through the backend
+ * `/v1/eth/transaction/broadcast` endpoint rather than directly via RPC.
+ */
 async function sendDepositViaNativeSigner({
-    provider,
+    rpcUrl,
     chain,
     activeWalletAddress,
     activeChain,
+    chainConfig,
     tokenContractAddress,
     depositAddress,
     amountSmallestUnit,
@@ -462,28 +501,32 @@ async function sendDepositViaNativeSigner({
         throw new Error("Deposit amount must be greater than zero");
     }
 
-    const erc20 = new ethers.Contract(tokenContractAddress, ERC20_ABI, provider);
+    // rpcUrl (primary, as before) + chainConfig.backupRPCUrls for fallback.
+    const rpcUrls = [rpcUrl, ...(chainConfig?.backupRPCUrls || [])];
 
-    // --- Batch 1: everything that doesn't depend on tx calldata ---------------
+    // --- Batch 1: everything that doesn't depend on tx calldata, with RPC fallback -----
     // getNetwork (also proves RPC reachability), getCode (contract
     // existence), token balance, native balance, and both nonce lookups are
-    // all independent RPC calls — fire them together instead of one at a
-    // time. This cuts ~6 sequential round-trips down to 1 round-trip's
-    // worth of wall-clock time (the calls still count individually against
-    // rate limits, but latency is what the user feels).
-    let network, code, tokenBalance, nativeBalance, pendingNonce, latestNonce;
-    try {
-        [network, code, tokenBalance, nativeBalance, pendingNonce, latestNonce] = await Promise.all([
-            provider.getNetwork(),
-            provider.getCode(tokenContractAddress),
-            erc20.balanceOf(activeWalletAddress),
-            provider.getBalance(activeWalletAddress),
-            provider.getTransactionCount(activeWalletAddress, "pending"),
-            provider.getTransactionCount(activeWalletAddress, "latest"),
-        ]);
-    } catch (err) {
-        throw new Error(`Unable to reach RPC endpoint: ${err.message}`);
-    }
+    // all independent RPC calls — fire them together against whichever RPC
+    // in rpcUrls responds successfully.
+    const { network, code, tokenBalance, nativeBalance, pendingNonce, latestNonce } =
+        await withRpcFallback(
+            rpcUrls,
+            async (provider) => {
+                const erc20 = new ethers.Contract(tokenContractAddress, ERC20_ABI, provider);
+                const [network, code, tokenBalance, nativeBalance, pendingNonce, latestNonce] =
+                    await Promise.all([
+                        provider.getNetwork(),
+                        provider.getCode(tokenContractAddress),
+                        erc20.balanceOf(activeWalletAddress),
+                        provider.getBalance(activeWalletAddress),
+                        provider.getTransactionCount(activeWalletAddress, "pending"),
+                        provider.getTransactionCount(activeWalletAddress, "latest"),
+                    ]);
+                return { network, code, tokenBalance, nativeBalance, pendingNonce, latestNonce };
+            },
+            { label: "pre-tx reads" }
+        );
 
     if (activeChain !== undefined && activeChain !== null && String(network.chainId) !== String(activeChain)) {
         throw new Error(
@@ -507,28 +550,39 @@ async function sendDepositViaNativeSigner({
     const nonce = pendingNonce;
 
     // --- Build transfer calldata ---------------------------------------------
-    const data = erc20.interface.encodeFunctionData("transfer", [depositAddress, amountBN]);
+    const iface = new ethers.utils.Interface(ERC20_ABI);
+    const data = iface.encodeFunctionData("transfer", [depositAddress, amountBN]);
 
-    // --- Batch 2: gas estimation + fee data ------------------------------------
-    // Both depend only on calldata (not on each other), so run together.
-    const [gasEstimateResult, feeDataResult] = await Promise.allSettled([
-        provider.estimateGas({ from: activeWalletAddress, to: tokenContractAddress, data }),
-        provider.getFeeData(),
-    ]);
-    if (gasEstimateResult.status === "rejected") {
-        // estimateGas failing almost always means the tx would revert
-        // (e.g. paused token, blacklisted address, etc). Do not paper over
-        // this with a hardcoded fallback gas limit — that would broadcast a
-        // transaction virtually guaranteed to fail and burn the user's gas.
-        throw new Error(
-            `Gas estimation failed — transaction would likely revert: ${gasEstimateResult.reason?.message}`
-        );
-    }
-    if (feeDataResult.status === "rejected") {
-        throw new Error(`Unable to fetch fee data from RPC: ${feeDataResult.reason?.message}`);
-    }
-    const gasEstimate = gasEstimateResult.value;
-    const feeData = feeDataResult.value;
+    // --- Batch 2: gas estimation + fee data, with RPC fallback -----------------
+    const { gasEstimate, feeData } = await withRpcFallback(
+        rpcUrls,
+        async (provider) => {
+            const [gasEstimateResult, feeDataResult] = await Promise.allSettled([
+                provider.estimateGas({ from: activeWalletAddress, to: tokenContractAddress, data }),
+                provider.getFeeData(),
+            ]);
+            if (gasEstimateResult.status === "rejected") {
+                // estimateGas failing almost always means the tx would revert
+                // (e.g. paused token, blacklisted address, etc). This is NOT
+                // an RPC-availability problem, so don't let withRpcFallback
+                // retry it on another RPC — rethrow so it bubbles straight
+                // out. (withRpcFallback still treats this as "this RPC
+                // failed" and would move to the next url; that's acceptable
+                // since the outcome — genuine revert — will be identical on
+                // every RPC, so the loop harmlessly exhausts and surfaces
+                // this same error.)
+                throw new Error(
+                    `Gas estimation failed — transaction would likely revert: ${gasEstimateResult.reason?.message}`
+                );
+            }
+            if (feeDataResult.status === "rejected") {
+                throw new Error(`Unable to fetch fee data from RPC: ${feeDataResult.reason?.message}`);
+            }
+            return { gasEstimate: gasEstimateResult.value, feeData: feeDataResult.value };
+        },
+        { label: "gas estimate + fee data" }
+    );
+
     const gasLimit = gasEstimate.mul(GAS_BUFFER_NUM).div(GAS_BUFFER_DEN);
     const supportsEip1559 = Boolean(feeData.maxFeePerGas && feeData.maxPriorityFeePerGas);
 
@@ -593,8 +647,21 @@ async function sendDepositViaNativeSigner({
     }
 
     // --- Broadcast ----------------------------------------------------------------
-    const txResponse = await provider.sendTransaction(rawTx);
-    return txResponse;
+    const { res, err } = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, {
+        signedTransactions: [rawTx],
+        broadcastChain: chainConfig.subName=== "BNB" ? "BSC" : chainConfig.subName,
+    });
+
+    if (err?.status) {
+        throw new Error(`Broadcast failed via backend: ${err?.message ?? "unknown error"}`);
+    }
+
+    const txHash = res?.results?.[0]?.transactionHash;
+    if (!txHash) {
+        throw new Error("Backend broadcast succeeded but returned no txHash");
+    }
+
+    return { txHash };
 }
 
 // ---------------------------------------------------------------------------
@@ -618,7 +685,8 @@ export async function NearIntentSwapExecute({
     activeWalletAddress,
     activeChain,
     refundType,
-    destinatTokenContract
+    destinatTokenContract,
+    chainConfig,
 }) {
     const lockKey = `evm:${activeWalletAddress}`;
     if (inFlightSwaps.has(lockKey)) {
@@ -643,23 +711,9 @@ export async function NearIntentSwapExecute({
             throw new Error("rpcUrl is required");
         }
 
-        const provider = instrumentProvider(new ethers.providers.JsonRpcProvider(rpcUrl));
-        // ethers v5 defaults pollingInterval to 4000ms, and internally each
-        // poll cycle inside txResponse.wait() issues BOTH
-        // eth_getTransactionReceipt and eth_blockNumber. On a slower-to-
-        // confirm tx this alone can account for the majority of RPC calls
-        // in a swap (e.g. 40s to confirm / 4s interval = 10 cycles x 2
-        // calls = 20 calls). Widen it — Polygon's block time is ~2s, but
-        // there's no value in polling faster than the receipt could
-        // possibly change, so this halves call volume during confirmation
-        // without meaningfully increasing perceived latency.
-        provider.pollingInterval = 6000;
-
-        // NOTE: RPC reachability is verified inside sendDepositViaNativeSigner
-        // via provider.getNetwork() (which also validates chainId), so we
-        // deliberately do NOT make a separate getBlockNumber() call here —
-        // that would be a redundant round-trip to the same RPC endpoint
-        // for a check we're about to perform anyway a few calls later.
+        // rpcUrl (primary) + chainConfig.backupRPCUrls, used for the
+        // confirmation-wait fallback below.
+        const rpcUrls = [rpcUrl, ...(chainConfig?.backupRPCUrls || [])];
 
         const quoteResult = await getQuote({
             originBlockchain,
@@ -688,32 +742,35 @@ export async function NearIntentSwapExecute({
         const depositAddress = quote.quote.depositAddress;
         const amountSmallestUnit = quote.quote.amountIn;
 
-        const txResponse = await sendDepositViaNativeSigner({
-            provider,
+        const { txHash } = await sendDepositViaNativeSigner({
+            rpcUrl,
             chain,
             activeWalletAddress,
             activeChain,
+            chainConfig,
             tokenContractAddress: originTokenContract,
             depositAddress,
             amountSmallestUnit,
         });
 
-        // Bounded wait for confirmation instead of an unbounded `.wait()`.
+        // Bounded wait for confirmation, also falling back across RPCs.
+        // This is exactly the case that previously failed with
+        // "Archive requests require a personal token" on one public RPC —
+        // waitForTransaction now retries against the next url in rpcUrls.
         const receipt = await withTimeout(
-            txResponse.wait(1),
+            withRpcFallback(
+                rpcUrls,
+                (provider) => provider.waitForTransaction(txHash, 1),
+                { label: "confirmation" }
+            ),
             TX_CONFIRMATION_TIMEOUT_MS,
             "Transaction confirmation timed out"
         );
 
         if (receipt.status !== 1) {
             throw new Error(
-                `Deposit transaction reverted on-chain (tx: ${txResponse.hash}). No funds were sent to the swap route.`
+                `Deposit transaction reverted on-chain (tx: ${txHash}). No funds were sent to the swap route.`
             );
-        }
-
-        if (rpcCallLoggingEnabled && provider.__rpcCallCounts) {
-            const total = Object.values(provider.__rpcCallCounts).reduce((a, b) => a + b, 0);
-            logWarn("RPC call summary for this swap", { total, breakdown: provider.__rpcCallCounts });
         }
 
         // The on-chain deposit has now definitely succeeded. From this point
@@ -724,7 +781,7 @@ export async function NearIntentSwapExecute({
             await withRetry(
                 () =>
                     withSdkAuth(() =>
-                        OneClickService.submitDepositTx({ depositAddress, txHash: txResponse.hash })
+                        OneClickService.submitDepositTx({ depositAddress, txHash })
                     ),
                 { retries: SUBMIT_DEPOSIT_RETRIES, label: "submitDepositTx" }
             );
@@ -734,13 +791,13 @@ export async function NearIntentSwapExecute({
                 success: false,
                 data: {
                     depositConfirmedOnChain: true,
-                    txHash: txResponse.hash,
+                    txHash,
                     depositAddress,
                     quote,
                 },
                 error: formatError(
                     new Error(
-                        `Deposit succeeded on-chain (tx: ${txResponse.hash}) but failed to register with the ` +
+                        `Deposit succeeded on-chain (tx: ${txHash}) but failed to register with the ` +
                             `swap backend. This requires manual follow-up — do not resubmit the deposit.`
                     )
                 ),
@@ -751,7 +808,7 @@ export async function NearIntentSwapExecute({
             success: true,
             data: {
                 quote,
-                txHash: txResponse.hash,
+                txHash,
                 finalStatus: "pending", // caller must invoke pollStatus() / GetNearIntentStatus() to track progress
                 depositAddress,
             },
@@ -763,13 +820,6 @@ export async function NearIntentSwapExecute({
     } finally {
         inFlightSwaps.delete(lockKey);
     }
-}
-
-function withTimeout(promise, ms, message) {
-    return Promise.race([
-        promise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
-    ]);
 }
 
 // ---------------------------------------------------------------------------

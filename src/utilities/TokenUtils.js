@@ -215,6 +215,22 @@ const getEVMTokens = async (network, walletAddress, onProgress = null, cacheKey 
       totalValueUSD += balanceUSD;
     }
 
+    const hasNativeToken = tokens.some(t => t.contractAddress === 'Native');
+    if (!hasNativeToken) {
+      tokens.unshift({
+        chain: config.chain,
+        name: config.nativeName,
+        symbol: config.nativeSymbol,
+        balance: 0,
+        balanceUSD: 0,
+        decimals: 18,
+        contractAddress: 'Native',
+        active: true,
+        price: 0,
+        imageUrl: config.nativeImage,
+      });
+    }
+
     if (onProgress) {
       onProgress({
         chain: config.chain,
@@ -235,7 +251,21 @@ const getEVMTokens = async (network, walletAddress, onProgress = null, cacheKey 
         return { tokens: cachedTokens, totalValueUSD: cachedTokens.reduce((s, t) => s + t.balanceUSD, 0) };
       }
     }
-    return { tokens: [], totalValueUSD: 0 };
+    return {
+      tokens: [{
+        chain: config.chain,
+        name: config.nativeName,
+        symbol: config.nativeSymbol,
+        balance: 0,
+        balanceUSD: 0,
+        decimals: 18,
+        contractAddress: 'Native',
+        active: true,
+        price: 0,
+        imageUrl: config.nativeImage,
+      }],
+      totalValueUSD: 0
+    };
   }
 };
 

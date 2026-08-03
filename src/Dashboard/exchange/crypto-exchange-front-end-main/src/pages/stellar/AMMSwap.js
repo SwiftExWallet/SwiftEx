@@ -32,6 +32,7 @@ import {
 } from "react-native-responsive-screen";
 import { colors } from '../../../../../../Screens/ThemeColorsConfig';
 import { GetAquariusSwapQuote, ExecuteAquariusSwap } from '../../../../../../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/stellar/AquariusUtil';
+import { getSafeErrorMessage } from '../../../../../../utilities/errorSanitizer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
@@ -313,7 +314,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
         setexchangeRes(null);
         setToAmount('');
         setIsLoading(false)
-        CustomInfoProvider.show("Info","!Opps",res?.error||"Unable to fetch quotes");
+        CustomInfoProvider.show("Info","!Opps",getSafeErrorMessage(res?.error, "Unable to fetch quotes"));
       }
   }
   function URLBuilder(
@@ -510,7 +511,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
       } else {
         settokenBurn(false)
         console.log("error in aquarius execute", respo.error)
-        CustomInfoProvider.show("error", "!Opps", respo.error || "Transaction Failed.");
+        CustomInfoProvider.show("error", "!Opps", getSafeErrorMessage(respo.error, "Transaction Failed."));
       }
       return;
     }
@@ -528,7 +529,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
     else{
       settokenBurn(false)
       console.log("--Error--",respo.error)
-      CustomInfoProvider.show("error","!Opps",respo.error.result_codes==="op_under_dest_min"?"Swap cannot be completed because the amount is too small.":"Transaction Failed.");
+      CustomInfoProvider.show("error","!Opps",respo.error?.result_codes==="op_under_dest_min"?"Swap cannot be completed because the amount is too small.":"Transaction Failed.");
     }
   }
 
