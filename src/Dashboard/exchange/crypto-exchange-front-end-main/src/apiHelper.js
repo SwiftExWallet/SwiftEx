@@ -51,8 +51,8 @@ const apiRequest = async ({
       }
     };
 
-    // Add body for POST, PUT, PATCH requests
-    if (['post', 'put', 'patch'].includes(method.toLowerCase()) && body) {
+    // Add body for POST, PUT, PATCH, DELETE requests
+    if (['post', 'put', 'patch', 'delete'].includes(method.toLowerCase()) && body) {
       config.data = body;
       console.log('📦 Body added to request');
     }
@@ -182,7 +182,7 @@ const apiHelper = {
     return apiRequest({ url, method: 'PATCH', body, headers });
   },
   
-  delete: (url, headers = {}) => {
+  delete: (url, body, headers = {}) => {
     console.log('🗑️ DELETE request initiated');
     return apiRequest({ url, method: 'DELETE',body, headers });
   }

@@ -208,8 +208,10 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
         evmAddress,
         stellarAddress,
         dydxAddress,
+        null,
+        true,
       );
-      if (walletInfo.tokens.length > 1) {
+      if (Array.isArray(walletInfo?.tokens) && walletInfo.tokens.length > 0) {
         await mergeWithApiTokens(walletInfo.tokens);
         dispatch({
           type: PORTFOLIO_CONFIG,

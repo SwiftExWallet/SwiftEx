@@ -10,11 +10,82 @@ import AsyncStorageLib from '@react-native-async-storage/async-storage'
 import  Clipboard from "@react-native-clipboard/clipboard";
 import { firebaseNotification } from './firebasePushMessages'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import store from '../../components/Redux/Store'
+import { GetWalletTokens } from '../../utilities/TokenUtils'
+import { getAssetId } from '../../utilities/TokenManageHook'
+import { MULTICHAIN_PORTFOLIO, PORTFOLIO_CONFIG } from '../../components/Redux/actions/type'
 
 
 const copyToClipboard = (text) => {
   Clipboard.setString(text);
   alert("Copied");
+};
+
+const refreshPortfolioOnNotification = async (source) => {
+  try {
+    const state = store.getState();
+    const evmAddress = state?.wallet?.address;
+    const stellarAddress = state?.STELLAR_PUBLICK_KEY;
+    const dydxAddress = state?.DYDX_ADDRESS_KEY;
+
+    if (!evmAddress && !stellarAddress) {
+      return;
+    }
+
+    const walletInfo = await GetWalletTokens(evmAddress, stellarAddress, dydxAddress);
+    const apiTokens = walletInfo?.tokens || [];
+    if (!Array.isArray(apiTokens) || apiTokens.length === 0) {
+      return;
+    }
+
+    const storageKey = `${evmAddress}_${stellarAddress}`;
+    const stored = await AsyncStorage.getItem(storageKey);
+    const savedTokens = stored ? JSON.parse(stored) : [];
+    const savedMap = new Map(savedTokens.map((t) => [getAssetId(t), t]));
+
+    const merged = apiTokens.map((apiToken) => {
+      const id = getAssetId(apiToken);
+      const savedToken = savedMap.get(id);
+
+      if (savedToken) {
+        return { ...apiToken, active: savedToken.active };
+      }
+      if (apiToken && apiToken.balanceUSD !== undefined && apiToken.balanceUSD !== null) {
+        const balanceVal = parseFloat(apiToken.balanceUSD);
+        if (balanceVal <= 0) return apiToken;
+        return { ...apiToken, active: balanceVal >= 0.5 };
+      }
+      return apiToken;
+    });
+
+    const apiIds = new Set(apiTokens.map(getAssetId));
+    const customTokens = savedTokens.filter((t) => !apiIds.has(getAssetId(t)));
+
+    store.dispatch({
+      type: MULTICHAIN_PORTFOLIO,
+      payload: { activeWalletPortFolio: [...merged, ...customTokens] },
+    });
+
+    store.dispatch({
+      type: PORTFOLIO_CONFIG,
+      payload: {
+        isTotalInUSDVisible: true,
+        totalInUSD: walletInfo.totalValueUSD,
+        totalStellarInUSD: walletInfo.totalSTRUSD,
+      },
+    });
+    console.info('Portfolio refreshed');
+  } catch (e) {
+    console.error('Portfolio refresh failed (' + source + '):', e);
+  }
+};
+
+const PORTFOLIO_REFRESH_TITLE_KEYWORDS = ['received', 'order', 'sdex', 'executed'];
+
+const shouldRefreshPortfolioForTitle = (title) => {
+  if (typeof title !== 'string') return false;
+  const lowerTitle = title.toLowerCase();
+  return PORTFOLIO_REFRESH_TITLE_KEYWORDS.some((keyword) => lowerTitle.includes(keyword));
 };
 
 
@@ -116,6 +187,9 @@ const useFirebaseCloudMessaging = (navigation) => {
       console.log(remoteMessage.notification.title)
       //SendNotification(remoteMessage.notification.title,remoteMessage.notification.body)
     //  await firebaseNotification(remoteMessage.notification.title,'SwiftEx','You have new Exchange updates',remoteMessage.notification.body)
+      if (shouldRefreshPortfolioForTitle(remoteMessage?.notification?.title)) {
+        refreshPortfolioOnNotification('onMessage')
+      }
     })
     // messaging().setBackgroundMessageHandler(async remoteMessage => {
     //   console.log('Message handled in the background!', remoteMessage);
@@ -136,6 +210,9 @@ const useFirebaseCloudMessaging = (navigation) => {
         'Notification caused app to open from background state:',
         remoteMessage.notification
       )
+      if (shouldRefreshPortfolioForTitle(remoteMessage?.notification?.title)) {
+        refreshPortfolioOnNotification('onNotificationOpenedApp')
+      }
     })
 
     
@@ -150,6 +227,9 @@ const useFirebaseCloudMessaging = (navigation) => {
             remoteMessage.notification
           )
           setInitialRoute(remoteMessage.data.type) // e.g. "Settings"
+          if (shouldRefreshPortfolioForTitle(remoteMessage?.notification?.title)) {
+            refreshPortfolioOnNotification('getInitialNotification')
+          }
         }
       })
   }, [])

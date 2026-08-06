@@ -160,7 +160,7 @@ function InvestmentChart() {
           return;
         }
 
-        const walletInfo = await GetWalletTokens(wallet.address, stellarKeyToUse, dydxKeyToUse);
+        const walletInfo = await GetWalletTokens(wallet.address, stellarKeyToUse, dydxKeyToUse, null, pull);
 
           if (!isActive || activeRequestWalletRef.current !== requestForWallet) return;
 

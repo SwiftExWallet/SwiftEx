@@ -609,6 +609,7 @@ const Market = (props) => {
     <FlatList
       data={data}
       keyExtractor={(item, index) => item.id?.toString() || index.toString()}
+      keyboardShouldPersistTaps="always"
       style={{ marginBottom: hp(5) }}
       refreshControl={
         <RefreshControl

@@ -96,7 +96,7 @@ const ORIGIN_EXCLUDED_CHAIN_KEYS = ["STR"];
 // A chain only auto-qualifies as the default pick if the wallet holds at
 // least this much USDC/USDT on it (activation needs real stablecoin to swap
 // from — anything less isn't a usable default).
-const MIN_STABLE_BALANCE_FOR_AUTOSELECT = 0.5;
+const MIN_STABLE_BALANCE_FOR_AUTOSELECT = 1;
 
 const STEP_META = [
   { key: "activate", title: "Activate Stellar Account" },
@@ -154,7 +154,7 @@ function pickDefaultFromPortfolio(portfolio, activationChains) {
       .map((token) => {
         const portfolioItem = portfolio.find(
           (p) =>
-            p?.chain === chainEntry.key &&
+            normalizeChain(p?.chain) === normalizeChain(chainEntry.key) &&
             p?.symbol === token.symbol &&
             String(p?.contractAddress).toLowerCase() ===
             String(token.address).toLowerCase()
@@ -166,7 +166,7 @@ function pickDefaultFromPortfolio(portfolio, activationChains) {
     if (!stableCandidates.length) continue;
 
     const nativeItem = portfolio.find(
-      (p) => p?.chain === chainEntry.key && p?.contractAddress === "Native"
+      (p) => normalizeChain(p?.chain) === normalizeChain(chainEntry.key) && p?.contractAddress === "Native"
     );
     const nativeBalance = Number(nativeItem?.balance) || 0;
     if (nativeBalance <= 0) continue; // no gas on this chain — can't broadcast
@@ -187,6 +187,16 @@ function pickDefaultFromPortfolio(portfolio, activationChains) {
   return best;
 }
 
+function normalizeChain(chain) {
+  return chain === "BNB" ? "BSC" : chain;
+}
+function isSameChain(portfolioChain, chainEntry) {
+  return (
+    normalizeChain(portfolioChain) === normalizeChain(chainEntry.key) ||
+    normalizeChain(portfolioChain) === normalizeChain(chainEntry.chain.symbol) ||
+    normalizeChain(portfolioChain) === normalizeChain(chainEntry.chain.chainName)
+  );
+}
 function getChainBestStableBalance(chainEntry, portfolio) {
   if (!Array.isArray(portfolio) || !portfolio.length) return 0;
 
@@ -194,7 +204,7 @@ function getChainBestStableBalance(chainEntry, portfolio) {
   for (const token of chainEntry.tokens) {
     const portfolioItem = portfolio.find(
       (p) =>
-        p?.chain === chainEntry.key &&
+        normalizeChain(p?.chain) === normalizeChain(chainEntry.key) &&
         p?.symbol === token.symbol &&
         String(p?.contractAddress).toLowerCase() ===
         String(token.address).toLowerCase()
@@ -285,11 +295,45 @@ function ChainAssetSelector({
 
   // Only chains that actually have >= $1 USDC/USDT get shown as selectable.
   const chainsWithBalance = chains
-    .map((chainEntry) => ({
+  .map((chainEntry) => {
+    const native = portfolio.find(
+      (p) =>
+        isSameChain(p.chain, chainEntry) &&
+        p.contractAddress === "Native" &&
+        Number(p.balance) > 0
+    );
+
+    if (!native) return null;
+
+    let bestToken = null;
+
+    for (const token of chainEntry.tokens) {
+      const asset = portfolio.find(
+        (p) =>
+          isSameChain(p.chain, chainEntry) &&
+          p.symbol === token.symbol &&
+          Number(p.balance) > 0
+      );
+
+      if (!asset) continue;
+
+      if (!bestToken || asset.balanceUSD > bestToken.balanceUSD) {
+        bestToken = {
+          ...token,
+          balanceUSD: asset.balanceUSD,
+        };
+      }
+    }
+
+    if (!bestToken) return null;
+
+    return {
       ...chainEntry,
-      stableBalance: getChainBestStableBalance(chainEntry, portfolio),
-    }))
-    .filter((c) => c.stableBalance >= MIN_STABLE_BALANCE_FOR_AUTOSELECT);
+      stableBalance: bestToken.balanceUSD,
+      bestToken,
+    };
+  })
+  .filter(Boolean);
 
   if (!chains.length) {
     return (
@@ -300,6 +344,13 @@ function ChainAssetSelector({
       </View>
     );
   }
+  const selectedChain = chainsWithBalance.find(
+  (c) => c.key === selectedChainKey
+);
+
+const tokensToShow = selectedChain?.bestToken
+  ? [selectedChain.bestToken]
+  : [];
 
   return (
     <View style={styles.selectorWrap}>
@@ -346,7 +397,7 @@ function ChainAssetSelector({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipRow}
       >
-        {(selectedEntry?.tokens ?? []).map((token) => {
+        {tokensToShow.map((token) => {
           const isSelected = token.symbol === selectedTokenSymbol;
           return (
             <Pressable
@@ -540,7 +591,7 @@ export default function StellarSetupBottomSheet({
       destinationBlockchain: "stellar",
       destinationSymbol: "XLM",
       destinatTokenContract: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-      amount: "0.5",
+      amount: "1",
       recipient: stellarAcc,
       activeWalletAddress: evmAcc,
       refundType: QuoteRequest.refundType.ORIGIN_CHAIN,

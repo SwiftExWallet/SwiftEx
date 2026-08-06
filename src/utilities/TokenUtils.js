@@ -23,7 +23,7 @@ const CONFIG = {
 };
 
 const CACHE_CONFIG = {
-  TTL: 25 * 1000,
+  TTL: 2 * 1000,
 };
 
 export const EVM_NETWORK_CONFIG = {
@@ -489,7 +489,7 @@ const getDydxBalance = async (walletAddress, onProgress = null, cacheKey = null)
   }
 };
 
-export async function GetWalletTokens(evmAddress = null, stellarAddress = null, dydxAddress = null, onProgress = null) {
+export async function GetWalletTokens(evmAddress = null, stellarAddress = null, dydxAddress = null, onProgress = null, forceRefresh = false) {
   console.log("GetWalletTokens", evmAddress, stellarAddress);
   if (!evmAddress && !stellarAddress) {
     throw new Error('At least one wallet address is required');
@@ -543,7 +543,10 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
       }
 
       let apiTokens = [];
-      const portfolioResult = await apiHelper.get(`${BASEROUTE}${evmAddress}`);
+      const portfolioUrl = forceRefresh
+        ? `${BASEROUTE}${evmAddress}?hardRefresh=true`
+        : `${BASEROUTE}${evmAddress}`;
+      const portfolioResult = await apiHelper.get(portfolioUrl);
       if (portfolioResult.success) {
         apiTokens = portfolioResult.data.data.tokens || [];
       }

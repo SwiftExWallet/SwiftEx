@@ -649,6 +649,18 @@ export const NewOfferModal = () => {
     );
   }, [findBar, supportedAssetsList]);
 
+  const refreshBalance = useCallback(async () => {
+    try {
+      setreserveLoading(true);
+      await get_stellar(top_value, AssetIssuerPublicKey);
+    } catch (error) {
+      console.log("Balance refresh error:", error);
+    } finally {
+      setreserveLoading(false);
+    }
+  }, [get_stellar, top_value, AssetIssuerPublicKey]);
+
+
   return (
     <View style={[styles.scrollView0, { backgroundColor: theme.bg }]}>
       <Exchange_screen_header 
@@ -771,7 +783,7 @@ export const NewOfferModal = () => {
         )}
       </View>
 
-      <ScrollView style={{ width: "99%" }}>
+      <ScrollView style={{ width: "99%" }} keyboardShouldPersistTaps="always">
         
           <InfoComponent
             visible={infoVisible}
@@ -781,7 +793,7 @@ export const NewOfferModal = () => {
           />
 
           <View>
-            <ScrollView contentContainerStyle={styles.scrollView}>
+            <ScrollView contentContainerStyle={styles.scrollView} keyboardShouldPersistTaps="always">
               {/* {!showOneTap && (
                 <Animated.View
                   style={[styles.glowContainer, { borderColor }]}
@@ -876,7 +888,7 @@ export const NewOfferModal = () => {
                               Account : 
                             </Text>
                             <View style={{ width: wp(40) }}>
-                              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: wp(35) }}>
+                              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: wp(35) }} keyboardShouldPersistTaps="always">
                                 <Text 
                                   style={[styles.accountInfoCon.accountInfoText, { color: theme.headingTx }]} 
                                   numberOfLines={1}
@@ -888,9 +900,23 @@ export const NewOfferModal = () => {
                           </View>
                           
                           <View style={{ flexDirection: "row" }}>
+                            <View style={{ flexDirection: "row", alignItems: "center" }}>
                               <Text style={[styles.pairHeadingText, { color: theme.inactiveTx }]}>
                                 Balance :
                               </Text>
+                              <TouchableOpacity
+                                style={{ marginRight: 6 }}
+                                onPress={refreshBalance}
+                                disabled={reserveLoading}
+                              >
+                                <Icon
+                                  type={"ionicon"}
+                                  name="refresh"
+                                  size={18}
+                                  color={theme.inactiveTx}
+                                />
+                              </TouchableOpacity>
+                            </View>
                             {reserveLoading ? (
                               <ActivityIndicator color={"green"} />
                             ) : (
@@ -967,6 +993,16 @@ export const NewOfferModal = () => {
                                 <Icon name={"arrow-right"} type={"materialCommunity"} size={19} color={theme.headingTx} style={{ marginHorizontal: 4 }} />
                                 {getAssetDisplayName(top_value_0)}</Text>
                             </View>
+                            <TouchableOpacity style={[styles.maxButton,{backgroundColor:theme.buttonColor}]} onPress={()=>{
+                              onChangeamount(Balance ? Balance : "0.000");
+                              if (parseFloat(Balance) > parseFloat(Balance)) {
+                                setinfoVisible(true);
+                                setinfotype("error");
+                                setinfomessage("Inputed Balance not found in account.");
+                              }
+                            }}>
+                              <Text style={styles.maxButtonText}>MAX</Text>
+                            </TouchableOpacity>
                           </View>
                       
                         
@@ -1182,6 +1218,7 @@ export const NewOfferModal = () => {
 
                           <FlatList
                             data={filteredAssets}
+                            keyboardShouldPersistTaps="always"
                             keyExtractor={(item,index) => index}
                             renderItem={({ item }) => {
                             const isDisabled =
@@ -1873,7 +1910,17 @@ const styles = StyleSheet.create({
     height: 49,
     borderWidth: 1,
     borderColor: 'rgba(64,82,214,0.2)'
-  }
+  },
+  maxButton: {
+    paddingHorizontal: 19,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  maxButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 12,
+  },
 });
 
 export const stellarConfig = {

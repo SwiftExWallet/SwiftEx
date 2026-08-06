@@ -73,6 +73,8 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   const [toAmount, setToAmount] = useState('');
   const [fromBal, setFromBal] = useState(0.00);
   const [toBal, setToBal] = useState(0.00);
+  const [refreshingFromBal, setRefreshingFromBal] = useState(false);
+  const [refreshingToBal, setRefreshingToBal] = useState(false);
   const [exchangeRes, setexchangeRes] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [tokenBurn, settokenBurn] = useState(false);
@@ -149,6 +151,38 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
         setToBal(0.00);
       }
   }
+
+  const refreshFromBalance = async () => {
+    if (refreshingFromBal) return;
+    setRefreshingFromBal(true);
+    try {
+      const res = await BridgeUSDCValidation(
+        fromToken?.code === "XLM" ? "native" : fromToken?.code,
+        fromToken?.issuer
+      );
+      setFromBal(res != null ? parseFloat(res?.balance)?.toFixed(7) : 0.00);
+    } catch (e) {
+      console.error("refreshFromBalance error:", e);
+    } finally {
+      setRefreshingFromBal(false);
+    }
+  };
+
+  const refreshToBalance = async () => {
+    if (refreshingToBal) return;
+    setRefreshingToBal(true);
+    try {
+      const res = await BridgeUSDCValidation(
+        toToken?.code === "XLM" ? "native" : toToken?.code,
+        toToken?.issuer
+      );
+      setToBal(res != null ? parseFloat(res?.balance)?.toFixed(7) : 0.00);
+    } catch (e) {
+      console.error("refreshToBalance error:", e);
+    } finally {
+      setRefreshingToBal(false);
+    }
+  };
 
   useEffect(()=>{
     handleInitBal(fromToken?.code,toToken?.code,fromToken?.issuer,toToken?.issuer)
@@ -560,7 +594,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         style={{ flex: 1, backgroundColor: theme.bg }}
       >
-        <ScrollView contentContainerStyle={styles.scrollView}>
+        <ScrollView contentContainerStyle={styles.scrollView} keyboardShouldPersistTaps="always">
           <View style={styles.headerCon}>
             <View style={[styles.activeProviderContainer, { backgroundColor: theme.cardBg }]}>
               <Text style={[styles.cardLabel, { color: theme.inactiveTx }]}>
@@ -603,9 +637,18 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
                 <Ionicons name="chevron-down" size={20} color={theme.headingTx} />
               </TouchableOpacity>
             </View>
-            <Text style={[styles.balanceText,{color:theme.inactiveTx}]}>
-                Balance: {isNaN(fromBal) || fromBal === null || fromBal === undefined ? '0.00' : fromBal} {fromToken.code}
-              </Text>
+            <View style={styles.balanceRow}>
+              <TouchableOpacity onPress={refreshFromBalance} disabled={refreshingFromBal} style={styles.balanceRefreshBtn}>
+                {refreshingFromBal ? (
+                  <ActivityIndicator size="small" color={theme.inactiveTx} />
+                ) : (
+                  <Ionicons name="refresh" size={14} color={theme.inactiveTx} />
+                )}
+              </TouchableOpacity>
+              <Text style={[styles.balanceText,{color:theme.inactiveTx}]}>
+                  Balance: {isNaN(fromBal) || fromBal === null || fromBal === undefined ? '0.00' : fromBal} {fromToken.code}
+                </Text>
+            </View>
           </View>
 
           {/* Swap Button */}
@@ -637,9 +680,18 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
                 <Ionicons name="chevron-down" size={20} color={theme.headingTx} />
               </TouchableOpacity>
             </View>
-            <Text style={[styles.balanceText,{color:theme.inactiveTx}]}>
-                Balance: {isNaN(toBal) || toBal === null || toBal === undefined ? '0.00' : toBal} {toToken.code}
-              </Text>
+            <View style={styles.balanceRow}>
+              <TouchableOpacity onPress={refreshToBalance} disabled={refreshingToBal} style={styles.balanceRefreshBtn}>
+                {refreshingToBal ? (
+                  <ActivityIndicator size="small" color={theme.inactiveTx} />
+                ) : (
+                  <Ionicons name="refresh" size={14} color={theme.inactiveTx} />
+                )}
+              </TouchableOpacity>
+              <Text style={[styles.balanceText,{color:theme.inactiveTx}]}>
+                  Balance: {isNaN(toBal) || toBal === null || toBal === undefined ? '0.00' : toBal} {toToken.code}
+                </Text>
+            </View>
           </View>
           
           {/* Swap Details */}
@@ -730,6 +782,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
               renderItem={renderTokenItem}
               keyExtractor={item => item.id}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="always"
               ListEmptyComponent={
                     findToken.trim() ? (
                       <View style={styles.emptyContainer}>
@@ -853,7 +906,15 @@ const styles = StyleSheet.create({
   balanceText: {
     color: '#BBBBBB',
     fontSize: 14,
-    alignSelf:"flex-end"
+  },
+  balanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+  },
+  balanceRefreshBtn: {
+    padding: 4,
+    marginRight: 4,
   },
   inputContainer: {
     flexDirection: 'row',
