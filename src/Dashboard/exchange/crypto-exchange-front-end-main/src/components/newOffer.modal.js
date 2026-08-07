@@ -954,7 +954,7 @@ export const NewOfferModal = () => {
                               styles.pairSelectionSubCon.pairSelectionName,
                               { color: btnRoot === 0 ? "#fff" : theme.headingTx }
                             ]}>
-                              Send
+                              Sell
                             </Text>
                           </TouchableOpacity>
                           
@@ -977,7 +977,7 @@ export const NewOfferModal = () => {
                               styles.pairSelectionSubCon.pairSelectionName,
                               { color: btnRoot === 1 ? "#fff" : theme.headingTx }
                             ]}>
-                              Receive
+                              Buy
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -1117,7 +1117,7 @@ export const NewOfferModal = () => {
                       {/* Total view */}
                       <View style={[styles.priceInfoCon, { backgroundColor: theme.cardBg }]}>
                         <View style={styles.amountSubinfo}>
-                          <Text style={[styles.pairHeadingText]}>Total </Text>
+                          <Text style={[styles.pairHeadingText]}>Total {top_value_0}</Text>
                         </View>
                         <Text 
                           style={[styles.accountInfoCon.accountInfoText, { fontWeight: "900", color: theme.headingTx }]} 

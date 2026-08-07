@@ -188,6 +188,8 @@ export async function swapPepare(
        await ShortTermStorage.syncTx({
           txHash: sent.hash,
           walletAddress: stellarWallet.publicKey,
+          fromAddress: stellarWallet.publicKey,
+          toAddress: recipientAddress,
           provider: "ALLBRIDGE",
           fromChain: sourceChain,
           fromToken: sourceTokenSymbol,

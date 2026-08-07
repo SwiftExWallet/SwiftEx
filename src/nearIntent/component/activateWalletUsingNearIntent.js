@@ -1214,7 +1214,9 @@ export default function StellarSetupBottomSheet({
       ShortTermStorage.syncTx({
         txHash: result.data.depositAddress,
         depositAddress: result.data.depositAddress,
-        walletAddress: stellarAccount?.address,
+        walletAddress: activeEvmSwapParams?.activeWalletAddress,
+        fromAddress: activeEvmSwapParams?.activeWalletAddress,
+        toAddress: stellarAccount?.address,
         provider: "NEARINTENT",
         fromChain: activeEvmSwapParams.originBlockchain,
         fromToken: activeEvmSwapParams.originSymbol,
@@ -1290,14 +1292,14 @@ export default function StellarSetupBottomSheet({
     activate:
       activeStatus === STATUS.LOADING
         ? "Your activation deposit has been submitted — waiting for on-chain verification. This can take a few minutes."
-        : "Choose a chain and asset below — we'll swap $1 worth of it from your EVM wallet to activate your Stellar account.",
+        : "Choose your saved stable to activate your account.",
     trustline:
       "Sign the trustline transaction so your wallet can receive USDC — this may wait briefly for your activation deposit to arrive.",
     swap: "Setup complete. You're ready to swap.",
   };
 
   const ctaLabelByKey = {
-    activate: "Activate Account",
+    activate: "Confirm & Pay $1 to Activate",
     trustline: undefined,
     swap: "Swap Now",
   };
@@ -1322,10 +1324,9 @@ export default function StellarSetupBottomSheet({
           </View>
 
           <View style={styles.header}>
-            <Text style={styles.title}>Complete Stellar Setup</Text>
+            <Text style={styles.title}>Activate Your Stellar Account</Text>
             <Text style={styles.subtitle}>
-              Your Stellar wallet isn't ready yet. Finish these steps to
-              continue your swap.
+              Your Stellar wallet isn't ready yet. Deposit $1 USD to create your account.
             </Text>
           </View>
 
@@ -1447,7 +1448,9 @@ function logActivationForRecovery(data, stellarAccount, evmSwapParams) {
   ShortTermStorage.syncTx?.({
     txHash: data?.depositAddress,
     depositAddress: data?.depositAddress,
-    walletAddress: stellarAccount?.address,
+    walletAddress: evmSwapParams?.activeWalletAddress,
+    fromAddress: evmSwapParams?.activeWalletAddress,
+    toAddress: stellarAccount?.address,
     provider: "NEARINTENT",
     fromChain: evmSwapParams?.originBlockchain,
     fromToken: evmSwapParams?.originSymbol,

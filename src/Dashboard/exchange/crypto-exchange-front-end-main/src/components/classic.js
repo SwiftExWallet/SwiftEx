@@ -765,6 +765,8 @@ const classic = ({ props }) => {
         ShortTermStorage.syncTx({
           txHash: responseOfNearIntent.data.depositAddress,
           walletAddress: state.wallet.address,
+          fromAddress: state?.wallet?.address,
+          toAddress: recieverAddress,
           provider: "NEARINTENT",
           fromChain: selectedFromNetwork.chainName,
           fromToken: selectedFromAsset.symbol,
@@ -846,6 +848,8 @@ const classic = ({ props }) => {
           await ShortTermStorage.syncTx({
             txHash: res.approvalTxHash,
             walletAddress: state && state.wallet && state.wallet.address,
+            fromAddress: state?.wallet?.address,
+            toAddress: selectedToNetwork.subName==="STR"?recieverAddress:state?.wallet?.address,
             provider: "EVMTX",
             fromChain: selectedFromNetwork.chainName,
             fromToken: selectedFromAsset.symbol,
@@ -865,6 +869,8 @@ const classic = ({ props }) => {
         await ShortTermStorage.syncTx({
           txHash: res.transferTxHash,
           walletAddress: state && state.wallet && state.wallet.address,
+          fromAddress: state?.wallet?.address,
+          toAddress: selectedToNetwork.subName==="STR"?recieverAddress:state?.wallet?.address,
           provider: "ALLBRIDGE",
           fromChain:  selectedFromNetwork.chainName,
           fromToken: selectedFromAsset.symbol,

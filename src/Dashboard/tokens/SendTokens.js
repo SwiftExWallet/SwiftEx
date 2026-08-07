@@ -462,6 +462,8 @@ const checkPermission = async () => {
                     await ShortTermStorage.syncTx({
                       txHash: txResponse.txResponse?.hash,
                       walletAddress: state.wallet.address,
+                      fromAddress: state.wallet.address,
+                      toAddress: address,
                       provider: "EVMTX",
                       fromChain: selectedChain.symbol,
                       fromToken: selectedChain.symbol,

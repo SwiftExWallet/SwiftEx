@@ -131,6 +131,8 @@ const MultiChainTokenSend = ({ route }) => {
         await ShortTermStorage.syncTx({
           txHash: txResponse.hash,
           walletAddress: activeWalletAddress,
+          fromAddress: activeWalletAddress,
+          toAddress: toAddress,
           provider: "EVMTX",
           fromChain: chain,
           fromToken: route?.tokenSymbol || 'TOKEN',

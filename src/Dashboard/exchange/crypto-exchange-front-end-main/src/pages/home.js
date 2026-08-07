@@ -33,6 +33,8 @@ import SELECT_WALLET_EXC from "../../../../Modals/SELECT_WALLET_EXC";
 import { STELLAR_URL } from "../../../../constants";
 import PnlOverView from "../../../../reusables/PnlOverView";
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
+import Clipboard from "@react-native-clipboard/clipboard";
+import { alert } from "../../../../reusables/Toasts";
 
 const ACCENT = "#635BFF";
 const GREEN = "#4ADE80";
@@ -185,6 +187,12 @@ export const HomeView = () => {
     </View>
   ), [pnl]);
 
+  const copyToClipboard = (data) => {
+    if (!data) return;
+    Clipboard.setString(data);
+    alert("success", "Copied");
+  };
+
   return (
     <View style={st.container}>
       <StatusBar barStyle="light-content" />
@@ -198,17 +206,46 @@ export const HomeView = () => {
         >
           <View style={st.portfolioInfo}>
             <View style={st.row}>
-              <Text style={[st.label,{color:theme.headingTx}]}>Portfolio Value</Text>
+              <Text style={[st.label,{color:theme.headingTx}]}>Balance</Text>
               <Icon name="eye-outline" type="ionicon" size={14} color={theme.cardSubTx} style={{ marginLeft: 6 }} />
             </View>
             <Text style={[st.balance,{color:theme.headingTx}]}>${portfolioVal}</Text>
             <View style={st.row}>
-              <Text style={[st.percentage,{color:theme.inactiveTx}]}><Text style={st.subLabel}>Today</Text></Text>
+              <Text style={[st.percentage,{color:theme.inactiveTx}]}><Text style={st.subLabel}>Stellar DEX</Text></Text>
             </View>
 
-            <TouchableOpacity style={[st.walletSelector,{borderColor:theme.cardSubTx}]}>
-              <Text style={[st.walletText,{color:theme.inactiveTx}]}>Active Wallet</Text>
-            </TouchableOpacity>
+            <View style={[st.walletSelector, { borderColor: theme.cardSubTx }]}>
+              {loadingKey && !stellarKey ? (
+                <ActivityIndicator size="small" color={theme.buttonColor} />
+              ) : (
+                <View style={st.walletKeyRow}>
+                  <Text style={[st.textColor, { color: theme.inactiveTx }]}>Active Wallet: </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={st.walletKeyScroll}
+                  >
+                    <Text style={[st.textColor, { color: theme.inactiveTx }]}>
+                      {stellarKey}
+                    </Text>
+                  </ScrollView>
+                </View>
+              )}
+
+              <TouchableOpacity
+                onPress={() => copyToClipboard(stellarKey)}
+                style={st.copyBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Icon
+                  name="content-copy"
+                  type="materialCommunity"
+                  color={theme.buttonColor}
+                  size={24}
+                  style={{ marginLeft: wp(1) }}
+                />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={[st.feeBadge,{borderColor:theme.inactiveTx}]}>
@@ -256,7 +293,10 @@ export const HomeView = () => {
 
         <View style={st.sec}>
           <View style={st.pnlHead}>
-            <Text style={st.secTitle}>PnL Overview</Text>
+            <View>
+              <Text style={[st.secTitle,{fontSize:20}]}>PnL Overview</Text>
+            <Text style={st.freshnessTag}>Freshness: ~15 mins</Text>
+            </View>
             <PnlOverView stellarKey={stellarKey} onSummaryUpdate={setPnl} selectedTimeline={selectedTimeline} />
           </View>
 
@@ -415,13 +455,13 @@ const getStyles = (theme) => StyleSheet.create({
   actRow: {
     flexDirection: "row",
     gap: 10,
-    marginTop: hp(2),
+    marginTop: hp(1.4),
     width: wp(85)
   },
   actRowIOS: {
     flexDirection: "row",
     gap: 10,
-    marginTop: hp(2),
+    marginTop: hp(1.4),
     width: wp(84)
   },
   actTitle: {
@@ -499,7 +539,7 @@ const getStyles = (theme) => StyleSheet.create({
   },
   secTitle: {
     color: theme.headingTx,
-    fontSize: 17,
+    fontSize: 19,
     fontWeight: "bold"
   },
   pnlHead: {
@@ -683,10 +723,25 @@ const getStyles = (theme) => StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.1)',
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 20,
+    borderRadius: 10,
     marginTop: 15,
     alignSelf: 'flex-start',
-    borderWidth:0.4
+    borderWidth:0.9,
+    maxWidth: wp(85),
+  },
+  walletKeyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+    flexGrow: 0,
+  },
+  walletKeyScroll: {
+    width: wp(53),
+    flexGrow: 0,
+  },
+  copyBtn: {
+    flexShrink: 0,
+    zIndex: 10,
   },
   walletText: {
     color: '#FFF',
@@ -699,7 +754,7 @@ const getStyles = (theme) => StyleSheet.create({
     top: 20,
     padding: 8,
     borderRadius: 12,
-    borderWidth: 0.3,
+    borderWidth: 0.8,
   },
   feeText: {
     color: '#94A3B8',
@@ -824,4 +879,9 @@ const getStyles = (theme) => StyleSheet.create({
     color: '#4052D6',
     fontWeight: '700'
   },
+  freshnessTag: {
+    color: theme.inactiveTx,
+    fontSize: 13,
+    fontWeight: "400"
+  }
 });

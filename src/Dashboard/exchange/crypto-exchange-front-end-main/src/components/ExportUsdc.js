@@ -336,6 +336,8 @@ const ExportUSDC = () => {
               txHash: NearIntentSwapRes.data.depositAddress,
               memo:NearIntentSwapRes.data.depositMemo,
               walletAddress: state.wallet.address,
+              fromAddress: state?.STELLAR_PUBLICK_KEY,
+              toAddress: recieverAddress,
               provider: "NEARINTENT",
               fromChain: selectedNetworkDetils.chainName,
               fromToken: selectedAssetDetils.symbol,
