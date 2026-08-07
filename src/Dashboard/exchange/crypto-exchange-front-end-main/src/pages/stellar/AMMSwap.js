@@ -152,6 +152,20 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
       }
   }
 
+  const myAssetBalances = React.useMemo(() => {
+    const portfolioTokens = state?.activeWalletPortFolio;
+    const map = new Map();
+    if (!Array.isArray(portfolioTokens)) return map;
+
+    portfolioTokens
+      .filter((t) => t.chain === 'Stellar' || t.chain === 'STR')
+      .forEach((t) => {
+        const key = t.contractAddress === 'Native' ? 'native' : `${t.symbol}:${t.contractAddress}`;
+        map.set(key, parseFloat(t.balance) || 0);
+      });
+    return map;
+  }, [state?.activeWalletPortFolio]);
+
   const refreshFromBalance = async () => {
     if (refreshingFromBal) return;
     setRefreshingFromBal(true);
@@ -506,7 +520,11 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   }
 
   
-  const renderTokenItem = ({ item }) => (
+  const renderTokenItem = ({ item }) => {
+    const key = item.issuer ? `${item.code}:${item.issuer}` : 'native';
+    const heldBalance = myAssetBalances.get(key);
+
+    return (
     <TouchableOpacity 
       style={[styles.tokenItem,{backgroundColor:theme.cardBg}]} 
       onPress={() =>{handleTokenSelection(item)}}
@@ -519,8 +537,14 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
         <Text style={[styles.tokenSymbol,{color:theme.headingTx}]}>{item.code}</Text>
         <Text style={[styles.tokenName,{color:theme.inactiveTx}]}>{item.name}</Text>
       </View>
+      {heldBalance !== undefined && (
+        <Text style={[styles.heldTokenBalance, { color: theme.headingTx }]}>
+          {heldBalance}
+          </Text>
+      )}
     </TouchableOpacity>
   );
+  };
 
   const handleSwap=async()=>{
     settokenBurn(true)
@@ -571,20 +595,29 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   const theme = state.THEME.THEME ? colors.dark : colors.light;
 
   const getFilteredTokens = () => {
-    if (!findToken.trim()) {
-      return stellarTokens?.assets || [];
+    let list = stellarTokens?.assets || [];
+
+    if (findToken.trim()) {
+      const query = findToken.toLowerCase();
+
+      list = list.filter((token) => {
+        const code = token.code?.toLowerCase() || '';
+        const issuer = token.issuer?.toLowerCase() || '';
+        const name = token.name?.toLowerCase() || '';
+
+        return code.includes(query) ||
+          issuer.includes(query) ||
+          name.includes(query);
+      });
     }
 
-    return stellarTokens?.assets?.filter(token => {
-      const query = findToken.toLowerCase();
-      const code = token.asset_code?.toLowerCase() || '';
-      const issuer = token.asset_issuer?.toLowerCase() || '';
-      const name = token.name?.toLowerCase() || '';
-
-      return code.includes(query) ||
-        issuer.includes(query) ||
-        name.includes(query);
-    }) || [];
+    return list.slice().sort((a, b) => {
+      const keyA = a.issuer ? `${a.code}:${a.issuer}` : 'native';
+      const keyB = b.issuer ? `${b.code}:${b.issuer}` : 'native';
+      const balA = myAssetBalances.get(keyA) || 0;
+      const balB = myAssetBalances.get(keyB) || 0;
+      return balB - balA;
+    });
   };
   
   return (
@@ -1090,6 +1123,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
+  },
+  heldTokenBalance: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   findIcon: {
     marginRight: 8,

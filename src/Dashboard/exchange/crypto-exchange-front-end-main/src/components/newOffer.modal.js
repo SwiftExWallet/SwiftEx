@@ -640,14 +640,39 @@ export const NewOfferModal = () => {
     }, [])
   );
 
+  const myAssetBalances = useMemo(() => {
+    const portfolioTokens = state?.activeWalletPortFolio;
+    const map = new Map();
+    if (!Array.isArray(portfolioTokens)) return map;
+
+    portfolioTokens
+      .filter((t) => t.chain === 'Stellar' || t.chain === 'STR')
+      .forEach((t) => {
+        const key = t.contractAddress === 'Native' ? 'native' : `${t.symbol}:${t.contractAddress}`;
+        map.set(key, parseFloat(t.balance) || 0);
+      });
+    return map;
+  }, [state?.activeWalletPortFolio]);
+
   const filteredAssets = useMemo(() => {
-    if (!findBar.trim()) return supportedAssetsList;
-    return supportedAssetsList?.filter((item) =>
+    let list = supportedAssetsList;
+    if (findBar.trim()) {
+      list = supportedAssetsList?.filter((item) =>
       item?.code?.toLowerCase()?.includes(findBar.toLowerCase()) ||
       item?.domain?.toLowerCase()?.includes(findBar.toLowerCase()) ||
       item?.issuer?.toLowerCase()?.includes(findBar.toLowerCase())
     );
-  }, [findBar, supportedAssetsList]);
+    }
+    if (!Array.isArray(list)) return list;
+
+    return list.slice().sort((a, b) => {
+      const keyA = a?.code === 'XLM' ? 'native' : `${a?.code}:${a?.issuer}`;
+      const keyB = b?.code === 'XLM' ? 'native' : `${b?.code}:${b?.issuer}`;
+      const balA = myAssetBalances.get(keyA) || 0;
+      const balB = myAssetBalances.get(keyB) || 0;
+      return balB - balA;
+    });
+  }, [findBar, supportedAssetsList, myAssetBalances]);
 
   const refreshBalance = useCallback(async () => {
     try {
@@ -1276,6 +1301,17 @@ export const NewOfferModal = () => {
                                       </View>
                                     </View>
 
+                                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                      {(() => {
+                                        const key = item?.code === 'XLM' ? 'native' : `${item?.code}:${item?.issuer}`;
+                                        const heldBalance = myAssetBalances.get(key);
+                                        if (heldBalance === undefined) return null;
+                                        return (
+                                          <Text style={{ color: theme.headingTx, fontSize: 14, fontWeight: '600', marginRight: 8 }}>
+                                            {heldBalance}
+                                          </Text>
+                                        );
+                                      })()}
                                     {pairPickerStep === 'base' && !isDisabled && (
                                       <Icon
                                         name="arrowright"
@@ -1294,6 +1330,7 @@ export const NewOfferModal = () => {
                                         style={{ marginRight: 4 }}
                                       />
                                     )}
+                                  </View>
                                   </TouchableOpacity>
                                 );
                               }}

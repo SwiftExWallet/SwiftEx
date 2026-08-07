@@ -380,7 +380,6 @@ const EthSwap = () => {
       tokenA.chain === CHAINS["STR"].symbol &&
       tokenB.chain === CHAINS["STR"].symbol
     ) {
-      setShowSelectOtherOpt(false);
       navigation.navigate("newOffer_modal", {
         fromToken: tokenB,
         toToken: tokenA,
@@ -1484,12 +1483,19 @@ const EthSwap = () => {
                   setshowTokenSelection(false);
                   return;
                 }
+                if (item.chain === CHAINS['STR'].symbol) {
+                  setshowTokenSelection(false);
+                  navigation.navigate('ExportUSDC', {
+                    fromToken: item,
+                    toToken,
+                  });
+                  return;
+                }
+
                 setFromToken(item);
                 handleTokenBalance(
                   item.address,
-                  item.chain === CHAINS['STR'].symbol
-                    ? state?.STELLAR_PUBLICK_KEY
-                    : state?.wallet?.address,
+                  state?.wallet?.address,
                   item.chain,
                   true,
                   item
@@ -1500,11 +1506,19 @@ const EthSwap = () => {
                   setshowTokenSelection(false);
                   return;
                 }
+
+                if (item.chain === CHAINS['STR'].symbol) {
+                  setshowTokenSelection(false);
+                  navigation.navigate('classic', {
+                    fromToken,
+                    toToken: item,
+                  });
+                  return;
+                }
+
                 handleTokenBalance(
                   item.address,
-                  item.chain === CHAINS['STR'].symbol
-                    ? state?.STELLAR_PUBLICK_KEY
-                    : state?.wallet?.address,
+                  state?.wallet?.address,
                   item.chain,
                   false,
                   item
