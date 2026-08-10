@@ -771,18 +771,18 @@ export const TemporaryTokens=[
         "symbol": "BASE",
         "navigationPath":"Send"
     },
-    {
-        "balance":0.0,
-        "balanceUSD": 0.00,
-        "chain": DYDX.symbol,
-        "contractAddress": "Native",
-        "decimals": 6,
-        "imageUrl": DYDX.imageUrl,
-        "name": DYDX.symbol,
-        "price":0,
-        "symbol": DYDX.symbol,
-        "navigationPath":"Send"
-    },
+    // {
+    //     "balance":0.0,
+    //     "balanceUSD": 0.00,
+    //     "chain": DYDX.symbol,
+    //     "contractAddress": "Native",
+    //     "decimals": 6,
+    //     "imageUrl": DYDX.imageUrl,
+    //     "name": DYDX.symbol,
+    //     "price":0,
+    //     "symbol": DYDX.symbol,
+    //     "navigationPath":"Send"
+    // },
 ];
 
 export const CHAINS = {

@@ -11,7 +11,7 @@ import  Clipboard from "@react-native-clipboard/clipboard";
 import { firebaseNotification } from './firebasePushMessages'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import store from '../../components/Redux/Store'
-import { GetWalletTokens } from '../../utilities/TokenUtils'
+import { GetWalletTokens, CHAINS } from '../../utilities/TokenUtils'
 import { getAssetId } from '../../utilities/TokenManageHook'
 import { MULTICHAIN_PORTFOLIO, PORTFOLIO_CONFIG } from '../../components/Redux/actions/type'
 
@@ -59,7 +59,16 @@ const refreshPortfolioOnNotification = async (source) => {
     });
 
     const apiIds = new Set(apiTokens.map(getAssetId));
-    const customTokens = savedTokens.filter((t) => !apiIds.has(getAssetId(t)));
+    const knownChainKeys = new Set(Object.keys(CHAINS));
+    const customTokens = savedTokens
+      .filter((t) => !apiIds.has(getAssetId(t)))
+      .map((t) => {
+        const isKnownChain = knownChainKeys.has(t.chain);
+        if (isKnownChain && t.contractAddress !== 'Native') {
+          return { ...t, balance: 0, balanceUSD: 0, active: false };
+        }
+        return t;
+      });
 
     store.dispatch({
       type: MULTICHAIN_PORTFOLIO,

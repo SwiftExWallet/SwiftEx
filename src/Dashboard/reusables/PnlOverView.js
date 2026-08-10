@@ -218,12 +218,35 @@ const PnlOverView = ({ refresh = false, stellarKey, activeTheme, onSummaryUpdate
                                 ref={pnlCardRef}
                                 brandName="SwiftEx Wallet"
                                 days={selectedTimeline}
-                                totalPnlPercent={pnlInfo?.openPnLPct}
-                                totalPnlDollar={formatUSD(totalPnL, 3)}
+                                totalPnlPercent={
+                                    pnlInfo?.openPnLPct
+                                    || (pnlInfo?.totalCostBasis
+                                        ? ((totalPnL / pnlInfo.totalCostBasis) * 100)
+                                        : totalPnL)
+                                }
+                                totalPnlDollar={totalPnL}
                                 winRate={pnlInfo?.winRate}
                                 trades={tradeCount}
                                 bestTrade={pnlInfo?.bestTrade?.pnl}
                                 hideTotal={hideTotalPnL}
+                                dataPoints={(() => {
+                                    const raw = Array.isArray(pnlInfo?.disposals)
+                                        ? pnlInfo.disposals
+                                        : Array.isArray(pnlInfo?.trades)
+                                        ? pnlInfo.trades
+                                        : null;
+                                    if (!raw || raw.length < 2) return undefined;
+                                    const cumulative = [];
+                                    let sum = 0;
+                                    raw.forEach((t) => {
+                                        sum += parseFloat(t?.pnl ?? t?.totalPnL ?? 0);
+                                        cumulative.push(sum);
+                                    });
+                                    const min = Math.min(...cumulative);
+                                    const max = Math.max(...cumulative);
+                                    const range = max - min || 1;
+                                    return cumulative.map((v) => (v - min) / range);
+                                })()}
                             />
                         </View>
                     )}

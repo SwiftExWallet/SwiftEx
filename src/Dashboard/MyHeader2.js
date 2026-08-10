@@ -33,7 +33,7 @@ import InvestmentChart from "./InvestmentChart";
 import WalletConnect from "../Dashboard/walletConnect/WalletConnect";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getAssetId } from "../utilities/TokenManageHook";
-import { GetWalletTokens } from "../utilities/TokenUtils";
+import { GetWalletTokens, CHAINS } from "../utilities/TokenUtils";
 import CustomInfoProvider from "./exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import { colors } from "../Screens/ThemeColorsConfig";
 
@@ -183,9 +183,16 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
         return apiToken;
       });
       const apiIds = new Set(apiTokens.map(getAssetId));
-      const customTokens = savedTokens.filter(
-        (t) => !apiIds.has(getAssetId(t)),
-      );
+      const knownChainKeys = new Set(Object.keys(CHAINS));
+      const customTokens = savedTokens
+        .filter((t) => !apiIds.has(getAssetId(t)))
+        .map((t) => {
+          const isKnownChain = knownChainKeys.has(t.chain);
+          if (isKnownChain && t.contractAddress !== 'Native') {
+            return { ...t, balance: 0, balanceUSD: 0, active: false };
+          }
+          return t;
+        });
 
       dispatch({
         type: MULTICHAIN_PORTFOLIO,

@@ -20,7 +20,7 @@ import LockAppModal from "./Modals/lockAppModal";
 import useFirebaseCloudMessaging from "./notifications/firebaseNotifications";
 import CustomInfoProvider from "./exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import { colors } from "../Screens/ThemeColorsConfig";
-import { GetWalletTokens } from "../utilities/TokenUtils";
+import { GetWalletTokens, CHAINS } from "../utilities/TokenUtils";
 import { getAssetId } from "../utilities/TokenManageHook";
 import { PORTFOLIO_CONFIG, MULTICHAIN_PORTFOLIO } from "../components/Redux/actions/type";
 
@@ -57,7 +57,16 @@ const Home2 = ({ navigation }) => {
         return apiToken;
       });
       const apiIds = new Set(apiTokens.map(getAssetId));
-      const customTokens = savedTokens.filter((t) => !apiIds.has(getAssetId(t)));
+      const knownChainKeys = new Set(Object.keys(CHAINS));
+      const customTokens = savedTokens
+        .filter((t) => !apiIds.has(getAssetId(t)))
+        .map((t) => {
+          const isKnownChain = knownChainKeys.has(t.chain);
+          if (isKnownChain && t.contractAddress !== 'Native') {
+            return { ...t, balance: 0, balanceUSD: 0, active: false };
+          }
+          return t;
+        });
 
       dispatch({
         type: MULTICHAIN_PORTFOLIO,

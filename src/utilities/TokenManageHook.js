@@ -39,7 +39,16 @@ export const useAssetManager = (walletAddress) => {
                 return apiToken;
             });
             const apiIds = new Set(apiTokens.map(getAssetId));
-            const customTokens = savedTokens.filter(t => !apiIds.has(getAssetId(t)));
+            const KNOWN_CHAINS = ['ETH','BSC','BNB','POL','ARB','BASE','AVAX','OPT','Stellar','STR','DYDX'];
+            const customTokens = savedTokens
+                .filter(t => !apiIds.has(getAssetId(t)))
+                .map(t => {
+                    const isKnownChain = KNOWN_CHAINS.includes(t.chain);
+                    if (isKnownChain && t.contractAddress !== 'Native') {
+                        return { ...t, balance: 0, balanceUSD: 0, active: false };
+                    }
+                    return t;
+                });
 
             dispatch({
                 type: MULTICHAIN_PORTFOLIO,
