@@ -7,6 +7,7 @@ import { RPC, WSS } from "../../../Dashboard/constants";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { NativeModules } from 'react-native';
 import { getWalletBalance } from '../../../Dashboard/exchange/crypto-exchange-front-end-main/src/utils/getWalletInfo/EtherWalletService';
+import store from '../Store';
 const { EthereumWallet } = NativeModules;
 
 const xrpl = require("xrpl");
@@ -381,25 +382,39 @@ const getMaticBalance = async (address) => {
       AsyncStorage.setItem("MaticBalance", balanceInEth);
 
       return {
-        status: "success",
-        message: "Matic Balance fetched",
-        MaticBalance: balance.toFixed(3),
-      };
-    } else {
-      return {
         status: "error",
-        message: "Matic Balance fetch  failed",
+        message: "Matic Balance fetch failed",
         MaticBalance: 0,
       };
     }
+
+    const tokens = store.getState()?.activeWalletPortFolio || [];
+    const nativeToken = tokens.find((t) => t.chain === "POL" && t.contractAddress === "Native");
+
+    if (!nativeToken) {
+      return {
+        status: "error",
+        message: "Matic Balance not available yet in portfolio state",
+        MaticBalance: 0,
+      };
+    }
+
+    const balanceInEth = nativeToken.balance.toString();
+    AsyncStorage.setItem("MaticBalance", balanceInEth);
+
+    return {
+      status: "success",
+      message: "Matic Balance fetched",
+      MaticBalance: parseFloat(balanceInEth).toFixed(3),
+    };
   } catch (error) {
     return {
       status: "error",
-      message: "Matic Balance fetch  failed",
+      message: "Matic Balance fetch failed",
       MaticBalance: 0,
     };
   }
-  };
+};
 const getXrpBalance = async (address) => {
 
     try{      

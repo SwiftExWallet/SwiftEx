@@ -3,18 +3,20 @@ export const colors = {
         bg: "#FFFFFF",
         cardBg: "#F4F4F8",
         headingTx: "#272729",
-        smallCardBg: "#FFFFFF",
+        smallCardBg: "#3c74edff",
         smallCardBorderColor: "#5E5C5C66",
         cardSubTx: "#272729",
-        inactiveTx: "#7a7878ff"
+        inactiveTx: "#7a7878ff",
+        buttonColor: '#5D5FEF'
     },
     dark: {
-        bg: "#1B1B1C",
-        cardBg: "#242426",
+        bg: "#0B0B0F",
+        cardBg: "#16161D",
         headingTx: "#E6E8EB",
-        smallCardBg: "#1B1B1C",
+        smallCardBg: "#3f608eff",
         smallCardBorderColor: "#AAAAAA66",
         cardSubTx: "#E6E8EB",
-        inactiveTx: "#AAAAAA"
+        inactiveTx: "#AAAAAA",
+        buttonColor: '#5D5FEF'
     },
 };

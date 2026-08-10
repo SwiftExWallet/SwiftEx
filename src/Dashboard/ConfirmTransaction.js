@@ -68,6 +68,8 @@ const ConfirmTransaction = (props) => {
           await ShortTermStorage.syncTx({
             txHash: res?.txHash,
             walletAddress: state && state.wallet && state.wallet.address,
+            fromAddress: props?.route?.params?.info?.addressFrom,
+            toAddress: props?.route?.params?.info?.addressTo,
             provider: "EVMTX",
             fromChain: "ETH",
             fromToken: "ETH",
@@ -104,6 +106,8 @@ const ConfirmTransaction = (props) => {
           await ShortTermStorage.syncTx({
             txHash: res?.txHash,
             walletAddress: state && state.wallet && state.wallet.address,
+            fromAddress: props?.route?.params?.info?.addressFrom,
+            toAddress: props?.route?.params?.info?.addressTo,
             provider: "EVMTX",
             fromChain: "BSC",
             fromToken: "BSC",

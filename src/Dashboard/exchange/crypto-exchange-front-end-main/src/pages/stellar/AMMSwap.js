@@ -32,6 +32,7 @@ import {
 } from "react-native-responsive-screen";
 import { colors } from '../../../../../../Screens/ThemeColorsConfig';
 import { GetAquariusSwapQuote, ExecuteAquariusSwap } from '../../../../../../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/stellar/AquariusUtil';
+import { getSafeErrorMessage } from '../../../../../../utilities/errorSanitizer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
@@ -72,6 +73,8 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   const [toAmount, setToAmount] = useState('');
   const [fromBal, setFromBal] = useState(0.00);
   const [toBal, setToBal] = useState(0.00);
+  const [refreshingFromBal, setRefreshingFromBal] = useState(false);
+  const [refreshingToBal, setRefreshingToBal] = useState(false);
   const [exchangeRes, setexchangeRes] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [tokenBurn, settokenBurn] = useState(false);
@@ -136,18 +139,64 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
     const res= await BridgeUSDCValidation(asset==="XLM"?"native":asset,assetIssuer);
     if(res!=null)
     {
-      setFromBal(parseFloat(res?.balance));
+      setFromBal(parseFloat(res?.balance)?.toFixed(7));
     }else{
       setFromBal(0.00);
     }
     const res1= await BridgeUSDCValidation(asset1==="XLM"?"native":asset1,asset1Issuer);
     if(res1!=null)
       {
-        setToBal(parseFloat(res1?.balance));
+        setToBal(parseFloat(res1?.balance)?.toFixed(7));
       }else{
         setToBal(0.00);
       }
   }
+
+  const myAssetBalances = React.useMemo(() => {
+    const portfolioTokens = state?.activeWalletPortFolio;
+    const map = new Map();
+    if (!Array.isArray(portfolioTokens)) return map;
+
+    portfolioTokens
+      .filter((t) => t.chain === 'Stellar' || t.chain === 'STR')
+      .forEach((t) => {
+        const key = t.contractAddress === 'Native' ? 'native' : `${t.symbol}:${t.contractAddress}`;
+        map.set(key, parseFloat(t.balance) || 0);
+      });
+    return map;
+  }, [state?.activeWalletPortFolio]);
+
+  const refreshFromBalance = async () => {
+    if (refreshingFromBal) return;
+    setRefreshingFromBal(true);
+    try {
+      const res = await BridgeUSDCValidation(
+        fromToken?.code === "XLM" ? "native" : fromToken?.code,
+        fromToken?.issuer
+      );
+      setFromBal(res != null ? parseFloat(res?.balance)?.toFixed(7) : 0.00);
+    } catch (e) {
+      console.error("refreshFromBalance error:", e);
+    } finally {
+      setRefreshingFromBal(false);
+    }
+  };
+
+  const refreshToBalance = async () => {
+    if (refreshingToBal) return;
+    setRefreshingToBal(true);
+    try {
+      const res = await BridgeUSDCValidation(
+        toToken?.code === "XLM" ? "native" : toToken?.code,
+        toToken?.issuer
+      );
+      setToBal(res != null ? parseFloat(res?.balance)?.toFixed(7) : 0.00);
+    } catch (e) {
+      console.error("refreshToBalance error:", e);
+    } finally {
+      setRefreshingToBal(false);
+    }
+  };
 
   useEffect(()=>{
     handleInitBal(fromToken?.code,toToken?.code,fromToken?.issuer,toToken?.issuer)
@@ -313,7 +362,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
         setexchangeRes(null);
         setToAmount('');
         setIsLoading(false)
-        CustomInfoProvider.show("Info","!Opps",res?.error||"Unable to fetch quotes");
+        CustomInfoProvider.show("Info","!Opps",getSafeErrorMessage(res?.error, "Unable to fetch quotes"));
       }
   }
   function URLBuilder(
@@ -471,7 +520,11 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   }
 
   
-  const renderTokenItem = ({ item }) => (
+  const renderTokenItem = ({ item }) => {
+    const key = item.issuer ? `${item.code}:${item.issuer}` : 'native';
+    const heldBalance = myAssetBalances.get(key);
+
+    return (
     <TouchableOpacity 
       style={[styles.tokenItem,{backgroundColor:theme.cardBg}]} 
       onPress={() =>{handleTokenSelection(item)}}
@@ -484,8 +537,14 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
         <Text style={[styles.tokenSymbol,{color:theme.headingTx}]}>{item.code}</Text>
         <Text style={[styles.tokenName,{color:theme.inactiveTx}]}>{item.name}</Text>
       </View>
+      {heldBalance !== undefined && (
+        <Text style={[styles.heldTokenBalance, { color: theme.headingTx }]}>
+          {heldBalance}
+          </Text>
+      )}
     </TouchableOpacity>
   );
+  };
 
   const handleSwap=async()=>{
     settokenBurn(true)
@@ -510,7 +569,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
       } else {
         settokenBurn(false)
         console.log("error in aquarius execute", respo.error)
-        CustomInfoProvider.show("error", "!Opps", respo.error || "Transaction Failed.");
+        CustomInfoProvider.show("error", "!Opps", getSafeErrorMessage(respo.error, "Transaction Failed."));
       }
       return;
     }
@@ -528,7 +587,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
     else{
       settokenBurn(false)
       console.log("--Error--",respo.error)
-      CustomInfoProvider.show("error","!Opps",respo.error.result_codes==="op_under_dest_min"?"Swap cannot be completed because the amount is too small.":"Transaction Failed.");
+      CustomInfoProvider.show("error","!Opps",respo.error?.result_codes==="op_under_dest_min"?"Swap cannot be completed because the amount is too small.":"Transaction Failed.");
     }
   }
 
@@ -536,20 +595,29 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   const theme = state.THEME.THEME ? colors.dark : colors.light;
 
   const getFilteredTokens = () => {
-    if (!findToken.trim()) {
-      return stellarTokens?.assets || [];
+    let list = stellarTokens?.assets || [];
+
+    if (findToken.trim()) {
+      const query = findToken.toLowerCase();
+
+      list = list.filter((token) => {
+        const code = token.code?.toLowerCase() || '';
+        const issuer = token.issuer?.toLowerCase() || '';
+        const name = token.name?.toLowerCase() || '';
+
+        return code.includes(query) ||
+          issuer.includes(query) ||
+          name.includes(query);
+      });
     }
 
-    return stellarTokens?.assets?.filter(token => {
-      const query = findToken.toLowerCase();
-      const code = token.asset_code?.toLowerCase() || '';
-      const issuer = token.asset_issuer?.toLowerCase() || '';
-      const name = token.name?.toLowerCase() || '';
-
-      return code.includes(query) ||
-        issuer.includes(query) ||
-        name.includes(query);
-    }) || [];
+    return list.slice().sort((a, b) => {
+      const keyA = a.issuer ? `${a.code}:${a.issuer}` : 'native';
+      const keyB = b.issuer ? `${b.code}:${b.issuer}` : 'native';
+      const balA = myAssetBalances.get(keyA) || 0;
+      const balB = myAssetBalances.get(keyB) || 0;
+      return balB - balA;
+    });
   };
   
   return (
@@ -559,7 +627,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         style={{ flex: 1, backgroundColor: theme.bg }}
       >
-        <ScrollView contentContainerStyle={styles.scrollView}>
+        <ScrollView contentContainerStyle={styles.scrollView} keyboardShouldPersistTaps="always">
           <View style={styles.headerCon}>
             <View style={[styles.activeProviderContainer, { backgroundColor: theme.cardBg }]}>
               <Text style={[styles.cardLabel, { color: theme.inactiveTx }]}>
@@ -602,9 +670,18 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
                 <Ionicons name="chevron-down" size={20} color={theme.headingTx} />
               </TouchableOpacity>
             </View>
-            <Text style={[styles.balanceText,{color:theme.inactiveTx}]}>
-                Balance: {isNaN(fromBal) || fromBal === null || fromBal === undefined ? '0.00' : fromBal} {fromToken.code}
-              </Text>
+            <View style={styles.balanceRow}>
+              <TouchableOpacity onPress={refreshFromBalance} disabled={refreshingFromBal} style={styles.balanceRefreshBtn}>
+                {refreshingFromBal ? (
+                  <ActivityIndicator size="small" color={theme.inactiveTx} />
+                ) : (
+                  <Ionicons name="refresh" size={14} color={theme.inactiveTx} />
+                )}
+              </TouchableOpacity>
+              <Text style={[styles.balanceText,{color:theme.inactiveTx}]}>
+                  Balance: {isNaN(fromBal) || fromBal === null || fromBal === undefined ? '0.00' : fromBal} {fromToken.code}
+                </Text>
+            </View>
           </View>
 
           {/* Swap Button */}
@@ -623,7 +700,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
                 placeholder="0.00"
                 placeholderTextColor="#8A8A8A"
                 keyboardType="decimal-pad"
-                value={toAmount}
+                value={toAmount==="NaN"?"0.0":toAmount}
                 editable={false}
               />
               <TouchableOpacity style={[styles.tokenSelector,{backgroundColor:theme.bg}]} onPress={()=>{settokenTypeSelection(1),setTokenModalVisible(true),setfindToken("")}}>
@@ -636,9 +713,18 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
                 <Ionicons name="chevron-down" size={20} color={theme.headingTx} />
               </TouchableOpacity>
             </View>
-            <Text style={[styles.balanceText,{color:theme.inactiveTx}]}>
-                Balance: {isNaN(toBal) || toBal === null || toBal === undefined ? '0.00' : toBal} {toToken.code}
-              </Text>
+            <View style={styles.balanceRow}>
+              <TouchableOpacity onPress={refreshToBalance} disabled={refreshingToBal} style={styles.balanceRefreshBtn}>
+                {refreshingToBal ? (
+                  <ActivityIndicator size="small" color={theme.inactiveTx} />
+                ) : (
+                  <Ionicons name="refresh" size={14} color={theme.inactiveTx} />
+                )}
+              </TouchableOpacity>
+              <Text style={[styles.balanceText,{color:theme.inactiveTx}]}>
+                  Balance: {isNaN(toBal) || toBal === null || toBal === undefined ? '0.00' : toBal} {toToken.code}
+                </Text>
+            </View>
           </View>
           
           {/* Swap Details */}
@@ -665,7 +751,9 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
 
             <View style={styles.detailRow}>
               <Text style={[styles.detailLabel,{color:theme.headingTx}]}>Minimum Received</Text>
-              <Text style={[styles.detailValue,{color:theme.headingTx}]}>{exchangeRes?.swapDetails?.minReceived}</Text>
+              <Text style={[styles.detailValue,{color:theme.headingTx}]}>
+                {isNaN(Number(exchangeRes?.swapDetails?.minReceived)) ? "0.00" : exchangeRes?.swapDetails?.minReceived}
+              </Text>
             </View>
           </View> : null}
           
@@ -727,6 +815,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
               renderItem={renderTokenItem}
               keyExtractor={item => item.id}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="always"
               ListEmptyComponent={
                     findToken.trim() ? (
                       <View style={styles.emptyContainer}>
@@ -850,7 +939,15 @@ const styles = StyleSheet.create({
   balanceText: {
     color: '#BBBBBB',
     fontSize: 14,
-    alignSelf:"flex-end"
+  },
+  balanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+  },
+  balanceRefreshBtn: {
+    padding: 4,
+    marginRight: 4,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -1026,6 +1123,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
+  },
+  heldTokenBalance: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   findIcon: {
     marginRight: 8,

@@ -23,7 +23,7 @@ const CONFIG = {
 };
 
 const CACHE_CONFIG = {
-  TTL: 60 * 1000,
+  TTL: 2 * 1000,
 };
 
 export const EVM_NETWORK_CONFIG = {
@@ -73,8 +73,23 @@ export const EVM_NETWORK_CONFIG = {
 
 const walletCache = new Map();
 
-const getCacheKey = (evmAddress, stellarAddress) => {
-  return `${evmAddress || 'null'}_${stellarAddress || 'null'}`;
+const priceCache = new Map();
+const PRICE_CACHE_TTL = 60 * 1000;
+
+const getCachedPrice = (key) => {
+  const cached = priceCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp < PRICE_CACHE_TTL) return cached.data;
+  return null;
+};
+
+const setCachedPrice = (key, data) => {
+  priceCache.set(key, { data, timestamp: Date.now() });
+};
+
+const pendingRequests = new Map();
+const getCacheKey = (evmAddress, stellarAddress, dydxAddress) => {
+  return `${evmAddress || 'null'}_${stellarAddress || 'null'}_${dydxAddress || 'null'}`;
 };
 
 const getFromCache = (cacheKey) => {
@@ -96,6 +111,11 @@ const isValidAddress = (address) => {
   if (/^0x[a-fA-F0-9]{40}$/.test(address)) return true;
   if (/^G[A-Z2-7]{55}$/.test(address)) return true;
   return false;
+};
+
+const isValidDydxAddress = (address) => {
+  if (typeof address !== 'string' || !address) return false;
+  return /^dydx1[0-9a-z]{38,58}$/.test(address);
 };
 
 const parseNumber = (value, decimals = 6) => {
@@ -145,12 +165,18 @@ const getStellarTokenImage = (symbol = null, issuer = null, contractAddress = nu
 };
 
 const getXLMPrice = async () => {
+  const cacheKey = 'xlm-usd-price';
+  const cached = getCachedPrice(cacheKey);
+  if (cached !== null) return cached;
+
   try {
     const response = await axios.get(CONFIG.APIS.COINGECKO, {
       params: { ids: 'stellar', vs_currencies: 'usd' },
       timeout: CONFIG.TIMEOUT
     });
-    return response.data?.stellar?.usd || 0.10;
+    const price = response.data?.stellar?.usd || 0.10;
+    setCachedPrice(cacheKey, price);
+    return price;
   } catch (error) {
     return 0.10;
   }
@@ -189,6 +215,22 @@ const getEVMTokens = async (network, walletAddress, onProgress = null, cacheKey 
       totalValueUSD += balanceUSD;
     }
 
+    const hasNativeToken = tokens.some(t => t.contractAddress === 'Native');
+    if (!hasNativeToken) {
+      tokens.unshift({
+        chain: config.chain,
+        name: config.nativeName,
+        symbol: config.nativeSymbol,
+        balance: 0,
+        balanceUSD: 0,
+        decimals: 18,
+        contractAddress: 'Native',
+        active: true,
+        price: 0,
+        imageUrl: config.nativeImage,
+      });
+    }
+
     if (onProgress) {
       onProgress({
         chain: config.chain,
@@ -209,7 +251,21 @@ const getEVMTokens = async (network, walletAddress, onProgress = null, cacheKey 
         return { tokens: cachedTokens, totalValueUSD: cachedTokens.reduce((s, t) => s + t.balanceUSD, 0) };
       }
     }
-    return { tokens: [], totalValueUSD: 0 };
+    return {
+      tokens: [{
+        chain: config.chain,
+        name: config.nativeName,
+        symbol: config.nativeSymbol,
+        balance: 0,
+        balanceUSD: 0,
+        decimals: 18,
+        contractAddress: 'Native',
+        active: true,
+        price: 0,
+        imageUrl: config.nativeImage,
+      }],
+      totalValueUSD: 0
+    };
   }
 };
 
@@ -344,9 +400,15 @@ const getStellarTokenPrices = async (balances) => {
         if (b.asset_type === 'native') return 'XLM:native';
         return `${b.asset_code}:${b.asset_issuer}`;
       }); 
-    const response = await apiHelper.post(`${FOLIO_BASE_ROUTE}/prices`,{ addresses });
 
-    return response.data?.prices || {};
+    const cacheKey = `stellar-prices_${[...addresses].sort().join(',')}`;
+    const cached = getCachedPrice(cacheKey);
+    if (cached !== null) return cached;
+
+    const response = await apiHelper.post(`${FOLIO_BASE_ROUTE}/prices`,{ addresses });
+    const prices = response.data?.prices || {};
+    setCachedPrice(cacheKey, prices);
+    return prices;
   } catch {
     return {};
   }
@@ -427,13 +489,13 @@ const getDydxBalance = async (walletAddress, onProgress = null, cacheKey = null)
   }
 };
 
-export async function GetWalletTokens(evmAddress = null, stellarAddress = null, dydxAddress = null, onProgress = null) {
+export async function GetWalletTokens(evmAddress = null, stellarAddress = null, dydxAddress = null, onProgress = null, forceRefresh = false) {
   console.log("GetWalletTokens", evmAddress, stellarAddress);
   if (!evmAddress && !stellarAddress) {
     throw new Error('At least one wallet address is required');
   }
 
-  const cacheKey = getCacheKey(evmAddress, stellarAddress);
+  const cacheKey = getCacheKey(evmAddress, stellarAddress, dydxAddress);
   const cachedData = getFromCache(cacheKey);
   if (cachedData) {
     console.debug('returning cached data (under 1 minute old)');
@@ -441,6 +503,7 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
       onProgress({
         allTokens: cachedData.tokens,
         totalValueUSD: cachedData.totalValueUSD,
+        totalSTRUSD: cachedData.totalSTRUSD,
         isPartial: false,
         fromCache: true
       });
@@ -448,6 +511,27 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
     return cachedData;
   }
 
+  const existing = pendingRequests.get(cacheKey);
+  if (existing) {
+    console.log(`GetWalletTokens: reusing in-flight request for ${cacheKey}`);
+    if (onProgress) existing.listeners.add(onProgress);
+    try {
+      return await existing.promise;
+    } finally {
+      if (onProgress) existing.listeners.delete(onProgress);
+    }
+  }
+
+  const listeners = new Set();
+  if (onProgress) listeners.add(onProgress);
+
+  const notifyProgress = (update) => {
+    listeners.forEach((fn) => {
+      try { fn(update); } catch (e) { console.error('progress listener error:', e); }
+    });
+  };
+
+  const fetchPromise = (async () => {
   try {
     const allTokens = [];
     let totalValueUSD = 0;
@@ -459,19 +543,20 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
       }
 
       let apiTokens = [];
-      const portfolioResult = await apiHelper.get(`${BASEROUTE}${evmAddress}`);
+      const portfolioUrl = forceRefresh
+        ? `${BASEROUTE}${evmAddress}?hardRefresh=true`
+        : `${BASEROUTE}${evmAddress}`;
+      const portfolioResult = await apiHelper.get(portfolioUrl);
       if (portfolioResult.success) {
         apiTokens = portfolioResult.data.data.tokens || [];
       }
 
       const progressHandler = (update) => {
-        if (onProgress) {
-          onProgress({
+          notifyProgress({
             ...update,
             allTokens: [...allTokens, ...update.tokens],
             totalValueUSD: totalValueUSD + update.totalValueUSD
           });
-        }
       };
 
       Object.keys(EVM_NETWORK_CONFIG).forEach(network => {
@@ -485,30 +570,30 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
       }
       fetchPromises.push(
         getStellarTokens(stellarAddress, (update) => {
-          if (onProgress) {
-            onProgress({
+            notifyProgress({
               ...update,
               allTokens: [...allTokens, ...update.tokens],
               totalValueUSD: totalValueUSD + update.totalValueUSD
             });
-          }
         }, cacheKey)
       );
     }
 
-     if (dydxAddress) {
-      fetchPromises.push(
-        getDydxBalance(dydxAddress, (update) => {
-          if (onProgress) {
-            onProgress({
-              ...update,
-              allTokens: [...allTokens, ...update.tokens],
-              totalValueUSD: totalValueUSD + update.totalValueUSD
-            });
-          }
-        }, cacheKey)
-      );
-    }
+    // if (dydxAddress) {
+    //   if (!isValidDydxAddress(dydxAddress)) {
+    //     console.warn('Invalid dYdX address format, skipping dYdX fetch:', dydxAddress);
+    //   } else {
+    //     fetchPromises.push(
+    //       getDydxBalance(dydxAddress, (update) => {
+    //         notifyProgress({
+    //           ...update,
+    //           allTokens: [...allTokens, ...update.tokens],
+    //           totalValueUSD: totalValueUSD + update.totalValueUSD
+    //         });
+    //       }, cacheKey)
+    //     );
+    //   }
+    // }
 
     const results = await Promise.allSettled(fetchPromises);
     results.forEach(result => {
@@ -519,9 +604,14 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
     });
 
     allTokens.sort((a, b) => b.balanceUSD - a.balanceUSD);
+      const totalSTRUSD = allTokens
+        .filter(t => t.chain === 'Stellar')
+        .reduce((sum, t) => sum + (t.balanceUSD || 0), 0);
+
     const result = {
       tokens: allTokens,
-      totalValueUSD: parseNumber(totalValueUSD, 2)
+      totalValueUSD: parseNumber(totalValueUSD, 2),
+      totalSTRUSD: parseNumber(totalSTRUSD, 2)
     };
     saveToCache(cacheKey, result);
     console.debug('data cached successfully');
@@ -535,6 +625,15 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
       return cachedData.data;
     }
     throw new Error(`Failed to fetch wallet tokens: ${error.message}`);
+  }
+})();
+
+  pendingRequests.set(cacheKey, { promise: fetchPromise, listeners });
+
+  try {
+    return await fetchPromise;
+  } finally {
+    pendingRequests.delete(cacheKey);
   }
 }
 
@@ -672,18 +771,18 @@ export const TemporaryTokens=[
         "symbol": "BASE",
         "navigationPath":"Send"
     },
-    {
-        "balance":0.0,
-        "balanceUSD": 0.00,
-        "chain": DYDX.symbol,
-        "contractAddress": "Native",
-        "decimals": 6,
-        "imageUrl": DYDX.imageUrl,
-        "name": DYDX.symbol,
-        "price":0,
-        "symbol": DYDX.symbol,
-        "navigationPath":"Send"
-    },
+    // {
+    //     "balance":0.0,
+    //     "balanceUSD": 0.00,
+    //     "chain": DYDX.symbol,
+    //     "contractAddress": "Native",
+    //     "decimals": 6,
+    //     "imageUrl": DYDX.imageUrl,
+    //     "name": DYDX.symbol,
+    //     "price":0,
+    //     "symbol": DYDX.symbol,
+    //     "navigationPath":"Send"
+    // },
 ];
 
 export const CHAINS = {
@@ -984,7 +1083,7 @@ export const CHAINS = {
     },
     bridgeSupportTokens: DYDX.bridgeSupportTokens,
     sendEnable: false,
-    receiveEnable: true,
+    receiveEnable: false,
     bridgeEnable: false,
     swapEnable: false,
     importForSetupApp:false,

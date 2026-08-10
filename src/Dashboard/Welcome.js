@@ -33,10 +33,15 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 import AccessNativeStorage from "./Wallets/AccessNativeStorage";
 import crashlytics from '@react-native-firebase/crashlytics';
 import { dydxAddressDrive } from "../dydx/dydxAddressDrive";
+import ReferralBottomSheet from "./reusables/ReferralBottomSheet";
+import { clearReferralCode, getSavedReferralCode, initReferral, subscribeReferral } from "../utilities/referralUtil";
+import { CHOTTU_URL } from "./constants";
 
 const Welcome = (props) => {
   const [Loading,setLoading]=useState(false)
   const [enableUserAccess,setenableUserAccess]=useState(false);
+  const [referralCode, setReferralCode] = useState(null);
+  const [sheetVisible, setSheetVisible] = useState(false);
   const dispatch = useDispatch();
   const navigation=useNavigation();
   const images = [W1];
@@ -68,16 +73,31 @@ const Welcome = (props) => {
     const initGuestUser = async () => {
       try {
         setLoading(true);
+        await initReferral(CHOTTU_URL);
+        await getSavedReferralCode().then((saved) => {
+          if (saved) {
+            setReferralCode(saved);
+            setSheetVisible(true);
+          }
+        });
+
+        const unsubscribe = subscribeReferral((code) => {
+          setReferralCode(code);
+          setSheetVisible(true);
+        });
+
         const appReset=await NativeModules.StorageModule.clearAll();
         crashlytics().setCrashlyticsCollectionEnabled(true);
-        const userStatus=await createGuestUser();
+        const userStatus=await createGuestUser(referralCode);
         console.log("userStatus:-",userStatus.status,appReset)
         if(userStatus.status)
         {
+          await clearReferralCode();
           setenableUserAccess(true);
         }else{
           setenableUserAccess(false);
         }
+        return unsubscribe;
       } catch (error) {
         console.error("Failed to create guest user:", error);
       } finally {
@@ -295,6 +315,11 @@ const Welcome = (props) => {
        
 
       </Animated.View>
+      <ReferralBottomSheet
+        visible={sheetVisible}
+        referralCode={referralCode}
+        onClose={() => setSheetVisible(false)}
+      />
     </View>
   );
 };

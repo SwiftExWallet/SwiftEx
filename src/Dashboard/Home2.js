@@ -19,13 +19,89 @@ import { useFocusEffect } from "@react-navigation/native";
 import LockAppModal from "./Modals/lockAppModal";
 import useFirebaseCloudMessaging from "./notifications/firebaseNotifications";
 import CustomInfoProvider from "./exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
+import { colors } from "../Screens/ThemeColorsConfig";
+import { GetWalletTokens, CHAINS } from "../utilities/TokenUtils";
+import { getAssetId } from "../utilities/TokenManageHook";
+import { PORTFOLIO_CONFIG, MULTICHAIN_PORTFOLIO } from "../components/Redux/actions/type";
 
 const Home2 = ({ navigation }) => {
   const state = useSelector((state) => state);
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const dispatch = useDispatch();
   const currentState = useRef(AppState.currentState);
   const [visible, setVisible] = useState(false)
   const { getToken, requestUserPermission } = useFirebaseCloudMessaging();
+  const mergeWithApiTokens = async (apiTokens) => {
+    try {
+      const currentState = stateRef.current;
+      const stored = await AsyncStorageLib.getItem(
+        `${currentState?.wallet?.address}_${currentState.STELLAR_PUBLICK_KEY}`,
+      );
+      const savedTokens = stored ? JSON.parse(stored) : [];
+      const savedMap = new Map(savedTokens.map((t) => [getAssetId(t), t]));
+
+      const merged = apiTokens.map((apiToken) => {
+        const id = getAssetId(apiToken);
+        const savedToken = savedMap.get(id);
+
+        if (savedToken) {
+          return { ...apiToken, active: savedToken.active };
+        }
+        if (apiToken && apiToken.balanceUSD !== undefined && apiToken.balanceUSD !== null) {
+          const balanceVal = parseFloat(apiToken.balanceUSD);
+          if (balanceVal <= 0) return apiToken;
+          const isWorthy = balanceVal >= 0.5;
+          return { ...apiToken, active: isWorthy ? true : false };
+        }
+        return apiToken;
+      });
+      const apiIds = new Set(apiTokens.map(getAssetId));
+      const knownChainKeys = new Set(Object.keys(CHAINS));
+      const customTokens = savedTokens
+        .filter((t) => !apiIds.has(getAssetId(t)))
+        .map((t) => {
+          const isKnownChain = knownChainKeys.has(t.chain);
+          if (isKnownChain && t.contractAddress !== 'Native') {
+            return { ...t, balance: 0, balanceUSD: 0, active: false };
+          }
+          return t;
+        });
+
+      dispatch({
+        type: MULTICHAIN_PORTFOLIO,
+        payload: { activeWalletPortFolio: [...merged, ...customTokens] },
+      });
+    } catch (e) {
+      console.error("merge error", e);
+    }
+  };
+
+  const refreshPortfolioOnForeground = async () => {
+    try {
+      const currentState = stateRef.current;
+      if (!currentState?.wallet?.address && !currentState?.STELLAR_PUBLICK_KEY) return;
+      const walletInfo = await GetWalletTokens(
+        currentState?.wallet?.address,
+        currentState?.STELLAR_PUBLICK_KEY,
+        currentState?.DYDX_ADDRESS_KEY,
+      );
+      if (Array.isArray(walletInfo?.tokens) && walletInfo.tokens.length > 0) {
+        await mergeWithApiTokens(walletInfo.tokens);
+        dispatch({
+          type: PORTFOLIO_CONFIG,
+          payload: {
+            isTotalInUSDVisible: true,
+            totalInUSD: walletInfo.totalValueUSD,
+            totalStellarInUSD: walletInfo.totalSTRUSD,
+          },
+        });
+      }
+    } catch (error) {
+      console.error("refreshPortfolioOnForeground error:", error);
+    }
+  };
+
   const SetCurrentWallet = async () => {
     let user = await AsyncStorageLib.getItem("currentWallet");
     let mainUser = await AsyncStorageLib.getItem("user");
@@ -87,6 +163,7 @@ const Home2 = ({ navigation }) => {
   const currentRoute = useNavigationState(state => state.routes[state.index]?.state?.history[1]?.key);
   useEffect(() => {
     const handleAppStateChange = (changedState) => {
+      const previousState = currentState.current;
       currentState.current = changedState;
       console.log(currentState.current);
 
@@ -95,6 +172,13 @@ const Home2 = ({ navigation }) => {
         } else {
           setVisible(true);
         }
+      }
+
+      if (
+        (previousState === "background" || previousState === "inactive") &&
+        changedState === "active"
+      ) {
+        refreshPortfolioOnForeground();
       }
     };
     const subscription = AppState.addEventListener("change", handleAppStateChange);
@@ -124,8 +208,8 @@ const Home2 = ({ navigation }) => {
   );
 
   return (
-    <View style={{ backgroundColor: state.THEME.THEME === false ? "#fff" : "#1B1B1C" }}>
-      <View style={[Styles.container, { backgroundColor: state.THEME.THEME === false ? "#fff" : "#1B1B1C" }]}>
+    <View style={{ backgroundColor: state.THEME.THEME === false ? colors.light.bg : colors.dark.bg }}>
+      <View style={[Styles.container, { backgroundColor: state.THEME.THEME === false ? colors.light.bg : colors.dark.bg }]}>
         {/* <InvestmentChart/> */}
       </View>
       <LockAppModal pinViewVisible={visible} setPinViewVisible={setVisible} />

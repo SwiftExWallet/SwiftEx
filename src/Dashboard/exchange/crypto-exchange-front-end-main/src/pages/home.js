@@ -1,36 +1,63 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
   ScrollView,
-  Animated,
-  Easing,
-  BackHandler,
   FlatList,
   Image,
   Modal,
   ActivityIndicator,
+  StatusBar,
+  Platform,
 } from "react-native";
 import { useSelector } from "react-redux";
-import { useFocusEffect, useIsFocused, useNavigation } from "@react-navigation/native";
-import AsyncStorageLib from "@react-native-async-storage/async-storage";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import {
   widthPercentageToDP as wp,
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
 import Icon from "../../../../../icon";
-import { alert } from "../../../../reusables/Toasts";
 import { LineChart } from "react-native-gifted-charts";
-import Clipboard from "@react-native-clipboard/clipboard";
+import LinearGradient from "react-native-linear-gradient";
+import Svg,
+{
+  Polyline,
+  Defs,
+  LinearGradient as SvgGrad,
+  Stop,
+  Path
+} from "react-native-svg";
 import SELECT_WALLET_EXC from "../../../../Modals/SELECT_WALLET_EXC";
-import { Exchange_screen_header } from "../../../../reusables/ExchangeHeader";
-import { Charts_Loadings, Exchange_single_loading } from "../../../../reusables/Exchange_loading";
-import { colors } from "../../../../../Screens/ThemeColorsConfig";
-import CandleStickChart from "./stellar/CommanCandleStickChart";
+import { STELLAR_URL } from "../../../../constants";
 import PnlOverView from "../../../../reusables/PnlOverView";
+import { colors } from "../../../../../Screens/ThemeColorsConfig";
+import Clipboard from "@react-native-clipboard/clipboard";
+import { alert } from "../../../../reusables/Toasts";
 
+const ACCENT = "#635BFF";
+const GREEN = "#4ADE80";
+const RED = "#F87171";
+
+const Sparkline = ({ data, width = 120, height = 40, color = GREEN }) => {
+  if (!data || data.length < 2) return null;
+  const max = Math.max(...data), min = Math.min(...data), range = max - min || 1;
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * width},${height - ((v - min) / range) * (height - 4)}`).join(" ");
+  const areaD = `M0,${height} L${pts.split(" ").map(p => p).join(" L")} L${width},${height} Z`;
+  return (
+    <Svg width={width} height={height}>
+      <Defs>
+        <SvgGrad id="sparkFill" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%" stopColor={color} stopOpacity="0.2" />
+          <Stop offset="100%" stopColor={color} stopOpacity="0" />
+        </SvgGrad>
+      </Defs>
+      <Path d={areaD} fill="url(#sparkFill)" />
+      <Polyline points={pts} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+};
 
 export const HomeView = () => {
   const prvValue = useRef(null);
@@ -40,16 +67,26 @@ export const HomeView = () => {
   const [stellarKey, setStellarKey] = useState(null);
   const [loadingKey, setLoadingKey] = useState(true);
   const [apiData, setApiData] = useState([]);
-  const [walletType, setWalletType] = useState(null);
   const [apiDataLoading, setApiDataLoading] = useState(false);
-  const [lineColor, setLineColor] = useState("#44bd32");
+  const [lineColor, setLineColor] = useState(GREEN);
   const [pointsData, setPointsData] = useState(0);
   const [pointsDataTime, setPointsDataTime] = useState("");
-  const state = useSelector((state) => state);
+  const [pnl, setPnl] = useState(null);
+  const [ordersCount, setOrdersCount] = useState(null);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [selectedTimeline, setSelectedTimeline] = useState("1week");
+  const state = useSelector((s) => s);
+  const theme = state.THEME.THEME ? colors.dark : colors.light;
+  const st = useMemo(() => getStyles(theme), [theme]);
   const navigation = useNavigation();
-  const animation = useRef(new Animated.Value(0)).current;
-  const focusedScreen = useIsFocused();
+  const focused = useIsFocused();
 
+  const TIMELINES = [
+    { label: '1 Week', value: '1week' },
+    { label: '1 Month', value: '1month' },
+    { label: '2 Month', value: '2month' },
+    { label: '3 Month', value: '3month' },
+  ];
   const CHART_API = [
     { id: 0, name: "XLM", name_0: "USDC", url: "https://horizon.stellar.lobstr.co/trade_aggregations?base_asset_type=native&counter_asset_type=credit_alphanum4&counter_asset_code=USDC&counter_asset_issuer=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN&start_time=1722320811000&resolution=60000&offset=0&limit=30&order=desc", img_0: 'https://s2.coinmarketcap.com/static/img/coins/64x64/512.png', img: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png" },
     { id: 1, name: "ETH", name_0: "USDC", url: "https://horizon.stellar.lobstr.co/trade_aggregations?base_asset_type=credit_alphanum4&base_asset_code=ETH&base_asset_issuer=GBFXOHVAS43OIWNIO7XLRJAHT3BICFEIKOJLZVXNT572MISM4CMGSOCC&counter_asset_type=credit_alphanum4&counter_asset_code=USDC&counter_asset_issuer=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN&start_time=1722320811000&resolution=60000&offset=0&limit=30&order=desc", img: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png", img_0: "https://tokens.pancakeswap.finance/images/0x2170Ed0880ac9A755fd29B2688956BD959F933F8.png" },
@@ -57,174 +94,64 @@ export const HomeView = () => {
     { id: 3, name: "USDC", name_0: "EURC", url: "https://horizon.stellar.org/trade_aggregations?base_asset_type=credit_alphanum4&base_asset_code=USDC&base_asset_issuer=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN&counter_asset_type=credit_alphanum4&counter_asset_code=EURC&counter_asset_issuer=GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2&start_time=1722229906000&resolution=900000&offset=0&limit=30&order=desc", img: "https://assets.coingecko.com/coins/images/26045/thumb/euro-coin.png?1655394420", img_0: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png" },
   ]
 
-  const PAIRS = [
-    {
-      id: 1,
-      name: "XLM/USDC",
-      base_value: "USDC",
-      counter_value: "native",
-      visible_0: "XLM",
-      visible_1: "USDC",
-      visible0Issuer: "native",
-      visible1Issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
-    },
-    {
-      id: 2,
-      name: "ETH/USDC",
-      base_value: "USDC",
-      counter_value: "ETH",
-      visible_0: "ETH",
-      visible_1: "USDC",
-      visible0Issuer: "GBFXOHVAS43OIWNIO7XLRJAHT3BICFEIKOJLZVXNT572MISM4CMGSOCC",
-      visible1Issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
-    },
-    {
-      id: 3,
-      name: "XLM/EURC",
-      base_value: "EURC",
-      counter_value: "native",
-      visible_0: "XLM",
-      visible_1: "EURC",
-      visible0Issuer: "native",
-      visible1Issuer: "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2"
-    },
-    {
-      id: 4,
-      name: "USDC/EURC",
-      base_value: "EURC",
-      counter_value: "USDC",
-      visible_0: "USDC",
-      visible_1: "EURC",
-      visible0Issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
-      visible1Issuer: "GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2"
-    },
-  ]
+  const tools = [
+    { name: "Manage Assets", sub: "View and manage your assets", icon: "grid", provider: "feather", color: "#A855F7" },
+    { name: "Fiat Access", sub: "Buy USDC and other assets", icon: "attach-money", provider: "material", color: "#22C55E" },
+    { name: "Pending Trades", sub: "View all your pending trades", icon: "timeline-clock-outline", provider: "materialCommunity", color: "#6366F1" },
+    { name: "Transaction History", sub: "View all your transactions", icon: "history", provider: "material", color: "#6366F1" },
+    { name: "Import Wallet", sub: "Import your existing stellar wallet", icon: "download", provider: "feather", color: "#3B82F6" },
+  ];
 
-  const quickActions = [
-    { name: `Trade\nAssets`, icon: "candlestick-chart", iconProvider: "material" },
-    { name: `Deposit\nUSDC`, icon: "add", iconProvider: "material" },
-    { name: `Withdraw\nUSDC`, icon: "currency-exchange", iconProvider: "material" },
+  const PnlOverViewConfig = [
+    { label: `USDC Spent`, val: `$${pnl?.usdcSpent || "0"}`, icon: 'cloud-upload-outline', color: '#6366f1' },
+    { label: `USDC Received`, val: `$${pnl?.usdcReceived || "0"}`, icon: 'cloud-download-outline', color: '#8b5cf6' },
+    { label: `Total Trades`, val: `${pnl?.tradeCount || "0"}`, icon: 'swap-horizontal-outline', color: '#ec4899' },
+    { label: `Total Positions`, val: `${pnl?.positionCount || "0"}`, icon: 'folder-open-outline', color: '#f59e0b' },
+    { label: `Net USDC Flow`, val: `${pnl?.netUSDCFlow || "0"}`, icon: 'git-compare-outline', color: '#06b6d4' },
+    { label: `Total Realized`, val: `${pnl?.totalRealized || "0"}`, icon: 'cash-outline', color: '#10b981' },
+    { label: `Total Unrealized`, val: `${pnl?.totalUnrealized || "0"}`, icon: 'trending-up-outline', color: '#3b82f6' },
   ]
-  const quickTradeActions = [
-    { name: `Manage\nAssets`, icon: "token", iconProvider: "material" },
-    { name: `Fiat\nAccess`, icon: "attach-money", iconProvider: "material" },
-    { name: `Pending\nTrades`, icon: "timeline-clock-outline", iconProvider: "materialCommunity" },
-    { name: `Transaction\nHistory`, icon: "restore", iconProvider: "material" },
-  ]
-  useEffect(() => {
-    Animated.loop(
-      Animated.timing(animation, {
-        toValue: 1,
-        duration: 1500,
-        easing: Easing.linear,
-        useNativeDriver: false,
-      })
-    ).start();
-  }, [animation]);
 
   const getData = useCallback(() => {
     setLoadingKey(true);
-    try {
-      setStellarKey(state.STELLAR_PUBLICK_KEY || null);
-    } catch (error) {
-      console.log("Error getting stellar key:", error);
-    } finally {
-      setLoadingKey(false);
-    }
+    try { setStellarKey(state.STELLAR_PUBLICK_KEY || null); } catch (e) { }
+    finally { setLoadingKey(false); }
   }, [state.STELLAR_PUBLICK_KEY]);
 
-  useEffect(() => {
-    if (focusedScreen) getData();
-  }, [focusedScreen, getData]);
+  useEffect(() => { if (focused) getData(); }, [focused, getData]);
 
-  const fetchData = useCallback(async () => {
+  const fetchChart = useCallback(async () => {
     try {
       setApiDataLoading(true);
-      const response = await fetch(CHART_API[chartIndex].url);
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      const json = await response.json();
+      const res = await fetch(CHART_API[chartIndex].url);
+      const json = await res.json();
       const records = json._embedded?.records || [];
-
       setApiData(records);
-
       if (records.length > 1) {
         setPointsData(records[0]?.close || 0);
-        setPointsDataTime(
-          new Date(parseInt(records[0]?.timestamp, 10)).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          })
-        );
-
-        const lastClose = parseFloat(records[0]?.close);
-        const secondLastClose = parseFloat(records[1]?.close);
-        setLineColor(lastClose > secondLastClose ? "green" : "red");
-      } else {
-        setLineColor("#44bd32");
+        setPointsDataTime(new Date(parseInt(records[0]?.timestamp, 10)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+        setLineColor(parseFloat(records[0]?.close) > parseFloat(records[1]?.close) ? GREEN : RED);
       }
-    } catch (error) {
-      console.error("Error fetching chart data:", error);
-    } finally {
-      setApiDataLoading(false);
-    }
+    } catch (e) { } finally { setApiDataLoading(false); }
   }, [chartIndex]);
+  useEffect(() => { fetchChart(); }, [fetchChart]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const fetchOrders = useCallback(async () => {
+    if (!stellarKey) return;
+    setOrdersLoading(true);
+    try {
+      const res = await fetch(`${STELLAR_URL.URL}/accounts/${stellarKey}/offers?limit=200&order=desc`);
+      const json = await res.json();
+      setOrdersCount((json._embedded?.records || []).length);
+    } catch (e) { } finally { setOrdersLoading(false); }
+  }, [stellarKey]);
+  useEffect(() => { if (focused) fetchOrders(); }, [focused, fetchOrders]);
+  const nav = (i) => { [() => navigation.navigate("newOffer_modal"), () => navigation.navigate("classic", { Asset_type: "ETH" }), () => navigation.navigate("ExportUSDC", { Asset_type: "ETH" })][i]?.(); };
+  const toolNav = (i) => { [() => navigation.navigate("Assets_manage"), () => navigation.navigate("payout"), () => navigation.navigate("StellarOffers"), () => navigation.navigate("StellarTransactions"), () => navigation.navigate("WalletNetworkSelection", { selectionType: "importForSetupedApp", backScreenName: "ExchangeHome" }),][i]?.(); };
 
-  useEffect(() => {
-    AsyncStorageLib.getItem("walletType").then((type) => {
-      try {
-        setWalletType(JSON.parse(type));
-      } catch {
-        setWalletType(null);
-      }
-    });
-  }, [focusedScreen]);
-
-  useFocusEffect(
-    useCallback(() => {
-      const onBackPress = () => {
-        navigation.navigate("Home");
-        return true;
-      };
-      const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
-
-      return () => subscription.remove();
-    }, [navigation])
-  );
-
-  const copyToClipboard = (data) => {
-    if (!data) return;
-    Clipboard.setString(data);
-    alert("success", "Copied");
-  };
-
-  const renderAssetPairItem = ({ item }) => (
-    <TouchableOpacity
-      onPress={() => {
-        setChartIndex(item.id);
-        setOpenChartApi(false);
-      }}
-      style={[styles.chooseItemContainer, { borderRadius: 5, height: hp(6), justifyContent: "space-around",backgroundColor:theme.cardBg }]}
-    >
-      <Image source={{ uri: item.img_0 }} style={{ width: wp(9), height: hp(4) }} />
-      <Text style={[styles.chooseItemText,{color:theme.headingTx}]}>{item.name}</Text>
-      <Icon name={"arrow-right"} type={"materialCommunity"} size={19} color={theme.headingTx} />
-      <Image source={{ uri: item.img }} style={{ width: wp(9), height: hp(4), marginLeft: wp(0) }} />
-      <Text style={[styles.chooseItemText,{color:theme.headingTx}]}>{item.name_0}</Text>
-    </TouchableOpacity>
-  );
-
-  const rawCloses = apiData
-    ?.slice()
-    ?.reverse()
-    ?.map((item) => parseFloat(item?.close));
-
+  const usdcBal = state?.assetData?.find(b => b.asset_code === "USDC")?.balance || "0.00";
+  const portfolioVal = state?.totalStellarInUSD || "0.00";
+  const rawCloses = apiData?.slice()?.reverse()?.map((r) => parseFloat(r?.close));
   const minChartValue = rawCloses?.length ? Math.min(...rawCloses) : 0;
   const maxChartValue = rawCloses?.length ? Math.max(...rawCloses) : 0;
   const chartRangeValue = maxChartValue - minChartValue || 1;
@@ -233,154 +160,214 @@ export const HomeView = () => {
     originalValue: val,
   }));
 
+  const renderAssetPairItem = ({ item }) => (
+    <TouchableOpacity
+      onPress={() => {
+        setChartIndex(item.id);
+        setOpenChartApi(false);
+      }}
+      style={st.chooseItemContainer}
+    >
+      <Image source={{ uri: item.img_0 }} style={{ width: wp(9), height: hp(4) }} />
+      <Text style={st.chooseItemText}>{item.name}</Text>
+      <Icon name={"arrow-right"} type={"materialCommunity"} size={19} color={theme.headingTx} />
+      <Image source={{ uri: item.img }} style={{ width: wp(9), height: hp(4), marginLeft: wp(0) }} />
+      <Text style={st.chooseItemText}>{item.name_0}</Text>
+    </TouchableOpacity>
+  );
 
+  const renderStatCard = useCallback(({ item: s }) => (
+    <View style={st.statCard}>
+      <View style={[st.statIconBg, { backgroundColor: s.color + '20' }]}>
+        <Icon name={s.icon} type="ionicon" size={14} color={s.color} />
+      </View>
+      <Text style={st.statLbl} numberOfLines={1}>{s?.label}</Text>
+      <Text style={[st.statVal, { color: s.color }]} numberOfLines={1}>{s?.val}</Text>
+      <View style={[st.statBar, { backgroundColor: s.color }]} />
+    </View>
+  ), [pnl]);
 
-  const theme = state.THEME.THEME ? colors.dark : colors.light;
-
-  const manageAssetNav = (itemIndex) => {
-    switch (itemIndex) {
-      case 0:
-        navigation.navigate("newOffer_modal")
-        break;
-      case 1:
-        navigation.navigate("classic", { Asset_type: "ETH" })
-        break;
-      case 2:
-        navigation.navigate("ExportUSDC", { Asset_type: "ETH" })
-        break;
-    }
-  }
-
-  const manageTradeNav = (itemIndex) => {
-    switch (itemIndex) {
-      case 0:
-        navigation.navigate("Assets_manage")
-        break;
-      case 1:
-        navigation.navigate("payout")
-        break;
-      case 2:
-        navigation.navigate("StellarOffers")
-        break;
-      case 3:
-        navigation.navigate("StellarTransactions")
-        break;
-    }
-  }
+  const copyToClipboard = (data) => {
+    if (!data) return;
+    Clipboard.setString(data);
+    alert("success", "Copied");
+  };
 
   return (
-    <>
-      <Exchange_screen_header
-        title="Stellar SDEX"
-        onLeftIconPress={() => navigation.navigate("Home")}
-        onRightIconPress={() => {
-          console.log("Right icon pressed");
-        }}
-      />
+    <View style={st.container}>
+      <StatusBar barStyle="light-content" />
 
-      <ScrollView style={[styles.container, { backgroundColor: theme.bg }]} contentContainerStyle={{ backgroundColor: theme.bg }}>
-        <View style={[styles.quickActionWrapper, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }]}>
-         <View style={{
-          flexDirection:"row",
-          justifyContent:"space-between",
-          alignItems:"center",
-         }}>
-           <Text style={[styles.headingTx, { color: theme.headingTx }]}>Start Trade</Text>
-             <View style={{ flexDirection: "row",alignItems:"center" }}>
-                <Image source={{uri:CHART_API[0].img_0}} width={29} height={29} />
-                <Text style={[styles.infoText, { color: theme.headingTx }]}>Avg. Network Fee</Text>
-                <Text style={[styles.infoText, { color: theme.headingTx }]}>~ 0.00001  </Text>
-              </View>
-         </View>
-          <View style={[styles.quickActionRow]}>
-            {quickActions.map((item, index) => {
-              return (
-                <View style={{ alignItems: "center" }} key={index}>
-                  <TouchableOpacity style={[styles.iconCon, { backgroundColor: theme.smallCardBg, borderColor: theme.smallCardBorderColor }]} onPress={() => { manageAssetNav(index) }}>
-                    <Icon name={item.icon} type={item.iconProvider} color="rgba(129, 108, 255, 0.97)" size={27} />
-                  </TouchableOpacity>
-                  <Text style={{ fontSize: 13, color: theme.headingTx, textAlign: "center" }}>{item.name}</Text>
-                </View>
-              )
-            })}
-            <View style={[styles.infoCon,{}]}>
-              <View style={{ flexDirection: "row",paddingHorizontal:wp(1),alignItems:"center" }}>
-                <View>
-                  <Text style={[styles.infoText, { color: theme.headingTx }]}>USDC Balance:</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxWidth: wp(16.9),alignSelf:"center" }}>
-                  <Text style={[styles.infoText,{ color: theme.cardSubTx }]}>
-                    {state?.STELLAR_ADDRESS_STATUS === false
-                      ? "0.00"
-                      : state?.assetData
-                        ?.filter((b) => b.asset_code === "USDC")
-                        .find((b, _, arr) => parseFloat(b.balance) > 0 && (b === arr[0] || parseFloat(arr[0].balance) <= 0))
-                        ?.balance || "0.00"}
-                  </Text>
-                </ScrollView>
-                </View>
-              </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: hp(10) }}>
+
+        <LinearGradient
+          colors={state.THEME.THEME?['#2E2E5D', '#12121A', '#0B0B0F']: ['#e7e6e2ff', '#F7F6FC', '#ECEBF7']}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={Platform.OS==="android"?st.portfolioCard:st.portfolioCardIos}
+        >
+          <View style={st.portfolioInfo}>
+            <View style={st.row}>
+              <Text style={[st.label,{color:theme.headingTx}]}>Balance</Text>
+              <Icon name="eye-outline" type="ionicon" size={14} color={theme.cardSubTx} style={{ marginLeft: 6 }} />
             </View>
-          </View>
-          <View style={styles.bottmLine} />
-          <View style={[styles.accountDetils]}>
-            <View style={styles.walletContainer}>
-              <Text style={[styles.textColor, { color: theme.headingTx }]}>Active Stellar Wallet</Text>
+            <Text style={[st.balance,{color:theme.headingTx}]}>${portfolioVal}</Text>
+            <View style={st.row}>
+              <Text style={[st.percentage,{color:theme.inactiveTx}]}><Text style={st.subLabel}>Stellar DEX</Text></Text>
             </View>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
+
+            <View style={[st.walletSelector, { borderColor: theme.cardSubTx }]}>
               {loadingKey && !stellarKey ? (
-                <View style={{ width: wp(70) }}>
-                  <Exchange_single_loading />
-                </View>
+                <ActivityIndicator size="small" color={theme.buttonColor} />
               ) : (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxWidth: wp(80), paddingVertical: 1, borderRadius: 5 }}>
-                  <Text style={[styles.textColor, { color: theme.inactiveTx }]}>{stellarKey}</Text>
-                </ScrollView>
+                <View style={st.walletKeyRow}>
+                  <Text style={[st.textColor, { color: theme.inactiveTx }]}>Active Wallet: </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={st.walletKeyScroll}
+                  >
+                    <Text style={[st.textColor, { color: theme.inactiveTx }]}>
+                      {stellarKey}
+                    </Text>
+                  </ScrollView>
+                </View>
               )}
-              <TouchableOpacity onPress={() => copyToClipboard(stellarKey)} accessibilityLabel="Copy Stellar Public Key">
-                <Icon name="content-copy" type="materialCommunity" color="#4052D6" size={24} style={{ marginLeft: wp(1) }} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => {navigation.navigate("WalletNetworkSelection",{selectionType:"importForSetupedApp",backScreenName:"ExchangeHome"})}} accessibilityLabel="Import Wallet" style={styles.copyCon}>
-                <Text style={[styles.copyTx]}>Import</Text>
+
+              <TouchableOpacity
+                onPress={() => copyToClipboard(stellarKey)}
+                style={st.copyBtn}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Icon
+                  name="content-copy"
+                  type="materialCommunity"
+                  color={theme.buttonColor}
+                  size={24}
+                  style={{ marginLeft: wp(1) }}
+                />
               </TouchableOpacity>
             </View>
           </View>
-        </View>
-        {/* {(walletType !== "Ethereum" && walletType !== "Multi-coin") && (
-          <Text style={styles.whiteColor}>
-            Only Ethereum and Multi-coin based wallets are supported.
-          </Text>
-        )} */}
 
-        <View style={[styles.quickActionWrapper, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }]}>
-          <Text style={[styles.headingTx, { color: theme.headingTx }]}>Manage Assets</Text>
-          <View style={[styles.quickActionRow, { alignSelf: "flex-start" }]}>
-            {quickTradeActions.map((item, index) => {
+          <View style={[st.feeBadge,{borderColor:theme.inactiveTx}]}>
+            <Text style={[st.feeText,{color:theme.inactiveTx}]}>Avg. Network Fee</Text>
+            <Text style={[st.feeValue,{color:theme.headingTx}]}>~ 0.00001 XLM</Text>
+          </View>
+
+          <View style={st.abstractCircle} />
+
+          <View style={Platform.OS==="android"?st.actRow:st.actRowIOS}>
+            <TouchableOpacity style={[Platform.OS==="android"?st.actSmall:st.actSmallIOS, { backgroundColor: ACCENT }]} onPress={() => nav(0)}>
+              <Icon name="candlestick-chart" type="material" size={Platform.OS==="android"?22:18} color="#FFF" />
+              <View style={{ marginLeft: 10 }}>
+                <Text style={st.actTitle}>Trade</Text>
+                <Text style={st.actSub}>Trade Assets</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity style={[Platform.OS==="android"?st.actSmall:st.actSmallIOS,{backgroundColor:theme.bg}]} onPress={() => nav(1)}>
+              <Icon name="arrow-down-circle" type="feather" size={Platform.OS==="android"?20:18} color={theme.headingTx} />
+              <View style={{ marginLeft: 10 }}>
+                <Text style={[st.actTitle,{color:theme.headingTx}]}>Deposit</Text>
+                <Text style={[st.actSub,{color:theme.inactiveTx}]}>USDC</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity style={[Platform.OS==="android"?st.actSmall:st.actSmallIOS,{backgroundColor:theme.bg}]} onPress={() => nav(2)}>
+              <Icon name="arrow-up-circle" type="feather" size={Platform.OS==="android"?20:18} color={theme.headingTx} />
+              <View style={{ marginLeft: 10 }}>
+                <Text style={[st.actTitle,{color:theme.headingTx}]}>Withdraw</Text>
+                <Text style={[st.actSub,{color:theme.inactiveTx}]}>USDC</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+
+        <FlatList
+          horizontal
+          data={PnlOverViewConfig}
+          keyExtractor={(item) => item.label}
+          renderItem={renderStatCard}
+          style={st.statsRow}
+          showsHorizontalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ width: 8 }} />}
+          contentContainerStyle={{ paddingEnd: hp(3) }}
+        />
+
+        <View style={st.sec}>
+          <View style={st.pnlHead}>
+            <View>
+              <Text style={[st.secTitle,{fontSize:20}]}>PnL Overview</Text>
+            <Text style={st.freshnessTag}>Freshness: ~15 mins</Text>
+            </View>
+            <PnlOverView stellarKey={stellarKey} onSummaryUpdate={setPnl} selectedTimeline={selectedTimeline} />
+          </View>
+
+          <View style={{ flexDirection: "row" }}>
+            <View style={{ flex: 1 }}>
+              <Text style={st.pnlLabel}>Total PnL</Text>
+              <Text style={[st.pnlBigVal, { color: pnl?.totalPnL < 0 ? RED : GREEN }]}>
+                {pnl?.totalPnL < 0 ? "-" : "+"}${Math.abs(pnl?.totalPnL || 0).toFixed(3)}
+              </Text>
+              <View style={{ marginTop: 10 }}>
+                <Sparkline data={rawCloses?.length > 2 ? rawCloses : [10, 25, 12, 35, 20, 50]} color={pnl?.totalPnL < 0 ? RED : GREEN} width={wp(35)} />
+              </View>
+            </View>
+            <View style={st.pnlGrid}>
+              <GridItem st={st} label="Win Rate" val={`${pnl?.winRate || 0}%`} sub="▲ 5.2%" subCol={GREEN} />
+              <GridItem st={st} label="Total Trades" val={pnl?.tradeCount || 0} sub="▲ 2" subCol={GREEN} />
+              <GridItem st={st} label="Net Flow" val={`-$${Math.abs(pnl?.netUSDCFlow || 0).toFixed(3)}`} sub="▼ 1.1%" subCol={RED} isNeg />
+              <GridItem st={st} label="Positions" val={pnl?.positionCount || 0} sub="— 0%" subCol={theme.cardSubTx} />
+            </View>
+          </View>
+
+          <View style={st.timelineContainer}>
+            {TIMELINES.map((item) => {
+              const isActive = selectedTimeline === item.value;
               return (
-                <TouchableOpacity style={{ alignItems: "center", marginRight: wp(8) }} key={index} onPress={() => { manageTradeNav(index) }}>
-                  <View style={[styles.iconCon, { backgroundColor: theme.smallCardBg, borderColor: theme.smallCardBorderColor }]}>
-                    <Icon name={item.icon} type={item.iconProvider} color="rgba(129, 108, 255, 0.97)" size={27} />
-                  </View>
-                  <Text style={{ fontSize: 13, color: theme.headingTx, textAlign: "center" }}>{item.name}</Text>
+                <TouchableOpacity
+                  key={item.value}
+                  onPress={() => setSelectedTimeline(item.value)}
+                  style={[st.timelineBtn, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }, isActive && st.timelineBtnActive]}
+                >
+                  <Text style={[st.timelineText, { color: theme.inactiveTx }, isActive && st.timelineTextActive]}>
+                    {item.label}
+                  </Text>
                 </TouchableOpacity>
-              )
+              );
             })}
           </View>
         </View>
-        <PnlOverView stellarKey={stellarKey} refresh={apiDataLoading} activeTheme={state.THEME.THEME}/>
-        <View style={[styles.quickActionWrapper, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }]}>
-          <View style={styles.chartTopCon}>
+
+        <View style={st.sec}>
+          <Text style={[st.secTitle, { marginBottom: 10 }]}>More Options</Text>
+          {tools.map((t, i) => (
+            <TouchableOpacity key={i} style={[st.toolRow, i === tools.length - 1 && { borderBottomWidth: 0 }]} onPress={() => toolNav(i)}>
+              <View style={[st.toolDot, { backgroundColor: t.color + '15' }]}>
+                <Icon name={t.icon} type={t.provider} size={18} color={t.color} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={st.toolName}>{t.name}</Text>
+                <Text style={st.toolSub}>{t.sub}</Text>
+              </View>
+              <Icon name="chevron-right" type="feather" size={18} color={theme.cardSubTx} />
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={st.chartSec}>
+          <View style={st.chartTopCon}>
             <View>
-              <Text style={[styles.priceText, { color: theme.headingTx }]}>${pointsData || 0.0}</Text>
-              <Text style={[styles.priceTime, { color: theme.headingTx }]}>{pointsDataTime || "--:--:--"}</Text>
+              <Text style={st.priceText}>${pointsData || 0.0}</Text>
+              <Text style={st.priceTime}>{pointsDataTime || "--:--:--"}</Text>
             </View>
             <TouchableOpacity
-              style={[styles.tradeButton, { backgroundColor: theme.bg }]}
+              style={st.tradeButton}
               onPress={() => setOpenChartApi(true)}
               accessibilityLabel="Change asset pair for trade"
             >
-              <Text style={[styles.tradeButtonText, { color: theme.cardSubTx }]}>
-                {CHART_API[chartIndex].name} 
-                <Icon name={"arrow-right"} type={"materialCommunity"} size={14} color={theme.headingTx}/>
+              <Text style={st.tradeButtonText}>
+                {CHART_API[chartIndex]?.name}
+                {" "}
+                <Icon name={"arrow-right"} type={"materialCommunity"} size={14} color={theme.headingTx} />
+                {" "}
                 {CHART_API[chartIndex].name_0}
               </Text>
               <Icon name={"expand-more"} type={"material"} color={theme.cardSubTx} size={24} />
@@ -388,226 +375,513 @@ export const HomeView = () => {
           </View>
 
           {apiDataLoading ? (
-            <ActivityIndicator color={"#4052D6"} size={"large"} />
+            <ActivityIndicator color={ACCENT} size={"large"} style={{ marginVertical: hp(4) }} />
           ) : (
-              <LineChart
-                data={chartData}
-                adjustToWidth
-                width={wp(89)}
-                height={hp(28)}
-                color={lineColor}
-                thickness={2}
-                curved
-                areaChart
-                startFillColor={lineColor}
-                startOpacity={0.3}
-                endFillColor={lineColor}
-                endOpacity={0}
-                hideDataPoints
-                hideYAxisText
-                hideXAxisText
-                hideAxesAndRules
-                initialSpacing={0}
-                endSpacing={0}
-                maxValue={100}
-                pointerConfig={{
-                  pointerStripHeight: hp(26),
-                  pointerStripColor: "rgba(255,255,255,0.15)",
-                  pointerStripWidth: 1,
-                  pointerColor: lineColor,
-                  radius: 5,
-                  pointerLabelWidth: 110,
-                  pointerLabelHeight: 95,
-                  activatePointersOnLongPress: false,
-                  autoAdjustPointerLabelPosition: true,
-                  pointerLabelComponent: (items) => {
-                    const val = items?.[0]?.originalValue;
-                    if (prvValue.current !== val) {
-                      prvValue.current = val;
-                      setTimeout(() => setPointsData(val), 0);
-                    }
-                    return null;
-                  },
-                }}
-              />
+            <LineChart
+              data={chartData}
+              adjustToWidth
+              width={wp(82)}
+              height={hp(28)}
+              color={lineColor}
+              thickness={2}
+              curved
+              areaChart
+              startFillColor={lineColor}
+              startOpacity={0.3}
+              endFillColor={lineColor}
+              endOpacity={0}
+              hideDataPoints
+              hideYAxisText
+              hideXAxisText
+              hideAxesAndRules
+              initialSpacing={0}
+              endSpacing={0}
+              maxValue={100}
+              pointerConfig={{
+                pointerStripHeight: hp(26),
+                pointerStripColor: "rgba(255,255,255,0.15)",
+                pointerStripWidth: 1,
+                pointerColor: lineColor,
+                radius: 5,
+                pointerLabelWidth: 110,
+                pointerLabelHeight: 95,
+                activatePointersOnLongPress: false,
+                autoAdjustPointerLabelPosition: true,
+                pointerLabelComponent: (items) => {
+                  const val = items?.[0]?.originalValue;
+                  if (prvValue.current !== val) {
+                    prvValue.current = val;
+                    setTimeout(() => setPointsData(val), 0);
+                  }
+                  return null;
+                },
+              }}
+            />
           )}
         </View>
-        {/* <CandleStickChart visible={apiDataLoading} activeTheme={state.THEME.THEME} pair={PAIRS[chartIndex]}/> */}
-        <View style={styles.tradeButtonWrapper}>
-          <Modal animationType="slide" transparent visible={openChartApi} onRequestClose={() => setOpenChartApi(false)}>
-            <TouchableOpacity style={styles.chooseModalContainer} onPress={() => setOpenChartApi(false)}>
-              <View style={[styles.chooseModalContent,{backgroundColor:theme.bg}]}>
-                <Text style={[styles.chooseModalTitle,{color:theme.headingTx}]}>Select Assets Pair</Text>
-                <FlatList data={CHART_API} renderItem={renderAssetPairItem} keyExtractor={(item) => item.id.toString()} />
-              </View>
-            </TouchableOpacity>
-          </Modal>
-        </View>
+
+        <Modal animationType="slide" transparent visible={openChartApi} onRequestClose={() => setOpenChartApi(false)}>
+          <TouchableOpacity style={st.chooseModalContainer} onPress={() => setOpenChartApi(false)}>
+            <View style={st.chooseModalContent}>
+              <Text style={st.chooseModalTitle}>Select Assets Pair</Text>
+              <FlatList data={CHART_API} renderItem={renderAssetPairItem} keyExtractor={(item) => item.id.toString()} />
+            </View>
+          </TouchableOpacity>
+        </Modal>
       </ScrollView>
-      <SELECT_WALLET_EXC
-        visible={visibleSelectWallet}
-        setVisible={()=>{setVisibleSelectWallet(false)}}
-        setModalVisible={()=>{setVisibleSelectWallet(false)}}
-      />
-    </>
+
+      <SELECT_WALLET_EXC visible={visibleSelectWallet} setVisible={() => setVisibleSelectWallet(false)} />
+    </View>
   );
 };
 
-const styles = StyleSheet.create({
+const GridItem = ({ st, label, val, sub, subCol, isNeg }) => (
+  <View style={st.gridCell}>
+    <Text style={st.gridLbl}>{label}</Text>
+    <Text style={[st.gridVal, isNeg && { color: RED }]}>{val}</Text>
+    <Text style={[st.gridSub, { color: subCol }]}>{sub}</Text>
+  </View>
+);
+
+const getStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: theme.bg
   },
-  quickActionWrapper: {
-    paddingVertical: hp(1.3),
-    borderRadius: 20,
-    marginTop: hp(1),
-    marginHorizontal: wp(2.5),
-    borderWidth: 1
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center'
   },
-  quickActionRow: {
+  actRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: hp(1),
-    paddingHorizontal: wp(5),
+    gap: 10,
+    marginTop: hp(1.4),
+    width: wp(85)
   },
-  accountDetils: {
-    justifyContent: "space-between",
-    marginTop: hp(1.5),
-    paddingHorizontal: wp(5),
-  },
-  walletContainer: {
+  actRowIOS: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: hp(-1)
+    gap: 10,
+    marginTop: hp(1.4),
+    width: wp(84)
   },
-  textColor: {
-    color: "#fff",
-    marginVertical: hp(0.3)
+  actTitle: {
+    color: "#FFF",
+    fontSize: Platform.OS==="android"?15:12,
+    fontWeight: "bold"
   },
-  copyCon: {
-    backgroundColor: "#4052D6",
-    borderRadius: 10,
-    padding: 6,
-    paddingHorizontal: 8,
-    marginLeft: 5
+  actSub: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: Platform.OS==="android"?10:9
   },
-  copyTx: {
-    fontSize: 16,
-    fontWeight: "300",
-    color: "#fff"
+  actSmall: {
+    flex: 1,
+    backgroundColor: colors.dark.cardBg,
+    borderRadius: 18,
+    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: "row"
   },
-  whiteColor: {
-    color: "#fff",
-    marginVertical: hp(2),
-    width: wp(80),
-    alignSelf: "center",
-    textAlign: "center"
+  actSmallIOS: {
+    flex: 1,
+    backgroundColor: colors.dark.cardBg,
+    borderRadius: 18,
+    paddingVertical:hp(1.3),
+    paddingHorizontal:wp(2.3),
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: "row"
   },
-  card: {
+  statsRow: {
     flexDirection: "row",
-    backgroundColor: "#2b3c57",
-    borderRadius: 10,
+    paddingHorizontal: 16,
+    marginTop: -4,
+    gap: 8
+  },
+  statCard: {
+    width: wp(25),
+    flex: 1,
+    backgroundColor: theme.cardBg,
+    borderRadius: 16,
     padding: 10,
-    marginVertical: hp(0.5),
+    marginRight: wp(0.2)
+  },
+  statIconBg: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8
+  },
+  statLbl: {
+    color: theme.cardSubTx,
+    fontSize: 11,
+    marginBottom: 2
+  },
+  statVal: {
+    color: theme.headingTx,
+    fontSize: 13,
+    fontWeight: "bold"
+  },
+  statBar: {
+    height: 3,
+    width: 18,
+    borderRadius: 2,
+    marginTop: 10
+  },
+  sec: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    backgroundColor: theme.cardBg,
+    borderRadius: 24,
+    padding: 20
+  },
+  secTitle: {
+    color: theme.headingTx,
+    fontSize: 19,
+    fontWeight: "bold"
+  },
+  pnlHead: {
+    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 15
   },
-  anchorStatusIcon: {
-    justifyContent: "center"
+  dropChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4
+  },
+  dropChipTx: {
+    color: theme.cardSubTx,
+    fontSize: 12,
+    marginRight: 4
+  },
+  pnlLabel: {
+    color: theme.cardSubTx,
+    fontSize: 12
+  },
+  pnlBigVal: {
+    fontSize: 26,
+    fontWeight: "bold",
+    marginTop: 4
+  },
+  pnlGrid: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    borderLeftWidth: 1,
+    borderLeftColor: theme.smallCardBorderColor,
+    paddingLeft: 10
+  },
+  gridCell: {
+    width: '50%',
+    padding: 6
+  },
+  gridLbl: {
+    color: theme.cardSubTx,
+    fontSize: 10
+  },
+  gridVal: {
+    color: theme.headingTx,
+    fontSize: 15,
+    fontWeight: "bold",
+    marginTop: 2
+  },
+  gridSub: {
+    fontSize: 10,
+    marginTop: 2
+  },
+  toolRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.smallCardBorderColor
+  },
+  toolDot: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center"
+  },
+  toolName: {
+    color: theme.headingTx,
+    fontSize: 14,
+    fontWeight: "600"
+  },
+  toolSub: {
+    color: theme.cardSubTx,
+    fontSize: 11,
+    marginTop: 2
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    marginTop: hp(3),
+    marginHorizontal: 16
+  },
+
+  logoCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1.5,
+    borderColor: '#FFF',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  logoInner: {
+    width: 14,
+    height: 2,
+    backgroundColor: '#FFF',
+    transform: [{ rotate: '-45deg' }]
+  },
+  headerTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 10
+  },
+  headerIcons: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  iconButton: {
+    marginLeft: 15,
+    position: 'relative'
+  },
+  emojiIcon: { fontSize: 18 },
+  notificationDot: {
+    position: 'absolute',
+    right: -2,
+    top: -2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#7C3AED',
+    borderWidth: 1.5,
+    borderColor: theme.bg
+  },
+  profileCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#1F2937',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  portfolioCard: {
+    padding: 20,
+    width:wp(93),
+    height: 255,
+    borderRadius: 24,
+    marginBottom:  20,
+    overflow: 'hidden',
+    marginHorizontal: 16,
+    marginTop: 16
+  },
+  portfolioCardIos: {
+    width: wp(100),
+    height: 270,
+    paddingVertical: 20,
+    paddingHorizontal: 15,
+    borderRadius: 24,
+    marginBottom: 1,
+    overflow: 'hidden',
+    marginTop: hp(4),
+  },
+  label: {
+    color: '#94A3B8',
+    fontSize: 13
+  },
+  balance: {
+    color: '#FFF',
+    fontSize: 34,
+    fontWeight: 'bold',
+    marginVertical: 5
+  },
+  percentage: {
+    color: '#10B981',
+    fontSize: 15,
+    fontWeight: '600'
+  },
+  subLabel: {
+    color: '#94A3B8',
+    fontWeight: 'normal'
+  },
+  walletSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    marginTop: 15,
+    alignSelf: 'flex-start',
+    borderWidth:0.9,
+    maxWidth: wp(85),
+  },
+  walletKeyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+    flexGrow: 0,
+  },
+  walletKeyScroll: {
+    width: wp(53),
+    flexGrow: 0,
+  },
+  copyBtn: {
+    flexShrink: 0,
+    zIndex: 10,
+  },
+  walletText: {
+    color: '#FFF',
+    marginRight: 6,
+    fontSize: 11
+  },
+  feeBadge: {
+    position: 'absolute',
+    right: Platform.OS==="android"?20:50,
+    top: 20,
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: 0.8,
+  },
+  feeText: {
+    color: '#94A3B8',
+    fontSize: 9
+  },
+  feeValue: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: 'bold'
+  },
+  abstractCircle: {
+    position: 'absolute',
+    right: -40,
+    bottom: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)'
+  },
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+
+  chartSec: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    backgroundColor: theme.cardBg,
+    borderRadius: 24,
+    padding: 16
+  },
+  chartTopCon: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    marginBottom: 10
   },
   priceText: {
     fontSize: 19,
-    fontWeight: "600"
+    fontWeight: "600",
+    color: theme.headingTx
   },
   priceTime: {
-    fontSize: 14
-  },
-  tradeButtonWrapper: {
-    paddingVertical: hp(1)
+    fontSize: 12,
+    color: theme.cardSubTx
   },
   tradeButton: {
-    backgroundColor: "rgba(33, 43, 83, 1)",
+    backgroundColor: theme.bg,
     paddingVertical: hp(0.8),
     paddingHorizontal: wp(3),
     maxWidth: wp(50),
     alignItems: "center",
     borderRadius: hp(1.6),
     flexDirection: "row",
-    justifyContent:"center"
+    justifyContent: "center",
   },
   tradeButtonText: {
-    fontSize: 14,
-    textAlign: "center",
+    fontSize: 13,
+    color: theme.headingTx,
     fontWeight: "500"
   },
-
   chooseModalContainer: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0,0,0,0.5)"
   },
   chooseModalContent: {
-    backgroundColor: "rgba(33, 43, 83, 1)",
+    backgroundColor: theme.cardBg,
     padding: 20,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     width: "100%",
     maxHeight: "80%",
-    borderTopColor: "rgba(72, 93, 202, 1)",
-    borderWidth: 2,
+    borderTopColor: theme.smallCardBorderColor,
+    borderWidth: 1,
   },
   chooseModalTitle: {
-    fontSize: 21,
-    color: "#fff",
+    fontSize: 20,
+    color: theme.headingTx,
     fontWeight: "bold",
-    marginBottom: hp(1)
+    marginBottom: hp(1.5)
   },
   chooseItemContainer: {
     marginVertical: 3,
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: hp(0.5),
+    justifyContent: "space-around",
+    paddingVertical: hp(1),
+    borderRadius: 12,
+    backgroundColor: theme.bg,
   },
   chooseItemText: {
-    fontSize: 19,
-    color: "#fff",
-    marginLeft: wp(-10)
-  },
-  headingTx: {
     fontSize: 16,
-    fontWeight: "600",
-    paddingHorizontal: wp(5),
+    color: theme.headingTx,
+    fontWeight: "600"
   },
-  iconCon: {
-    padding: wp(3.5),
-    borderRadius: 30,
-    borderWidth: 0.5
+  timelineContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 1,
+    gap: 9
   },
-  bottmLine: {
-    borderBlockEndColor: "gray",
-    borderBottomWidth: 0.9,
-    marginTop: hp(2),
+  timelineBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1
   },
-  chartTopCon: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: wp(4)
+  timelineBtnActive: {
+    backgroundColor: 'rgba(86, 88,233,0.2) ',
+    borderColor: '#4052D6'
   },
-  infoCon:{
-    paddingVertical:hp(1.2),
-    width:wp(34),
-    justifyContent:"center",
-    alignItems:"flex-start",
-    borderRadius:15,
-    paddingHorizontal:3,
-    marginRight:hp(-1)
+  timelineText: {
+    fontSize: 12,
+    fontWeight: '500'
   },
-  infoText:{
-    fontSize: 13.5,
-    fontWeight:"500",
-    textAlign: "left",
-    marginLeft:4
+  timelineTextActive: {
+    color: '#4052D6',
+    fontWeight: '700'
+  },
+  freshnessTag: {
+    color: theme.inactiveTx,
+    fontSize: 13,
+    fontWeight: "400"
   }
 });

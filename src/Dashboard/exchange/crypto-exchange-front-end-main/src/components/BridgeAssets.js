@@ -622,6 +622,8 @@ const BridgeAssets = ({ props }) => {
           await ShortTermStorage.syncTx({
           txHash: res.approvalTxHash,
           walletAddress: state && state.wallet && state.wallet.address,
+          fromAddress: state?.wallet?.address,
+          toAddress: selectedToNetwork.subName==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address,
           provider: "EVMTX",
           fromChain:  selectedFromNetwork.chainName,
           fromToken: selectedFromAsset.symbol,
@@ -641,6 +643,8 @@ const BridgeAssets = ({ props }) => {
         await ShortTermStorage.syncTx({
           txHash: res.transferTxHash,
           walletAddress: state && state.wallet && state.wallet.address,
+          fromAddress: state?.wallet?.address,
+          toAddress: selectedToNetwork.subName==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address,
           provider: "ALLBRIDGE",
           fromChain:  selectedFromNetwork.chainName,
           fromToken: selectedFromAsset.symbol,

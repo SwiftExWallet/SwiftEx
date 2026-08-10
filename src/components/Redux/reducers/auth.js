@@ -202,7 +202,8 @@ case IMPORTALLWALLETS:
                               return {
                                 ...state,
                                 isTotalInUSDVisible: action.payload.isTotalInUSDVisible,
-                                totalInUSD: action.payload.totalInUSD
+                                totalInUSD: action.payload.totalInUSD,
+                                totalStellarInUSD: action.payload.totalStellarInUSD,
                               };   
     case MULTICHAIN_PORTFOLIO:
                               return {

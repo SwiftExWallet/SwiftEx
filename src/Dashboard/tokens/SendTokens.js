@@ -42,20 +42,21 @@ import { colors } from "../../Screens/ThemeColorsConfig";
 import { ChainSupportedToken } from "../exchange/crypto-exchange-front-end-main/src/components/ChainWithTokenInfo";
 import ShortTermStorage from "../../utilities/ShortTermStorage";
 import MultiChainTokenSend from "../exchange/crypto-exchange-front-end-main/src/components/MultiChainTokenSend";
-import { UI_CHAIN_NAME } from "../../utilities/TokenUtils";
+import { CHAINS, UI_CHAIN_NAME } from "../../utilities/TokenUtils";
 
 const SendTokens = (props) => {
+  const predata = props?.route?.params?.token ?? "ETH";
   const { hasPermission, requestPermission } = useCameraPermission();
   const cameraRef = useRef(null);
   const device = useCameraDevice('back');
   const [selectedChain, setSelectedChain] = useState({
-    "name": "Ethereum",
-    "address": "0x0000000000000000000000000000000000000000",
-    "symbol": "ETH",
-    "decimals": 18,
-    "type": "ETHEREUM",
-    "logoURI": "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png?1696501628",
-    "chain": "ETH"
+    "name": CHAINS[predata].name,
+    "address": CHAINS[predata].nativeToken.address,
+    "symbol": CHAINS[predata].symbol,
+    "decimals": CHAINS[predata].nativeToken.decimals,
+    "type": CHAINS[predata].chainNameInThirdParty,
+    "logoURI": CHAINS[predata].imageUrl,
+    "chain": CHAINS[predata].chainName
 });
   const [address, setAddress] = useState("");
   const [amount, setAmount] = useState("");
@@ -278,14 +279,14 @@ const checkPermission = async () => {
   return (
 <>
     <Wallet_screen_header title={`Send `+selectedChain?.name || selectedChain.domain} onLeftIconPress={() => navigation.goBack()} />
-      <View style={[style.Body,{ backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C"}]}>
+      <View style={[style.Body,{ backgroundColor: theme.bg}]}>
     <ErrorComponet
           isVisible={ErroVisible}
           onClose={() => setErroVisible(false)}
           message="The scanned QR code contains an invalid public key. Please make sure you're scanning the correct QR code and try again."
         />
-        <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
-          <TouchableOpacity style={[style.inputContainer, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C", paddingVertical: hp(1.5), justifyContent: "space-between",paddingHorizontal:wp(3) }]} onPress={() => { setShowTokens(true) }}>
+        <View style={[style.card, { backgroundColor: theme.cardBg }]}>
+          <TouchableOpacity style={[style.inputContainer, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F", paddingVertical: hp(1.5), justifyContent: "space-between",paddingHorizontal:wp(3) }]} onPress={() => { setShowTokens(true) }}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Image source={{ uri: selectedChain.logoURI }} width={30} height={30} />
               <Text style={[style.txtHeading, { color: theme.headingTx }]}>{selectedChain?.name || selectedChain.domain}</Text>
@@ -294,7 +295,7 @@ const checkPermission = async () => {
           </TouchableOpacity>
           </View>
           {!showErcSend?<>
-<View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
+<View style={[style.card, { backgroundColor: theme.cardBg }]}>
          <View style={{
           flexDirection:"row",
           justifyContent:"space-between",
@@ -312,7 +313,7 @@ const checkPermission = async () => {
             </TouchableOpacity>
          </View>
           <View style={[style.inputContainer, {
-            backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+            backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
           }]}>
             <TextInput
               value={address}
@@ -375,12 +376,12 @@ const checkPermission = async () => {
 
 
         <View>
-        <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
+        <View style={[style.card, { backgroundColor: theme.cardBg }]}>
           <Text style={[style.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
             Amount
           </Text>
           <View style={[style.inputContainer, {
-            backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+            backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
           }]}>
           <TextInput
             value={amount}
@@ -461,6 +462,8 @@ const checkPermission = async () => {
                     await ShortTermStorage.syncTx({
                       txHash: txResponse.txResponse?.hash,
                       walletAddress: state.wallet.address,
+                      fromAddress: state.wallet.address,
+                      toAddress: address,
                       provider: "EVMTX",
                       fromChain: selectedChain.symbol,
                       fromToken: selectedChain.symbol,

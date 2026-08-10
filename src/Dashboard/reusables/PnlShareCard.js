@@ -63,7 +63,24 @@ const PnlShareCard = forwardRef(function PnlShareCard(
   const lastX = CHART_WIDTH;
   const lastY = CHART_HEIGHT - dataPoints[dataPoints.length - 1] * CHART_HEIGHT;
 
-  const formatPercent = (val) => `${val >= 0 ? '+' : ''}${Number(val).toFixed(1)}%`;
+  const formatPercent = (val) => {
+    const num = Number(val);
+    if (isNaN(num)) return '0.0%';
+    const abs = Math.abs(num);
+    const decimals = abs < 0.01 ? 4 : abs < 0.1 ? 2 : 1;
+    return `${num >= 0 ? '+' : ''}${num.toFixed(decimals)}%`;
+  };
+
+  const formatDaysLabel = (d) => {
+    if (typeof d === 'number') return `${d}D`;
+    const s = String(d || '');
+    const match = s.match(/^(\d+)(week|month|day)/i);
+    if (!match) return s;
+    const num = match[1];
+    const unit = match[2].toLowerCase();
+    const unitLabel = unit === 'week' ? 'Week' : unit === 'month' ? 'Month' : 'Day';
+    return `${num} ${unitLabel}${num > 1 ? 's' : ''}`;
+  };
 
   return (
     <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1 }}>
@@ -86,7 +103,7 @@ const PnlShareCard = forwardRef(function PnlShareCard(
             </View>
           </View>
           <View style={styles.pill}>
-            <Text style={styles.pillText}>{days}</Text>
+            <Text style={styles.pillText}>{formatDaysLabel(days)}</Text>
           </View>
         </View>
 
@@ -96,7 +113,7 @@ const PnlShareCard = forwardRef(function PnlShareCard(
         </Text>
         {!hideTotal&&
         <Text style={[styles.dollarAmount, { color: themeColor }]}>
-          {totalPnlPercent >= 0 ? '+' : '-'}{totalPnlDollar}
+          {totalPnlPercent >= 0 ? '+' : '-'}${Math.abs(parseFloat(totalPnlDollar) || 0)}
         </Text>}
 
         <View style={styles.chartWrapper}>
@@ -131,7 +148,7 @@ const PnlShareCard = forwardRef(function PnlShareCard(
           </View>
           <View style={[styles.statBox, { marginRight: 0 }]}>
             <Text style={styles.statLabel}>Best trade</Text>
-            <Text style={[styles.statValue, { color: '#34d399' }]}>
+            <Text style={[styles.statValue, { color: (Number(bestTrade) || 0) >= 0 ? '#34d399' : '#f87171' }]} numberOfLines={1}>
               {formatPercent(bestTrade)}
             </Text>
           </View>
@@ -235,7 +252,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold'
   },
   footer: {

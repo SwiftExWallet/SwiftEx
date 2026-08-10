@@ -77,7 +77,7 @@ export async function GetStellarUSDCAvilabelBalance(publicKey,coinName,coinIssue
     }
 
     const formatValue = (value) => {
-        return value < 0 ? "0.00000" : value;
+        return value < 0 ? "0.0000000" : value.toFixed(7);
     };
 
     let selectedAsset = null;
@@ -141,6 +141,23 @@ export const stellarWalletStatus = async (publicKey) => {
   try {
     await server.loadAccount(publicKey);
     return false;
+  } catch (error) {
+    return true;
+  }
+};
+
+export const stellarWalletStatusWithUSDC = async (publicKey) => {
+  try {
+    const account = await server.loadAccount(publicKey);
+
+    const hasUsdcTrustline = account.balances.some(
+      (b) =>
+        b.asset_code === "USDC" &&
+        b.asset_issuer ===
+          "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+    );
+
+    return !hasUsdcTrustline;
   } catch (error) {
     return true;
   }

@@ -1,12 +1,12 @@
 import Web3 from "web3"
 import { RPC } from "../Dashboard/constants"
-import Moralis from 'moralis';
 import "react-native-get-random-values";
 import "@ethersproject/shims";
 import { ethers } from "ethers";
 import { getBalance, getEthBalance, getMaticBalance, getXrpBalance } from "../components/Redux/actions/auth";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import store from "../components/Redux/Store";
 const xrpl = require("xrpl");
 
 
@@ -75,41 +75,29 @@ export const watchEtherTransfers = ()=> {
     
   }
 
-  export const getEthTokenBalance = async (address,tokenAddress)=>{
-    try {
-      console.log('Starting token balance search')
-      console.log(address)
-      const response = await Moralis.EvmApi.token.getWalletTokenBalances({
-        "chain": "1",
-        "tokenAddresses": tokenAddress?[tokenAddress]:[],
-        "address": address
-      });
-      console.log(response.raw);
-      if(response.raw[0])
-      return response.raw[0].balance
+  const getPortfolioTokenBalance = (chain, tokenAddress) => {
+    const tokens = store.getState()?.activeWalletPortFolio || [];
+    const match = tokens.find(
+      (t) => t.chain === chain && t.contractAddress?.toLowerCase() === tokenAddress?.toLowerCase()
+    );
+    return match ? match.balance : 0;
+  };
 
-      return 0
+  export const getEthTokenBalance = async (address, tokenAddress) => {
+    try {
+      return getPortfolioTokenBalance("ETH", tokenAddress);
     } catch (e) {
       console.error(e);
+      return 0;
     }
   }
 
-  export const getBnbTokenBalance = async (address,tokenAddress)=>{
+  export const getBnbTokenBalance = async (address, tokenAddress) => {
     try {
-      console.log('Starting BNB token balance search')
-      console.log(address)
-      const response = await Moralis.EvmApi.token.getWalletTokenBalances({
-        "chain": "97",
-        "tokenAddresses": tokenAddress?[tokenAddress]:[],
-        "address": address
-      });
-      console.log(response.raw);
-      if(response.raw[0])
-      return response.raw[0].balance
-
-      return 0
+      return getPortfolioTokenBalance("BSC", tokenAddress);
     } catch (e) {
       console.error(e);
+      return 0;
     }
   }
 

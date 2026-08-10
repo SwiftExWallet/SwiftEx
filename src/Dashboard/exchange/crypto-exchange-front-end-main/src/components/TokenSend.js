@@ -134,6 +134,8 @@ const TokenSend = ({ route }) => {
         await ShortTermStorage.syncTx({
           txHash: txResponse.hash,
           walletAddress: activeWalletAddress,
+          fromAddress: activeWalletAddress,
+          toAddress: toAddress,
           provider: "EVMTX",
           fromChain: chain,
           fromToken: route?.params?.tokenSymbol || 'TOKEN',
@@ -344,7 +346,7 @@ const TokenSend = ({ route }) => {
         message="The scanned QR code contains an invalid public key. Please make sure you're scanning the correct QR code and try again."
       />
       
-      <View style={[styles.container, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C" }]}>
+      <View style={[styles.container, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F" }]}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           
           {/* Recipient Address Card */}
@@ -366,7 +368,7 @@ const TokenSend = ({ route }) => {
             </TouchableOpacity>
          </View>
             <View style={[styles.inputContainer, { 
-              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
             }]}>
               <TextInput
                 value={address}
@@ -427,7 +429,7 @@ const TokenSend = ({ route }) => {
               Amount
             </Text>
             <View style={[styles.inputContainer, { 
-              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
             }]}>
               <TextInput
                 value={amount}

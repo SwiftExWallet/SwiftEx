@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useIsFocused } from "@react-navigation/native";
 import Modal from "react-native-modal";
 import { GetCryptoList, GetCryptoListWtihFilter } from "../../../../TokensManagement";
+import Icon from "../../../../../icon/index.js";
 
 export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEvm=true,showDataType,selectedAsset=null }) => {
     const focused = useIsFocused();
@@ -44,7 +45,6 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
             height: 40,
             width: 40,
             borderRadius: 30,
-            marginRight: wp(2)
         },
         card: {
             width: wp(93),
@@ -118,6 +118,19 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: theme.bg
+        },
+        checkMark:{
+            position: "absolute",
+            top: 0,
+            right: -2,
+            backgroundColor: "#4052D6",
+            borderRadius: 20,
+            width: 20,
+            height: 20,
+            justifyContent: "center",
+            alignItems: "center",
+            borderWidth: 1.5,
+            borderColor: theme.bg,
         }
     });
 
@@ -166,8 +179,16 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
                         keyExtractor={(item, index) => index}
                         renderItem={({ item, index }) => {
                             return (
-                                <TouchableOpacity onPress={() => { setChainId(item.symbol),setheaderHeading(item.name) }} >
+                                <TouchableOpacity onPress={() => { setChainId(item.symbol),setheaderHeading(item.name) }} style={{ justifyContent: "center", alignContent: "center", marginRight: wp(2) }}>
+                                    <View style={{ position: "relative" }}>
                                     <Image source={{ uri: item.imageUrl }} style={[styles.chainImg, { borderColor: chainId === item.symbol ? "#4052D6" : theme.smallCardBorderColor, borderWidth: wp(1) }]} />
+                                        {chainId === item.symbol && (
+                                            <View style={styles.checkMark}>
+                                                <Icon name="check" type="antDesign" size={9} color="#fff" />
+                                            </View>
+                                        )}
+                                    </View>
+                                    <Text style={{ color: theme.headingTx, fontSize: 13, fontWeight: "500", textAlign: "center" }}>{item.chainName === "SRB" ? "STR" : item.chainName}</Text>
                                 </TouchableOpacity>
                             );
                         }}

@@ -25,19 +25,40 @@ import Snackbar from 'react-native-snackbar';
 import { PPOST, proxyRequest } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/api';
 import { getTokenBalancesUsingAddress } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/utils/getWalletInfo/EtherWalletService';
 import ShortTermStorage from '../utilities/ShortTermStorage';
-import { CHAINS, isBridgeTokenSupported, isNativeTokenAddress, TemporaryTokens, UI_CHAIN_NAME } from "../utilities/TokenUtils";
+import { CHAINS, isNativeTokenAddress, TemporaryTokens, UI_CHAIN_NAME, callWithFallback } from "../utilities/TokenUtils";
 import { colors } from "../Screens/ThemeColorsConfig";
 import { ChainSupportedToken } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/ChainWithTokenInfo";
 import Modal from "react-native-modal";
 import CustomInfoProvider from '../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import ToggleSwitch from 'toggle-switch-react-native';
 import { ensureFusionAllowance, performeRangoSwap, swapBestRoute, swapConfirmRoute, swapPrepareTx, swapTxSign } from '../utilities/SwapRango';
-import { GetStellarAvilabelBalance, GetStellarUSDCAvilabelBalance } from '../utilities/StellarUtils';
+import { GetStellarUSDCAvilabelBalance } from '../utilities/StellarUtils';
 import { GetFusionSwapQuote, PerformeFusionPlusNativeSwap, PerformeFusionSwap } from '../utilities/SwapFusion';
-import { getChainTokenData, swapPepare } from '../utilities/AllbridgeUtil';
-import { swap_prepare } from '../../All_bridge';
-import LocalTxManager from '../utilities/LocalTxManager';
-import BottomSheetModal from '../Dashboard/reusables/BottomSheetModal';
+import { getSafeErrorMessage } from '../utilities/errorSanitizer';
+
+const NATIVE_GAS_RESERVE = {
+  ETH: 0.003,
+  BSC: 0.0015,
+  BNB: 0.0015,
+  POL: 0.05,
+  ARB: 0.001,
+  BASE: 0.001,
+  AVAX: 0.02,
+  OPT: 0.001,
+};
+
+const TYPICAL_SWAP_GAS_UNITS = {
+  ETH: 250000,
+  BSC: 250000,
+  BNB: 250000,
+  POL: 300000,
+  ARB: 3000000,
+  BASE: 300000,
+  AVAX: 300000,
+  OPT: 300000,
+};
+
+const LIVE_GAS_ESTIMATE_TIMEOUT_MS = 3000;
 
 const ConfirmTx = ({
   visible,
@@ -256,8 +277,6 @@ const EthSwap = () => {
   const [showRecommendedSlippage, setShowRecommendedSlippage] = useState('1.0');
   const [warningInfo, setWarningInfo] = useState(null);
   const [visibleSlippage, setvisibleSlippage] = useState(false);
-  const [showSelectOtherOpt, setShowSelectOtherOpt] = useState(false);
-  const [otherOption,setOtherOption] = useState(null);
 
   const slippageLine = [
     { name: '0.5', value: '0.5' },
@@ -290,9 +309,8 @@ const EthSwap = () => {
   const [amount, setAmount] = useState('');
   const [fromBalanceLoading, setFromBalanceLoading] = useState(false);
   const [toBalanceLoading, setToBalanceLoading] = useState(false);
-  const [selectedRelayerFee, setSelectedRelayerFee] = useState('native');
   const [fromTokenBalance, setFromTokenBalance] = useState(0.0);
-  const [xlmNativeBalance, setxlmNativeBalance] = useState(0.0);
+  const [maxCalculating, setMaxCalculating] = useState(false);
   const [toTokenBalance, setToTokenBalance] = useState(0.0);
   const [qoutesLoading, setqoutesLoading] = useState(false);
   const [quoteInfo, setQuoteInfo] = useState(defaultQuoteInfo);
@@ -302,60 +320,6 @@ const EthSwap = () => {
   const [providerQuoteInfo, setProviderQuoteInfo] = useState(null);
   const [rangoQuoteInfo, setrangoQuoteInfo] = useState(null);
   const abortControllerRef = useRef(null);
-  const [allBridgeQuote, setAllBridgeQuote] = useState({
-    provider: 'Allbridge',
-    conversionRate: null,
-    minimumAmountOut: null,
-    slippageTolerance: null,
-    completionTime: null,
-    fee: {
-      native: {
-        amount: null,
-        symbol: null
-      },
-      stablecoin: {
-        amount: null,
-        symbol: null
-      }
-    },
-    isnull: true
-  });
-
-  useEffect(() => {
-    setShowSelectOtherOpt(false);
-    if (!fromToken || !toToken) return;
-
-    const isSTRInvolved =
-      fromToken.chain === CHAINS.STR.symbol ||
-      toToken.chain === CHAINS.STR.symbol;
-
-    if (!isSTRInvolved) {
-      setShowSelectOtherOpt(false);
-      return;
-    }
-
-    const isFromSupported = isBridgeTokenSupported(
-      fromToken.chain,
-      fromToken.address ?? fromToken.issuer
-    );
-    const isToSupported = isBridgeTokenSupported(
-      toToken.chain,
-      toToken.address ?? toToken.issuer
-    );
-
-    if (!isFromSupported) {
-      setShowSelectOtherOpt({
-            side:"From",
-            show:true
-          });
-    } 
-    if (!isToSupported) {
-      setShowSelectOtherOpt({
-            side:"To",
-            show:true
-          });
-    }
-  }, [fromToken, toToken]);
 
   const switchTokens = async () => {
     const prevFrom = fromToken;
@@ -416,7 +380,6 @@ const EthSwap = () => {
       tokenA.chain === CHAINS["STR"].symbol &&
       tokenB.chain === CHAINS["STR"].symbol
     ) {
-      setShowSelectOtherOpt(false);
       navigation.navigate("newOffer_modal", {
         fromToken: tokenB,
         toToken: tokenA,
@@ -448,24 +411,6 @@ const EthSwap = () => {
 
   useEffect(() => {
     if (qoutesLoading === true) {
-      setAllBridgeQuote({
-        provider: 'Allbridge',
-        conversionRate: null,
-        minimumAmountOut: null,
-        slippageTolerance: null,
-        completionTime: null,
-        fee: {
-          native: {
-            amount: null,
-            symbol: null
-          },
-          stablecoin: {
-            amount: null,
-            symbol: null
-          }
-        },
-        isnull: true
-      });
       setQuoteInfo(defaultQuoteInfo);
     }
   }, [qoutesLoading]);
@@ -492,61 +437,8 @@ const EthSwap = () => {
       fromToken.chain === CHAINS['STR'].symbol &&
       toToken.chain === CHAINS['STR'].symbol
     ) {
-      setShowSelectOtherOpt(false);
       navigation.navigate("newOffer_modal",{fromToken:fromToken,toToken:toToken})
       return;
-    }
-
-    // this for allbridge call //
-    const isSTRInvolved = fromToken.chain === CHAINS.STR.symbol || toToken.chain === CHAINS.STR.symbol;
-    const isFromSupported = isBridgeTokenSupported(fromToken.chain, fromToken.address || fromToken.issuer);
-    const isToSupported = isBridgeTokenSupported(toToken.chain, toToken.address || toToken.issuer);
-
-    if (isSTRInvolved) {
-      if (isFromSupported && isToSupported) {
-        setqoutesLoading(true);
-        const allbridge = await getChainTokenData(CHAINS[fromToken.chain].chainName, CHAINS[toToken.chain].chainName, fromToken.code || fromToken.symbol, toToken.code || toToken.symbol, amount);
-        if (allbridge.success) {
-          Keyboard.dismiss();
-          setAllBridgeQuote((prev) => ({
-            ...prev,
-            conversionRate: allbridge.info.conversionRate,
-            minimumAmountOut: allbridge.info.minimumAmountOut,
-            slippageTolerance: allbridge.info.slippageTolerance,
-            completionTime: allbridge.info.completionTime,
-            fee: {
-              native: {
-                amount: allbridge.info.fee.native.amount,
-                symbol: allbridge.info.fee.native.symbol
-              },
-              stablecoin: {
-                amount: allbridge.info.fee.stablecoin.amount,
-                symbol: allbridge.info.fee.stablecoin.symbol
-              }
-            },
-            isnull: false
-          }));
-          setqoutesLoading(false);
-        } else {
-          Keyboard.dismiss();
-          setqoutesLoading(false);
-        }
-        return;
-      } else {
-        if(!isToSupported){
-          setShowSelectOtherOpt({
-            side:"To",
-            show:true
-          });
-          return;
-        }else{
-          setShowSelectOtherOpt({
-            side:"From",
-            show:true
-          });
-          return;
-        }
-      }
     }
 
     try {
@@ -626,10 +518,7 @@ const EthSwap = () => {
           CustomInfoProvider.show(
             'error',
             '!Opps',
-            (getRangoSwaps.error || getRangoSwaps.error?.message) ===
-              "Cannot read property 'swaps' of null"
-              ? 'Unable to get route'
-              : getRangoSwaps.error || 'Unable to get route'
+            getSafeErrorMessage(getRangoSwaps.error, 'Unable to get route')
           );
           setbtnDisable(true);
           setbtnMessage('No route found');
@@ -730,7 +619,7 @@ const EthSwap = () => {
           CustomInfoProvider.show(
             'error',
             '!Opps',
-            err.message || 'Failed to get quote. Please try again.'
+            getSafeErrorMessage(err.message, 'Failed to get quote. Please try again.')
           );
           return null;
         }
@@ -773,7 +662,10 @@ const EthSwap = () => {
         CustomInfoProvider.show(
           'error',
           '!Opps',
-          Array.isArray(err.message) ? err.message[0] : err.message || 'Failed to get quote. Please try again.'
+          getSafeErrorMessage(
+            Array.isArray(err.message) ? err.message[0] : err.message,
+            'Failed to get quote. Please try again.'
+          )
         );
         return null;
       }
@@ -815,8 +707,9 @@ const EthSwap = () => {
       });
 
       if (respo.err?.status) {
-        CustomInfoProvider.show('error', '!Opps', respo.err.message || 'Failed to prepare swap');
-        return { status: false, message: respo.err.message || 'Failed to prepare swap' };
+        const safePrepareError = getSafeErrorMessage(respo.err.message, 'Failed to prepare swap');
+        CustomInfoProvider.show('error', '!Opps', safePrepareError);
+        return { status: false, message: safePrepareError };
       }
 
       const rawTxs = respo.res.data;
@@ -891,8 +784,9 @@ const EthSwap = () => {
       });
 
       if (err?.status) {
-        CustomInfoProvider.show('error', '!Opps', err.message || 'Swap execution failed');
-        return { status: false, message: err.message || 'Broadcast failed' };
+        const safeBroadcastError = getSafeErrorMessage(err.message, 'Swap execution failed');
+        CustomInfoProvider.show('error', '!Opps', safeBroadcastError);
+        return { status: false, message: safeBroadcastError };
       }
 
       if (Array.isArray(res) && res.length > 0) {
@@ -902,6 +796,8 @@ const EthSwap = () => {
           await ShortTermStorage.syncTx({
             txHash: tx.txResponse.hash,
             walletAddress: state?.wallet?.address,
+            fromAddress: state?.wallet?.address,
+            toAddress: state?.wallet?.address,
             provider: i === validTxs.length - 1 ? 'UNISWAP' : 'EVMTX',
             fromChain: fromToken.chain === 'BNB' ? 'BSC' : fromToken.chain,
             fromToken: fromToken.symbol,
@@ -976,8 +872,6 @@ const EthSwap = () => {
           tokenInfo?.code,
           tokenInfo?.issuer
         );
-      const nativeXLMBal = await GetStellarAvilabelBalance(walletAddress);
-      setxlmNativeBalance(parseFloat(nativeXLMBal.availableBalance||0));
         if (nonEvmToken?.availableBalance) {
           if (isFromToken) {
             setFromTokenBalance(parseFloat(nonEvmToken.availableBalance || 0));
@@ -1044,7 +938,11 @@ const EthSwap = () => {
         setSwapExecuting(false);
         navigation.navigate('Transactions');
       } else {
-        CustomInfoProvider.show("error", "!Oops", swapResult.error);
+        CustomInfoProvider.show(
+          "error",
+          "!Oops",
+          getSafeErrorMessage(swapResult.error, 'Swap failed. Please try again.')
+        );
         setSwapExecuting(false);
       }
       return;
@@ -1070,7 +968,7 @@ const EthSwap = () => {
         CustomInfoProvider.show(
           'error',
           '!Opps',
-          respo.err.message || 'Failed to prepare swap'
+          getSafeErrorMessage(respo.err.message, 'Failed to prepare swap')
         );
         return;
       }
@@ -1095,7 +993,7 @@ const EthSwap = () => {
         CustomInfoProvider.show(
           'error',
           '!Opps',
-          resuleOfAllowance.error?.message || 'Token allowance failed'
+          getSafeErrorMessage(resuleOfAllowance.error?.message, 'Token allowance failed')
         );
         return;
       }
@@ -1122,13 +1020,15 @@ const EthSwap = () => {
         CustomInfoProvider.show(
           'error',
           '!Opps',
-          submitResult.err.message || 'Swap failed'
+          getSafeErrorMessage(submitResult.err.message, 'Swap failed')
         );
       } else {
         await ShortTermStorage.syncTx({
           quoteId: providerQuoteInfo.quoteId,
           txHash: respo?.res?.orderHash,
           walletAddress: state?.wallet?.address,
+          fromAddress: state?.wallet?.address,
+          toAddress: state?.wallet?.address,
           provider: 'ONEINCH_FUSION',
           fromChain: fromToken.chain === 'BNB' ? 'BSC' : fromToken.chain,
           fromToken: fromToken.symbol,
@@ -1143,130 +1043,15 @@ const EthSwap = () => {
         setTimeout(() => navigation.navigate('Transactions'), 1000);
       }
     } catch (error) {
-      console.error('Swap error:', error);
       CustomInfoProvider.show(
         'error',
         '!Opps',
-        error.message || 'Swap failed. Please try again'
+        getSafeErrorMessage(error, 'Swap failed. Please try again')
       );
     } finally {
       setSwapExecuting(false);
     }
   };
-
-  const swapManager = async () => {
-    Keyboard.dismiss();
-    setSwapExecuting(true);
-    if (parseFloat(amount) <= 0) {
-      CustomInfoProvider.show("error", "!Oops", "Please enter a valid amount.");
-    } else {
-      try {
-        if (CHAINS[toToken.chain].subName === "STR") {
-          try {
-            const resultOfBidirectional = await swap_prepare(
-              state?.wallet?.address,
-              state?.wallet?.address,
-              CHAINS[toToken.chain].subName === "STR" ? state.STELLAR_PUBLICK_KEY : state?.wallet?.address,
-              amount.toString(),
-              fromToken.code || fromToken.symbol,
-              toToken.code || toToken.symbol,
-              CHAINS[fromToken.chain].chainName,
-              selectedRelayerFee,
-              CHAINS[toToken.chain].chainName,
-            )
-            console.info("swap bidirectional response:", resultOfBidirectional);
-            if (resultOfBidirectional?.status_task) {
-              const { res } = resultOfBidirectional;
-              const txHashes = [];
-              if (res.approvalTxHash) {
-                await ShortTermStorage.syncTx({
-                  txHash: res.approvalTxHash,
-                  walletAddress: state && state.wallet && state.wallet.address,
-                  provider: "EVMTX",
-                  fromChain: CHAINS[fromToken.chain].chainName,
-                  fromToken: fromToken.code || fromToken.symbol,
-                  toChain: CHAINS[toToken.chain].chainName,
-                  toToken: toToken.code || toToken.symbol,
-                  amountIn: amount.toString(),
-                  amountOut: amount.toString(),
-                  txType: "Token Approval",
-                  fromTokenMetaData:fromToken.address
-                })
-                txHashes.push({
-                  chain: CHAINS[fromToken.chain].chainName,
-                  hash: res.approvalTxHash,
-                  type: "Approval"
-                });
-              }
-              await ShortTermStorage.syncTx({
-                txHash: res.transferTxHash,
-                walletAddress: state && state.wallet && state.wallet.address,
-                provider: "ALLBRIDGE",
-                fromChain: CHAINS[fromToken.chain].chainName,
-                fromToken: fromToken.code || fromToken.symbol,
-                toChain: CHAINS[toToken.chain].chainName,
-                toToken: toToken.code || toToken.symbol,
-                amountIn: amount.toString(),
-                amountOut: amount.toString(),
-                txType: "Bridge",
-                fromTokenMetaData:fromToken.address
-              })
-              await LocalTxManager.saveTx(state && state.wallet && state.wallet.address, {
-                chain: CHAINS[fromToken.chain].chainName,
-                hash: res.transferTxHash,
-                status: "pending",
-                statusColor: "#eec14fff",
-                timestamp: Date.now(),
-                symbol: fromToken.code || fromToken.symbol,
-                amount: amount.toString(),
-              });
-              txHashes.push({
-                chain: CHAINS[fromToken.chain].chainName,
-                hash: res.transferTxHash,
-                type: "Transfer"
-              });
-              CustomInfoProvider.show("success", "Bridge Successfull.");
-              setSwapExecuting(false);
-            } else {
-              setSwapExecuting(false);
-              console.error("Transaction failed:", resultOfBidirectional?.res);
-              CustomInfoProvider.show("error", resultOfBidirectional?.res || "Bridge Faild.");
-            }
-          } catch (error) {
-            setSwapExecuting(false);
-            console.error("Transaction error:", error);
-            CustomInfoProvider.show("error", "Bridge Faild.");
-          }
-        } else {
-          const stellarWallet = {
-            publicKey: state && state.STELLAR_PUBLICK_KEY
-          };
-          const result = await swapPepare(
-            CHAINS[fromToken.chain].chainName,
-            CHAINS[toToken.chain].chainName,
-            fromToken.code || fromToken.symbol,
-            toToken.code || toToken.symbol,
-            amount,
-            CHAINS[toToken.chain].subName === "STR" ? state.STELLAR_PUBLICK_KEY : state?.wallet?.address,
-            stellarWallet,
-            selectedRelayerFee
-          );
-          if (result.success) {
-            setSwapExecuting(false);
-            CustomInfoProvider.show("success", "Hurray", "Bridge Successfull.");
-          } else {
-            setSwapExecuting(false);
-            CustomInfoProvider.show("error", "!Oops", result.error || "Bridge Faild.");
-            console.info("Bridge__Faild:-", result);
-          }
-        }
-      } catch (error) {
-        setSwapExecuting(false);
-        console.error("error in Bridge swap execute:", error)
-        CustomInfoProvider.show("error", "!Oops", "Bridge Faild.");
-      }
-    }
-  }
 
   const manageSwaps = async () => {
     setSwapExecuting(true);
@@ -1279,7 +1064,11 @@ const EthSwap = () => {
           setSwapExecuting(false);
           navigation.navigate('Transactions');
         } else {
-          CustomInfoProvider.show("error", "!Oops", swapResult.error);
+          CustomInfoProvider.show(
+            "error",
+            "!Oops",
+            getSafeErrorMessage(swapResult.error, 'Swap failed. Please try again.')
+          );
           setSwapExecuting(false);
         }
       } else {
@@ -1345,10 +1134,8 @@ const EthSwap = () => {
     },
     input: {
       fontSize: 24,
-      padding: 12,
-      borderRadius: 8,
-      backgroundColor: theme.bg,
       color: theme.headingTx,
+      width:"80%"
     },
     quoteTextCon: {
       flexDirection: 'row',
@@ -1491,13 +1278,13 @@ const EthSwap = () => {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      backgroundColor: theme.smallCardBg,
+      backgroundColor: theme.bg,
       paddingHorizontal: wp(2.3),
       paddingVertical: hp(0.2),
       borderRadius: 30,
       elevation: 5,
       marginTop: -10,
-      borderColor: '#4052D6',
+      borderColor: theme.bg,
       borderWidth: 1,
     },
     warningCard: {
@@ -1555,39 +1342,26 @@ const EthSwap = () => {
       borderWidth: 1,
       marginTop: hp(2),
     },
-    relayFeePayCon: {
+    textBtnCon: {
       flexDirection: "row",
       justifyContent: "space-between",
-      paddingHorizontal: wp(0.4),
-      width: wp(32)
-    },
-    relayBtnCon: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems: "center",
       backgroundColor: theme.bg,
-      paddingVertical: 9,
-      paddingHorizontal: wp(2.5),
-      borderRadius: 9,
-      width: wp(16.4)
+      paddingHorizontal: 12,
+      paddingVertical:9,
+      borderRadius: 8,
     },
-    feeButtonActive: {
-      backgroundColor: '#4F46E5',
-      borderColor: '#4F46E5',
+    maxBtnCon: {
+      backgroundColor: theme.buttonColor,
+      paddingHorizontal: 13,
+      paddingVertical: 7,
+      borderRadius: 8
     },
+    maxBtnTxt:{
+      color:"#fff",
+      fontSize:16
+    }
   });
-  const isAllbridgeTx = fromToken?.chain === CHAINS.STR.symbol || toToken?.chain === CHAINS.STR.symbol;
-  
-  const fromAmt = Number(amount || 0);
-  const tokenBal = Number(fromTokenBalance || 0);
-  const walletBal = Number(xlmNativeBalance|| 0);
-  const stableFee = Number(allBridgeQuote?.fee?.stablecoin?.amount || 0);
-  const nativeFee = Number(allBridgeQuote?.fee?.native?.amount || 0);
-  const isTokenInsufficient = fromAmt > tokenBal;
-  const isStableFeeInsufficient = selectedRelayerFee === "stablecoin" && stableFee > tokenBal;
-  const isNativeFeeInsufficient = selectedRelayerFee === "native" && nativeFee > walletBal;
-  const isInsufficientBalance = isTokenInsufficient || isStableFeeInsufficient || isNativeFeeInsufficient;
-  const isDisabled = fromAmt <= 0 || isInsufficientBalance;
 
   return (
     <View style={styles.mainCon}>
@@ -1608,7 +1382,8 @@ const EthSwap = () => {
               isLoadingBalance={fromBalanceLoading}
               showEmpty={toToken&&!fromToken?true:false}
             />
-            <TextInput
+            <View style={styles.textBtnCon}>
+              <TextInput
               maxLength={30}
               returnKeyType="done"
               style={styles.input}
@@ -1618,6 +1393,46 @@ const EthSwap = () => {
               keyboardType="decimal-pad"
               placeholderTextColor="#666"
             />
+            <TouchableOpacity disabled={!fromToken || maxCalculating} style={styles.maxBtnCon} onPress={async () => {
+              const isFromNative = fromToken?.address === isNativeTokenAddress;
+              if (!isFromNative) {
+                handleAmount(fromTokenBalance?.toString());
+                return;
+              }
+
+              setMaxCalculating(true);
+              const chainKey = fromToken.chain === 'BNB' ? 'BSC' : fromToken.chain;
+              let reserve = NATIVE_GAS_RESERVE[fromToken.chain] ?? NATIVE_GAS_RESERVE[chainKey] ?? 0.003;
+
+              try {
+                const gasUnits = TYPICAL_SWAP_GAS_UNITS[fromToken.chain] ?? TYPICAL_SWAP_GAS_UNITS[chainKey] ?? 300000;
+
+                const feeData = await Promise.race([
+                  callWithFallback(chainKey, (provider) => provider.getFeeData()),
+                  new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('gas-price fetch timeout')), LIVE_GAS_ESTIMATE_TIMEOUT_MS)
+                  ),
+                ]);
+
+                const gasPrice = feeData.maxFeePerGas || feeData.gasPrice;
+                if (!gasPrice) throw new Error('No gas price in fee data');
+
+                const liveReserveWei = gasPrice.mul(Math.ceil(gasUnits * 1.3));
+                reserve = parseFloat(ethers.utils.formatEther(liveReserveWei));
+              } catch (e) {
+                console.info('[MAX] Live gas estimate failed, using fallback reserve:', e.message);
+              } finally {
+                setMaxCalculating(false);
+              }
+
+              const rawMax = Math.max(0, parseFloat(fromTokenBalance || 0) - reserve);
+              const decimalsCap = Math.min(fromToken?.decimals || 18, 8);
+              const maxSendable = rawMax.toFixed(decimalsCap).replace(/0+$/, '').replace(/\.$/, '') || '0';
+              handleAmount(maxSendable);
+            }}>
+              <Text style={styles.maxBtnTxt}>{maxCalculating ? '...' : 'MAX'}</Text>
+            </TouchableOpacity>
+            </View>
           </View>
 
           <TouchableOpacity style={styles.switchButton} onPress={switchTokens}>
@@ -1668,12 +1483,19 @@ const EthSwap = () => {
                   setshowTokenSelection(false);
                   return;
                 }
+                if (item.chain === CHAINS['STR'].symbol) {
+                  setshowTokenSelection(false);
+                  navigation.navigate('ExportUSDC', {
+                    fromToken: item,
+                    toToken,
+                  });
+                  return;
+                }
+
                 setFromToken(item);
                 handleTokenBalance(
                   item.address,
-                  item.chain === CHAINS['STR'].symbol
-                    ? state?.STELLAR_PUBLICK_KEY
-                    : state?.wallet?.address,
+                  state?.wallet?.address,
                   item.chain,
                   true,
                   item
@@ -1684,11 +1506,19 @@ const EthSwap = () => {
                   setshowTokenSelection(false);
                   return;
                 }
+
+                if (item.chain === CHAINS['STR'].symbol) {
+                  setshowTokenSelection(false);
+                  navigation.navigate('classic', {
+                    fromToken,
+                    toToken: item,
+                  });
+                  return;
+                }
+
                 handleTokenBalance(
                   item.address,
-                  item.chain === CHAINS['STR'].symbol
-                    ? state?.STELLAR_PUBLICK_KEY
-                    : state?.wallet?.address,
+                  state?.wallet?.address,
                   item.chain,
                   false,
                   item
@@ -1724,76 +1554,6 @@ const EthSwap = () => {
             >
               <Text style={[styles.warningConText, { color: '#FFF' }]}>Increase</Text>
             </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Allbridge qoutes */}
-        {!allBridgeQuote.isnull && (
-          <View style={styles.quoteDetailsContainer}>
-            <View style={styles.quoteRow}>
-              <Text style={styles.quoteTitle}>Estimated Quote Details</Text>
-              <View style={styles.timerCon}>
-                <Icon name="time" size={18} color={theme.inactiveTx} />
-                <Text style={styles.quoteValue}> {refreshTimer}</Text>
-              </View>
-            </View>
-
-            <View style={styles.quoteRow}>
-              <Text style={styles.quoteLabel}>Provider</Text>
-              <Text style={styles.quoteValue}>{allBridgeQuote.provider}</Text>
-            </View>
-
-            <View style={styles.quoteRow}>
-              <Text style={styles.quoteLabel}>Conversion Rate</Text>
-              <Text style={styles.quoteValue}>1 {UI_CHAIN_NAME[fromToken.symbol || fromToken.code]||fromToken.symbol || fromToken.code} = {allBridgeQuote.conversionRate} {toToken.symbol || toToken.code}</Text>
-            </View>
-
-            <View style={styles.quoteRow}>
-              <Text style={styles.quoteLabel}>Slippage</Text>
-              <Text style={styles.quoteValue}>{allBridgeQuote.slippageTolerance} %</Text>
-            </View>
-
-            <View style={styles.quoteRow}>
-              <Text style={styles.quoteLabel}>Estimated time</Text>
-              <Text style={styles.quoteValue}>{allBridgeQuote.completionTime}</Text>
-            </View>
-
-            <View style={styles.quoteRow}>
-              <Text style={styles.quoteLabel}>Relayer Fee</Text>
-              <Text style={styles.quoteValue}>{allBridgeQuote.fee[selectedRelayerFee].amount} {allBridgeQuote.fee[selectedRelayerFee].symbol}</Text>
-            </View>
-
-            <View style={styles.quoteRow}>
-              <Text style={styles.quoteLabel}>Minimum Received</Text>
-              <Text style={styles.quoteValue}>{allBridgeQuote.minimumAmountOut}</Text>
-            </View>
-
-            <View style={styles.quoteRow}>
-              <Text style={styles.quoteLabel}>Estimated Received</Text>
-              <Text style={styles.quoteValue}>≈ {selectedRelayerFee === "native" ? allBridgeQuote.minimumAmountOut : Math.max(0, parseFloat(allBridgeQuote?.minimumAmountOut || "0") - parseFloat(allBridgeQuote?.fee[selectedRelayerFee].amount))}</Text>
-            </View>
-
-            <View style={styles.quoteRow}>
-              <Text style={styles.quoteLabel}>Pay Relayer Fee</Text>
-              <View style={styles.relayFeePayCon}>
-                <TouchableOpacity style={[
-                  styles.relayBtnCon,
-                  selectedRelayerFee === 'native' && styles.feeButtonActive
-                ]}
-                  onPress={() => setSelectedRelayerFee('native')}
-                >
-                  <Text style={[styles.quoteLabel, { color: selectedRelayerFee === 'native'?"#fff":theme.headingTx }]}>Native</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[
-                  styles.relayBtnCon,
-                  selectedRelayerFee !== 'native' && styles.feeButtonActive
-                ]}
-                  onPress={() => setSelectedRelayerFee('stablecoin')}
-                >
-                  <Text style={[styles.quoteLabel, { color: selectedRelayerFee !== 'native'?"#fff":theme.headingTx }]}>{fromToken.symbol || fromToken.code}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
           </View>
         )}
 
@@ -1880,33 +1640,23 @@ const EthSwap = () => {
               </View>
             )}
 
-            <Text style={styles.disclaimerText}>
+            {/* <Text style={styles.disclaimerText}>
               * This transaction may include extra fees if it involves multiple hops.
-            </Text>
+            </Text> */}
           </View>
         )}
 
-        {isAllbridgeTx ?
-          <TouchableOpacity
-            style={[styles.swapButtonCon,{ backgroundColor: isDisabled||swapExecuting ? theme.inactiveTx : "#4F46E5" }]}
-            disabled={swapExecuting || isInsufficientBalance || isDisabled}
-            onPress={swapManager}
-          >
-            <Text style={styles.swapButtonConText}>
-              {swapExecuting ? "Wait transaction under process..." : isInsufficientBalance ? "Insufficient Balance" : "Confirm Transaction"}
-            </Text>
-          </TouchableOpacity>
-          : <TouchableOpacity
-            style={styles.swapButtonCon}
-            disabled={btnDisable || swapExecuting}
-            onPress={manageSwaps}
-          >
-            {swapExecuting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.swapButtonConText}>{btnMessage}</Text>
-            )}
-          </TouchableOpacity>}
+        <TouchableOpacity
+          style={styles.swapButtonCon}
+          disabled={btnDisable || swapExecuting}
+          onPress={manageSwaps}
+        >
+          {swapExecuting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.swapButtonConText}>{btnMessage}</Text>
+          )}
+        </TouchableOpacity>
       </ScrollView>
 
       {providerQuoteInfo !== null && (
@@ -1988,14 +1738,6 @@ const EthSwap = () => {
           </View>
         </View>
       </Modal>
-      <BottomSheetModal isVisible={showSelectOtherOpt.show}
-        onClose={() => setShowSelectOtherOpt(false)}
-        options={showSelectOtherOpt.side==="To"?CHAINS[toToken?.chain]?.bridgeSupportTokens:CHAINS[fromToken?.chain]?.bridgeSupportTokens}
-        selectedValue={otherOption}
-        onSelect={(selectedtoken) => {setOtherOption(selectedtoken),showSelectOtherOpt.side==="To"?setToToken(selectedtoken):setFromToken(selectedtoken)}}
-        theme={theme}
-        heading={"Available"}
-      />
     </View>
   );
 };

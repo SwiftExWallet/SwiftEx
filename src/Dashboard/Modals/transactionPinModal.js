@@ -37,6 +37,7 @@ import { getAllBalances } from "../../utilities/web3utilities";
 import { PPOST, proxyRequest } from "../exchange/crypto-exchange-front-end-main/src/api";
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import ShortTermStorage from "../../utilities/ShortTermStorage";
+import { ethers } from "ethers";
 import { CheckPasscode } from "../../biometrics/utils";
 import { colors } from "../../Screens/ThemeColorsConfig";
 
@@ -156,16 +157,27 @@ const TransactionPinModal = ({
   
             if (res.txHash) {
               try {
+                let decodedFrom, decodedTo;
+                try {
+                  const parsedTx = ethers.utils.parseTransaction(rawTransaction);
+                  decodedFrom = parsedTx.from;
+                  decodedTo = parsedTx.to;
+                } catch (parseErr) {
+                  console.log("rawTransaction parse failed:", parseErr?.message);
+                }
+
                 await ShortTermStorage.syncTx({
                   txHash: res?.txHash,
                   walletAddress: state && state.wallet && state.wallet.address,
+                  fromAddress: decodedFrom || (state && state.wallet && state.wallet.address),
+                  toAddress: decodedTo,
                   provider: "EVMTX",
                   fromChain: "ETH",
                   fromToken: "ETH",
                   toChain: "ETH",
                   toToken: "ETH",
                   amountIn: txAmt?.toString(),
-                  amountOut: "0.0",
+                  amountOut: txAmt?.toString(),
                   txType: "Native Transfer",
                   fromTokenMetaData:"native"
                 });
@@ -240,17 +252,28 @@ const TransactionPinModal = ({
       
          if (res.txHash) {
               try {
+                let decodedFrom, decodedTo;
+                try {
+                  const parsedTx = ethers.utils.parseTransaction(rawTransaction);
+                  decodedFrom = parsedTx.from;
+                  decodedTo = parsedTx.to;
+                } catch (parseErr) {
+                  console.log("rawTransaction parse failed:", parseErr?.message);
+                }
+
                 // ShowToast(toast, "Transaction Successful");
                 await ShortTermStorage.syncTx({
                   txHash: res?.txHash,
                   walletAddress: state && state.wallet && state.wallet.address,
+                  fromAddress: decodedFrom || (state && state.wallet && state.wallet.address),
+                  toAddress: decodedTo,
                   provider: "EVMTX",
                   fromChain: "BSC",
                   fromToken: "BSC",
                   toChain: "BSC",
                   toToken: "BSC",
                   amountIn: txAmt?.toString(),
-                  amountOut: "0.0",
+                  amountOut: txAmt?.toString(),
                   txType: "Native Transfer",
                   fromTokenMetaData:"native"
                 });

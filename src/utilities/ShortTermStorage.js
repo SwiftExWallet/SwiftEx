@@ -203,7 +203,11 @@ const ShortTermStorage = {
 
   async syncTx(payload) {
     try {
-      const usdValue = await CoinsToUSD(payload.fromChain, payload.fromTokenMetaData, Number(payload.amountIn));
+      const stableCoins = ['USDT', 'USDC'];
+      const usdValue = stableCoins.includes(payload.fromToken?.toUpperCase())
+        ? Number(payload.amountIn)
+        : await CoinsToUSD(payload.fromChain, payload.fromTokenMetaData, Number(payload.amountIn));
+
       const response = await proxyRequest('/v1/swapOrders/store', PPOST, {...payload,usdValue: usdValue});
       if (response.err?.status) {
         return { status: false, error: response.err.message };

@@ -9,6 +9,7 @@ import ToggleSwitch from "toggle-switch-react-native";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { MULTICHAIN_PORTFOLIO } from "../components/Redux/actions/type";
 import { getAssetId, useAssetManager } from "../utilities/TokenManageHook";
+import Icon from "../icon";
 
 export const GetCryptoList = async (chainId, state) => {
     try {
@@ -69,7 +70,11 @@ export const GetCryptoList = async (chainId, state) => {
                     !tokenAddr ||
                     tokenAddr === '0x0000000000000000000000000000000000000000';
 
-                const normalizeChain = (chain) => chain === 'STR' ? 'Stellar' : chain;
+                const normalizeChain = (chain) => {
+                    if (chain === 'STR') return 'Stellar';
+                    if (chain === 'BNB') return 'BSC';
+                    return chain;
+                };
                 const portfolioToken = isNative
                     ? activeWalletTokens.find(t =>
                         normalizeChain(t.chain) === normalizeChain(chainId) &&
@@ -152,7 +157,6 @@ export const TokensManagement = () => {
             height: 40,
             width: 40,
             borderRadius: 30,
-            marginRight: wp(2)
         },
         card: {
             width: wp(93),
@@ -212,6 +216,19 @@ export const TokensManagement = () => {
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: theme.bg
+        },
+        checkMark:{
+            position: "absolute",
+            top: 0,
+            right: -2,
+            backgroundColor: "#4052D6",
+            borderRadius: 20,
+            width: 20,
+            height: 20,
+            justifyContent: "center",
+            alignItems: "center",
+            borderWidth: 1.5,
+            borderColor: theme.bg,
         }
     });
 
@@ -349,17 +366,19 @@ export const TokensManagement = () => {
                     data={TemporaryTokens}
                     keyExtractor={(item, index) => index.toString()}
                     renderItem={({ item }) => (
-                        <TouchableOpacity onPress={() => { setChainId(item.symbol) }}>
-                            <Image
-                                source={{ uri: item.imageUrl }}
-                                style={[
-                                    styles.chainImg,
-                                    {
-                                        borderColor: chainId === item.symbol ? "#4052D6" : theme.smallCardBorderColor,
-                                        borderWidth: wp(1)
-                                    }
-                                ]}
-                            />
+                        <TouchableOpacity onPress={() => { setChainId(item.symbol) }} style={{ justifyContent: "center", alignContent: "center", marginRight: wp(2) }}>
+                            <View style={{ position: "relative" }}>
+                                <Image
+                                    source={{ uri: item.imageUrl }}
+                                    style={[styles.chainImg, { borderColor: chainId === item.symbol ? "#4052D6" : theme.smallCardBorderColor, borderWidth: wp(1) }]}
+                                />
+                                {chainId === item.symbol && (
+                                    <View style={styles.checkMark}>
+                                        <Icon name="check" type="antDesign" size={9} color="#fff" />
+                                    </View>
+                                )}
+                            </View>
+                            <Text style={{ color: theme.headingTx, fontSize: 13, fontWeight: "500", textAlign: "center" }}>{item.chain === "SRB" ? "STR" : item.chain}</Text>
                         </TouchableOpacity>
                     )}
                 />

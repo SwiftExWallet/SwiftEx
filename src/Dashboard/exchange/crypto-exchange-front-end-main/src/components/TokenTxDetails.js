@@ -189,13 +189,13 @@ const TokenTxDetails = ({ visible, onClose, params, theme,onNextStep }) => {
       if (!ethers.utils.isAddress(recipientAddress)) throw new Error('Invalid recipient address');
       if (parseFloat(amount) <= 0) throw new Error('Amount must be greater than 0');
 
-      const config = CHAINS[network];
+      const config = CHAINS[metadata.tokenType];
       const decimals = tokenDecimals ?? 18;
 
       const [nativeBalanceWei, gasPrice, tokenBalanceRaw] = await Promise.all([
-        callWithFallback(network, (provider) => provider.getBalance(walletAddress)),
-        callWithFallback(network, (provider) => provider.getGasPrice()),
-        callWithFallback(network, (provider) => {
+        callWithFallback(metadata.tokenType, (provider) => provider.getBalance(walletAddress)),
+        callWithFallback(metadata.tokenType, (provider) => provider.getGasPrice()),
+        callWithFallback(metadata.tokenType, (provider) => {
           const tokenContract = new ethers.Contract(
             tokenAddress,
             ['function balanceOf(address) view returns (uint256)'],

@@ -25,8 +25,76 @@ import {
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
 import stellarImg from "../../../../../../assets/Stellar_(XLM).png"
+import { CHAINS } from '../../../../../utilities/TokenUtils';
 
 const { height } = Dimensions.get('window');
+const ACTIVATION_ASSET_SYMBOLS = ["USDC", "USDT"];
+const ORIGIN_EXCLUDED_CHAIN_KEYS = ["STR"];
+const MIN_STABLE_BALANCE_FOR_AUTOSELECT = 1;
+
+function normalizeChain(chain) {
+  return chain === "BNB" ? "BSC" : chain;
+}
+
+function buildActivationChains() {
+  return Object.entries(CHAINS || {})
+    .filter(
+      ([key, chain]) =>
+        !ORIGIN_EXCLUDED_CHAIN_KEYS.includes(key) &&
+        chain?.bridgeEnable &&
+        Array.isArray(chain?.bridgeSupportTokens)
+    )
+    .map(([key, chain]) => {
+      const tokens = chain.bridgeSupportTokens.filter((t) =>
+        ACTIVATION_ASSET_SYMBOLS.includes(t?.symbol)
+      );
+      return tokens.length ? { key, chain, tokens } : null;
+    })
+    .filter(Boolean);
+}
+
+function pickDefaultFromPortfolio(portfolio, activationChains) {
+  if (!Array.isArray(portfolio) || !portfolio.length) return null;
+
+  let best = null;
+
+  for (const chainEntry of activationChains) {
+    const stableCandidates = chainEntry.tokens
+      .map((token) => {
+        const portfolioItem = portfolio.find(
+          (p) =>
+            normalizeChain(p?.chain) === normalizeChain(chainEntry.key) &&
+            p?.symbol === token.symbol &&
+            String(p?.contractAddress).toLowerCase() ===
+            String(token.address).toLowerCase()
+        );
+        return { token, balance: Number(portfolioItem?.balance) || 0 };
+      })
+      .filter((c) => c.balance >= MIN_STABLE_BALANCE_FOR_AUTOSELECT);
+
+    if (!stableCandidates.length) continue;
+
+    const nativeItem = portfolio.find(
+      (p) => normalizeChain(p?.chain) === normalizeChain(chainEntry.key) && p?.contractAddress === "Native"
+    );
+    const nativeBalance = Number(nativeItem?.balance) || 0;
+    if (nativeBalance <= 0) continue;
+
+    const bestStable = stableCandidates.reduce((a, b) =>
+      b.balance > a.balance ? b : a
+    );
+
+    if (!best || bestStable.balance > best.stableBalance) {
+      best = {
+        chainKey: chainEntry.key,
+        tokenSymbol: bestStable.token.symbol,
+        stableBalance: bestStable.balance,
+      };
+    }
+  }
+
+  return best;
+}
 
 const WalletActivationComponent = ({ 
   isVisible = false, 
@@ -43,6 +111,12 @@ const WalletActivationComponent = ({
   const [visibleBuyUi,setVisibleBuyUi]=useState(false);
   const [qrVisible, setQrVisible] = useState(false);
   const isDarkMode = appTheme;
+
+  const activationChains = React.useMemo(() => buildActivationChains(), []);
+  const portfolioDefault = React.useMemo(
+    () => pickDefaultFromPortfolio(state?.activeWalletPortFolio, activationChains),
+    [state?.activeWalletPortFolio, activationChains]
+  );
   
   // Use refs to avoid re-creating animation instances
   const animationRef = useRef(new Animated.Value(height));
@@ -266,6 +340,18 @@ const WalletActivationComponent = ({
             >
               {Wallet_activation ? <ActivityIndicator color={"green"} size={"small"} /> : <Text style={styles.buttonText}>{!visibleBuyUi ? "Claim 5 XLM Now!" : "Buy XLM"}</Text>}
             </TouchableOpacity>
+            {portfolioDefault ? (
+              <TouchableOpacity
+                style={[styles.activateButton, { backgroundColor: Wallet_activation ? "gray" : theme.handleColor }]}
+                onPress={() => {
+                  handleClose();
+                  navigation?.navigate("classic");
+                }}
+                disabled={Wallet_activation}
+              >
+                {Wallet_activation ? <ActivityIndicator color={"green"} size={"small"} /> : <Text style={[styles.buttonText,{color:theme.text}]}>Activate Now</Text>}
+              </TouchableOpacity>
+            ) : (
             <TouchableOpacity
               style={[styles.activateButton, { backgroundColor: Wallet_activation ? "gray" : theme.handleColor }]}
               onPress={() => { setQrVisible(true) }}
@@ -273,6 +359,7 @@ const WalletActivationComponent = ({
             >
               {Wallet_activation ? <ActivityIndicator color={"green"} size={"small"} /> : <Text style={[styles.buttonText,{color:theme.text}]}>Receive XLM</Text>}
             </TouchableOpacity>
+            )}
           </View>
           <TouchableOpacity 
             style={styles.cancelButton}

@@ -456,7 +456,22 @@ const send_recive = ({route}) => {
           </View>
 
           <View style={[styles.card, { backgroundColor: theme.cardBg,marginTop:2 }]}>
-            <Text style={[styles.mode_text, { textAlign: "left", marginLeft: 16, fontSize: 16, color: theme.inactiveTx }]}>Amount</Text>
+            <View style={styles.headingAndMaxCon}>
+              <Text style={[styles.mode_text, { textAlign: "left", fontSize: 16, color: theme.inactiveTx }]}>Amount</Text>
+              <TouchableOpacity
+                style={[styles.maxButton, { backgroundColor: theme.buttonColor }]}
+                onPress={() => {
+                  const maxBalance =
+                    resStellarbal === "Error"
+                      ? "0.00"
+                      : String(resStellarbal).replace(",", ".");
+
+                  setrecepi_amount(maxBalance);
+                }}
+              >
+                <Text style={styles.maxButtonText}>MAX</Text>
+              </TouchableOpacity>
+            </View>
             <View style={[styles.text_input, { flexDirection: "row", alignItems: "center", backgroundColor: theme.bg }]}>
               <TextInput placeholder="Enter amount" placeholderTextColor={"gray"} value={recepi_amount} returnKeyType="done" keyboardType="decimal-pad" style={{ height: "100%", width: "88%", fontSize: 19, color: theme.headingTx }} onChangeText={(value) => { 
                 const replaceComma = value.replace(',', '.');
@@ -654,5 +669,25 @@ const styles = StyleSheet.create({
         marginVertical: hp(1.5),
         marginHorizontal:wp(2)
       },
+      maxButton: {
+        alignSelf: 'flex-end',
+        backgroundColor: '#4052D6',
+        paddingHorizontal: 19,
+        paddingVertical: 8,
+        borderRadius: 8,
+        marginRight:13
+      },
+      maxButtonText: {
+        color: '#fff',
+        fontWeight: '600',
+        fontSize: 12,
+      },
+      headingAndMaxCon: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 6,
+        marginLeft: 16,
+      }
 })
 export default send_recive;
