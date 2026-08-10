@@ -3,8 +3,6 @@ import AuthService from "../services/authService";
 export const login = (user) => (dispatch) => {
   return AuthService.logIn(user).then(
     (response) => {
-      console.log('this')
-      console.log(response)
       if (response.status === "success") {
         dispatch({
           type: LOGIN_SUCCESS,
@@ -35,8 +33,6 @@ Promise.reject();
 export const confirmOtp = (user) => (dispatch) => {
   return AuthService.confirmOtp(user).then(
     (response) => {
-      console.log('this')
-      console.log(response)
       if(response.status==='invalid'){
         return response;
       }
@@ -110,7 +106,6 @@ export const Generate_Wallet  = (name,password,emailId, dispatch, getDirectoryUr
         payload: { wallet: response.wallet },
       });
       Promise.resolve();
-      console.log(response)
       return response;
     }
   });
@@ -127,7 +122,6 @@ export const Generate_Wallet2  = () => (dispatch) => {
       //   payload: { wallet: response.wallet },
       // });
       Promise.resolve();
-      console.log(response)
       return response;
     }
   });
@@ -141,7 +135,6 @@ export const Import_Wallet  = (privateKey,mnemonic, name, wallets) => (dispatch)
         payload: { wallets: response.wallets },
       });
       Promise.resolve();
-      console.log(response)
       return response;
     }
   });
@@ -155,7 +148,6 @@ export const importAllWallets  = (accounts,emailId) => (dispatch) => {
         payload: { wallets: response.wallets },
       });
       Promise.resolve();
-      console.log(response)
       return response;
       
     }
@@ -170,7 +162,6 @@ export const AddToAllWallets  = (account,user) => (dispatch) => {
         payload: { wallets: response.wallets },
       });
       Promise.resolve();
-      console.log(response)
       return response;
       
     }
@@ -185,7 +176,6 @@ export const setCurrentWallet = (address, name, privateKey, mnemonic,classicAddr
         payload: { wallet: response.wallet },
       });
       Promise.resolve();
-      console.log(response)
       return response;
     }
   });
@@ -194,7 +184,6 @@ export const setCurrentWallet = (address, name, privateKey, mnemonic,classicAddr
 export const getBalance =  (user) => (dispatch) => {
   return AuthService.getBalance(user).then(
    (response) => {
-      console.log(response)
       let res =  response
       if (res.status === "success") {
         dispatch({
@@ -229,54 +218,21 @@ export const CheckWallets  = (accounts) => (dispatch) => {
         payload: { wallets: response.wallets },
       });
       Promise.resolve();
-      console.log(response)
       return response;
       
     }
   });
 };
 
-export const getWalletsData  = (accounts,user) => (dispatch) => {
-  return AuthService.getWalletsData(accounts,user).then((response) => {
-    if (response) {
-      dispatch({
-        type: GETWALLETSDATA,
-        payload: { walletsData: response.walletsData },
-      });
-      Promise.resolve();
-      console.log(response)
-      return response;
-      
-    }
-  });
-};
-
-export const ImportUsingFile  = (wallets,user) => (dispatch) => {
-  return AuthService.ImportUsingFile(wallets,user).then((response) => {
-    console.log(response)
-    if (response) {
-      dispatch({
-        type: IMPORTUSINGFILE,
-        payload: { wallets: response.wallets },
-      });
-      Promise.resolve();
-      console.log(response)
-      return response;
-      
-    }
-  });
-};
 
 export const getDirectoryUri  = (uri) => (dispatch) => {
   return AuthService.getDirectoryUri(uri).then((response) => {
-    console.log(response)
     if (response) {
       dispatch({
         type: GETDIRECTORYURI,
         payload: { directoryUri: response.directoryUri },
       });
       Promise.resolve();
-      console.log(response)
       return response;
       
     }
@@ -285,14 +241,12 @@ export const getDirectoryUri  = (uri) => (dispatch) => {
 
 export const setToken  = (token) => (dispatch) => {
   return AuthService.setToken(token).then((response) => {
-    console.log(response)
     if (response) {
       dispatch({
         type: SETTOKEN,
         payload: { token: response.token},
       });
       Promise.resolve();
-      console.log(response)
       return response;
       
     }
@@ -302,14 +256,12 @@ export const setToken  = (token) => (dispatch) => {
 
 export const setUser = (user) => (dispatch) => {
   return AuthService.setUser(user).then((response) => {
-    console.log(response)
     if (response) {
       dispatch({
         type: SETUSER,
         payload: { user: response.user},
       });
       Promise.resolve();
-      console.log(response)
       return response;
       
     }
@@ -318,14 +270,12 @@ export const setUser = (user) => (dispatch) => {
 
 export const setProvider = (provider) => (dispatch) => {
   return AuthService.setProvider(provider).then((response) => {
-    console.log(response)
     if (response) {
       dispatch({
         type: SETPROVIDER,
         payload: { provider: response.provider},
       });
       Promise.resolve();
-      console.log(response)
       return response;
       
     }
@@ -334,14 +284,12 @@ export const setProvider = (provider) => (dispatch) => {
 
 export const setWalletType = (type) => (dispatch) => {
   return AuthService.setWalletType(type).then((response) => {
-    console.log(response)
     if (response) {
       dispatch({
         type: SETWALLETTYPE,
         payload: { walletType: response.walletType},
       });
       Promise.resolve();
-      console.log(response)
       return response;
       
     }
@@ -351,7 +299,6 @@ export const setWalletType = (type) => (dispatch) => {
 export const getEthBalance =  (address) => (dispatch) => {
   return AuthService.getEthBalance(address).then(
    (response) => {
-      console.log(response)
       let res =  response
       if (res.status === "success") {
         dispatch({
@@ -380,7 +327,6 @@ Promise.reject();
 export const getMaticBalance =  (address) => (dispatch) => {
   return AuthService.getMaticBalance(address).then(
    (response) => {
-      console.log(response)
       let res =  response
       if (res.status === "success") {
         dispatch({
@@ -410,7 +356,6 @@ Promise.reject();
 export const getXrpBalance =  (address) => (dispatch) => {
   return AuthService.getXrpBalance(address).then(
    (response) => {
-      console.log(response)
       let res =  response
       if (res.status === "success") {
         dispatch({
@@ -438,14 +383,12 @@ Promise.reject();
 
 export const setPlatform  = (platform) => (dispatch) => {
   return AuthService.setPlatform(platform).then((response) => {
-    console.log(response)
     if (response) {
       dispatch({
         type: SETPLATFORM,
         payload: { platform: response.platform},
       });
       Promise.resolve();
-      console.log(response)
       return response;
       
     }

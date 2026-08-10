@@ -20,7 +20,6 @@ import {
 } from "react-native-responsive-screen";
 import { useDispatch, useSelector } from "react-redux";
 import { Animated } from "react-native";
-import SwapModal from "./Modals/SwapModal";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import Icon from "../icon";
 import Wallet_selection_bottom from "./Wallets/Wallet_selection_bottom";

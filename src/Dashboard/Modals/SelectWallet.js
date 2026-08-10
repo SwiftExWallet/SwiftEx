@@ -21,8 +21,6 @@ import Modal from "react-native-modal";
 import ImportBinanceWallet from "./importBinance";
 import ImportEthereumModal from "./importEthereumModal";
 import ImportMultiCoinWalletModal from "./importMultiCoinWalletModal";
-import ImportPolygonWalletModal from "./ImportPolygonWalletModal";
-import ImportXrpWalletModal from "./importXrpWalletModal";
 import ImportStellarModal from "./importStellarModal";
 import { Wallet_screen_header } from "../reusables/ExchangeHeader";
 import { useNavigation } from "@react-navigation/native";
@@ -129,20 +127,6 @@ const SelectWallet = ({ props, visible, setVisible, setModalVisible }) => {
           Visible={MultiCoinModal}
           onCrossPress={() => { setMultiCoinMoodal(false) }}
           setWalletVisible={setMultiCoinMoodal}
-          setModalVisible={setVisible}
-          setVisible={setVisible}
-        />
-        <ImportPolygonWalletModal
-          Visible={PolygonWallet}
-          onCrossPress={() => { setPolygonwallet(false) }}
-          setWalletVisible={setPolygonwallet}
-          setModalVisible={setVisible}
-          setVisible={setVisible}
-        />
-        <ImportXrpWalletModal
-          Visible={XrpWallet}
-          onCrossPress={() => { setXrpWallet(false) }}
-          setWalletVisible={setXrpWallet}
           setModalVisible={setVisible}
           setVisible={setVisible}
         />
