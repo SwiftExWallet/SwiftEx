@@ -9,7 +9,6 @@ import {
   ScrollView,
   Animated,
 } from 'react-native';
-import SelectWallet from "./Modals/SelectWallet";
 import NewWalletModal from "./Modals/newWallet";
 import walletImage from "../../assets/walletImage.png";
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -26,7 +25,6 @@ import { Wallet_screen_header } from './reusables/ExchangeHeader';
 const Wallet = () => {
   const navigation = useNavigation();
   const foucuse = useIsFocused();
-  const [visible, setVisible] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [newWalletModal, setNewWalletModal] = useState(false);
   const state = useSelector((state) => state);
@@ -99,11 +97,6 @@ const Wallet = () => {
         </View>
 
       </ScrollView>
-      <SelectWallet
-        visible={visible}
-        setVisible={setVisible}
-        setModalVisible={setModalVisible}
-      />
       <NewWalletModal
         visible={newWalletModal}
         onCrossPress={() => { setNewWalletModal(false) }}

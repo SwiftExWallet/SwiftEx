@@ -27,11 +27,19 @@ async function requestPermission() {
 
 
 messaging().onMessage(async (remoteMessage) => {
-  firebaseNotification(remoteMessage);
+  await firebaseNotification(remoteMessage);
 });
 
 messaging().setBackgroundMessageHandler(async (remoteMessage) => {
-  firebaseNotification(remoteMessage);
+  const hasData = remoteMessage.data && Object.keys(remoteMessage.data).length > 0;
+  const hasNotification = !!remoteMessage.notification;
+  if (!hasNotification && !hasData) {
+    console.log('FCM: Empty or Dismissal event ignored.');
+    return;
+  }
+  if (!hasNotification) {
+    await firebaseNotification(remoteMessage);
+  }
 });
 
 notifee.onBackgroundEvent(async ({ type, detail }) => {

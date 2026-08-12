@@ -1,48 +1,25 @@
 import "./global";
-// import { StatusBar } from "expo-status-bar";
-import { useEffect, useState, useRef } from "react";
-import { StyleSheet, Text, View, AppState, BackHandler, Platform, StatusBar } from "react-native";
+import { useEffect } from "react";
+import { StyleSheet, View } from "react-native";
 import { Provider as StoreProvider } from "react-redux";
 import store from "./src/components/Redux/Store";
 import NavigationProvider from "./src/Routes/Navigation";
 import { Provider as PaperProvider } from "react-native-paper";
 import { LogBox } from "react-native";
 import { NativeBaseProvider } from "native-base";
-import {
-  widthPercentageToDP as wp,
-  heightPercentageToDP as hp,
-} from "react-native-responsive-screen";
-import Moralis from "moralis"
-import { API_KEYS, MORALIS_API_KEY } from "./src/Dashboard/constants";
 import Network_Checker from "./src/utilities/Network_Checker";
 import CustomInfoProvider from "./src/Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import ErrorBoundary from "./src/utilities/ErrorBoundary";
 import crashlytics from '@react-native-firebase/crashlytics';
 import { CheckAppAvailable } from "./src/Screens/AppChecks/AppCheckService";
+import { withStallion } from 'react-native-stallion';
+import AppOTAUpdates from "./src/Dashboard/exchange/crypto-exchange-front-end-main/src/pages/AnimatedComponent/AppOTAUpdates";
 
-LogBox.ignoreLogs(["Setting a timer"]);
-
-
-
-export default function App() {
-  const [ready, setReady] = useState(false);
+function App() {
   LogBox.ignoreAllLogs()
-  LogBox.ignoreLogs(["Setting a timer"]);
-  LogBox.ignoreLogs(["Animated: `useNativeDriver`"]);
-  LogBox.ignoreLogs(['Failed prop type: Invalid prop `data[0]` supplied to `XAxis`, expected one of type [number, object]'])
-
-  LogBox.ignoreLogs([
-    "Can't perform a React state update on an unmounted component",
-  ]);
-  LogBox.ignoreLogs([
-    "The provided value 'ms-stream' is not a valid 'responseType'",
-  ]);
-  LogBox.ignoreLogs([
-    "The provided value 'moz-chunked-arraybuffer' is not a valid 'responseType'",
-  ]);
-  LogBox.ignoreLogs([
-    "verified is not a valid icon name for family FontAwesome"
-  ])
+  if (__DEV__) {
+    crashlytics().setCrashlyticsCollectionEnabled(false);
+  }
   useEffect(() => {
     crashlytics().log('App mounted.');
   }, []);
@@ -50,28 +27,11 @@ export default function App() {
   
   useEffect(() => {
     CheckAppAvailable()
-    setTimeout(async () => {
-      setReady(true);
-      await Moralis.start({
-        apiKey: MORALIS_API_KEY.apiKey//API_KEYS.MORALIS
-      })
-    }, 1500);
   }, []);
-  // useEffect(() => {
-  //   const disableBackButton = () => {
-  //     return true;
-  //   };
-  //   if(Platform.OS==="android")
-  //   { BackHandler.addEventListener('hardwareBackPress', disableBackButton);
-  //   return () => {
-  //     BackHandler.removeEventListener('hardwareBackPress', disableBackButton);
-  //   };}
-
-  // }, []);
-
  
   return (
      <ErrorBoundary>
+      <AppOTAUpdates />
     <StoreProvider store={store}>
       <NativeBaseProvider>
         <PaperProvider>
@@ -98,3 +58,4 @@ const styles = StyleSheet.create({
     padding: 40,
   },
 });
+export default withStallion(App)

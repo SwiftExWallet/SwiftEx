@@ -9,7 +9,6 @@ import { Register } from "../../Register";
 import { LoginPage } from "../Login/Login";
 import MyWallet from "../Dashboard/MyWallet";
 import { useDispatch, useSelector } from "react-redux";
-import ImportWallet from "../Dashboard/ImportWallet";
 import MyHeader from "../Dashboard/MyHeader";
 import MyHeader2 from "../Dashboard/MyHeader2";
 import { Extend, Collapse } from "../components/Redux/actions/auth";
@@ -19,16 +18,7 @@ import Generate from "../../Generate";
 import { CoinDetails } from "../Dashboard/CoinDetail";
 import { TxDetail } from "../Dashboard/TxDetail";
 import Welcome from "../Dashboard/Welcome";
-import GenerateWallet from "../Dashboard/GenerateWallet";
-import PrivateKey from "../Dashboard/PrivateKey";
 import Passcode from "../Dashboard/Passcode";
-import ImportAccount from "../Dashboard/ImportAccount";
-import ImportMunziWallet from "../Dashboard/importMunziWallet";
-import ImportOtherWallets from "../Dashboard/ImportOtherWallets";
-import ImportBscWallet from "../Dashboard/importBscWallet";
-import ImportPolygon from "../Dashboard/importPolygon";
-import ImportXrp from "../Dashboard/importXrp";
-import CheckMnemonic from "../Dashboard/CheckMnemonic";
 import ConfirmTransaction from "../Dashboard/ConfirmTransaction";
 import SendTokens from "../Dashboard/tokens/SendTokens";
 import Transactions from "../Dashboard/Transactions";
@@ -45,24 +35,14 @@ import Token from "../Dashboard/Token";
 import Settings from "../../Settings";
 import Wallet from "../Dashboard/Wallet";
 import {
-  OfferListView,
-  OfferListViewHome,
   OfferView,
 } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/offers";
 import {
-  ExchangeHeader,
-  ExchangeHeaderIcon,
   WalletHeader,
 } from "../Dashboard/header";
 import MyPrivateKey from "../Dashboard/myPrivateKey";
-import MarketChart from "../Dashboard/MarketChart";
-import RecieveAddress from "../Dashboard/Modals/ReceiveAddress";
-import ImportMultiCoinWalletModal from "../Dashboard/Modals/importMultiCoinWalletModal";
-import SelectWallet from "../Dashboard/Modals/SelectWallet";
-import TokenList from "../Dashboard/tokens/TokenList";
 import Payout from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/payout";
 import Payment from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/Payment";
-import importStellar from "../Dashboard/importStellar";
 import { NewOfferModal } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/newOffer.modal";
 import classic from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/classic";
 import Assets_manage from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/stellar/Assets_manage";
@@ -101,12 +81,10 @@ const AuthStack = () => {
   return(
     <GestureHandlerRootView style={{flex:1}}>
     <NavigationContainer
-    // theme={{ colors: { background: "#000C66" } }}
     theme={{ colors: { background: "black" } }}
     ref={navigationRef}
   >
     <Stack.Navigator
-      // initialRouteName="TokenList"
       mode="modal"
       screenOptions={{
         animation: "slide_from_right",
@@ -149,7 +127,6 @@ const AuthStack = () => {
         component={Dashboard}
         options={{
           headerShown: false,gestureEnabled:false,
-          //header: ({route}) => state.extended===false?Header1( getHeaderTitle(route), state):Header1(getHeaderTitle(route), state)
         }}
       />
       <Stack.Screen
@@ -159,37 +136,14 @@ const AuthStack = () => {
       />
 
       <Stack.Screen
-        name="OfferListView"
-        component={OfferListView}
-        options={{ headerShown: false,gestureEnabled:false }}
-      />
-      <Stack.Screen
-        name="OfferListViewHome"
-        component={OfferListViewHome}
-        options={{ headerShown: false,gestureEnabled:false }}
-      />
-
-      <Stack.Screen
         name="Wallet"
         component={Wallet}
         options={{headerShown:false}}
       />
-      <Stack.Screen
-        name="ImportWallet"
-        component={ImportWallet}
-        options={{
-          headerShown: true,
-          headerStyle: { backgroundColor: "#000C66" },
-          headerTintColor: "white",
-          headerTitleStyle: {
-            fontWeight: "bold",
-          },
-        }}
-      />
+
        <Stack.Screen
         name="buycrypto"
         component={Generate}
-        // options={{ headerShown: true ,headerStyle:{backgroundColor:"#4CA6EA"},headerTintColor:"white"}}
         options={{
           headerShown:false
         }}
@@ -201,9 +155,6 @@ const AuthStack = () => {
         options={{
           gestureEnabled:true,
           headerShown:false
-          // header: () => {
-          //   return <WalletHeader title="Coin-Detail" />;
-          // },
         }}
       />
 
@@ -230,16 +181,6 @@ const AuthStack = () => {
             }}
           />
 
-      {/* <Stack.Screen
-        name="ScoringTopTab"
-        component={ScoringTopTab}
-        options={{
-          headerShown: true,
-          header: () => {
-            return <ProfileHeader />;
-          },
-        }}
-      /> */}
       <Stack.Screen
         name="Token"
         component={Token}
@@ -252,7 +193,6 @@ const AuthStack = () => {
         component={Nfts}
         options={{
           headerShown: false,gestureEnabled:false,
-          //header: ({route}) => state.extended===false?Header1( getHeaderTitle(route), state):Header1(getHeaderTitle(route), state)
         }}
       />
 
@@ -276,99 +216,6 @@ const AuthStack = () => {
         }}
       />
       
-      <Stack.Screen
-        name="GenerateWallet"
-        component={GenerateWallet}
-        options={{
-          headerShown: false,gestureEnabled:false,
-          headerStyle: { backgroundColor: "#000C66" },
-          headerTintColor: "white",
-          headerTitleStyle: {
-            fontWeight: "bold",
-          },
-        }}
-      />
-
-      <Stack.Screen
-        name="PrivateKey"
-        component={PrivateKey}
-        options={{
-          headerShown:false
-        }}
-      />
-
-     
-
-      <Stack.Screen
-        name="Import"
-        component={ImportAccount}
-        options={{
-         headerShown:false
-        }}
-      />
-
-      <Stack.Screen
-        name="Import Multi-Coin Wallet"
-        component={ImportMunziWallet}
-        options={{
-         headerShown:false
-        }}
-      />
-
-      <Stack.Screen
-        name="Import Ethereum"
-        component={ImportOtherWallets}
-        options={{
-         headerShown:false
-        }}
-      />
-
-      <Stack.Screen
-        name="Import Binance"
-        component={ImportBscWallet}
-        options={{
-         headerShown:false
-        }}
-      />
-
-      <Stack.Screen
-        name="Import Polygon"
-        component={ImportPolygon}
-        options={{
-          header: () => {
-            return <WalletHeader title="Import Polygon" />;
-          },
-        }}
-      />
-
-      <Stack.Screen
-        name="Import Xrp"
-        component={ImportXrp}
-        options={{
-          header: () => {
-            return <WalletHeader title="Import Xrp" />;
-          },
-        }}
-      />
-
-<Stack.Screen
-        name="ImportStellar"
-        component={importStellar}
-        options={{
-          header: () => {
-            return <WalletHeader title="Import Stellar" />;
-          },
-        }}
-      />
-
-      <Stack.Screen
-        name="Check Mnemonic"
-        component={CheckMnemonic}
-        options={{
-          headerShown:false
-        }}
-      />
-
       <Stack.Screen
         name="My PrivateKey"
         component={MyPrivateKey}
@@ -509,7 +356,6 @@ const AuthStack = () => {
         component={Payout}
         options={{
           headerShown: false,
-    // statusBarHidden:true,
           headerStyle: { backgroundColor: "#4CA6EA" },
           headerTintColor: "white",
           headerTitleStyle: {

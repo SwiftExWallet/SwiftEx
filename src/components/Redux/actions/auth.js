@@ -92,25 +92,6 @@ export const Collapse = () => (dispatch) => {
   });
 };
 
-
-
-
-export const Generate_Wallet  = (name,password,emailId, dispatch, getDirectoryUri, FolderUri) => (dispatch) => {
- 
-  return AuthService.Generate_Wallet(name,password,emailId, dispatch, getDirectoryUri, FolderUri).then((response) => {
-    
-    if (response.status === "success") {
-      
-      dispatch({
-        type: WALLET_SUCCESS,
-        payload: { wallet: response.wallet },
-      });
-      Promise.resolve();
-      return response;
-    }
-  });
-};
-
 export const Generate_Wallet2  = () => (dispatch) => {
  
   return AuthService.Generate_Wallet2().then((response) => {

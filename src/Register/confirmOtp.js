@@ -39,12 +39,6 @@ try{
           emailId:emailId
         });
       }
-      else{
-
-        navigation.replace("GenerateWallet",{
-          emailId:emailId
-        });
-      }
     }
     if (res.status == "invalid") {
        setLoading(false)

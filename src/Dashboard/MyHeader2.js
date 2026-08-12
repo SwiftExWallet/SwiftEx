@@ -531,11 +531,6 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
           modalVisible={modalVisible2}
           setModalVisible={setModalVisible2}
         />
-        <SwapModal
-          modalVisible={modalVisible3}
-          setModalVisible={setModalVisible3}
-          swapType={swapType}
-        />
 
         <Modal
           isVisible={Wallet_modal}

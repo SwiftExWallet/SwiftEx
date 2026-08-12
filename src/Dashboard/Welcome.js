@@ -292,13 +292,6 @@ const Welcome = (props) => {
       <CustomImageSlider images={images} />
       <Animated.View style={[styles.buttonContainer, { opacity: fadeAnim }]}>
        <Text style={styles.termsTxt}>By continuing, you agree to the <Text style={styles.openLink} onPress={() => { Linking.openURL("https://swiftexwallet.com/terms-of-service") }}>Terms</Text> and <Text style={styles.openLink} onPress={()=>{ Linking.openURL("https://swiftexwallet.com/privacy-policy") }}>Privacy Policy.</Text></Text>
-        {/* {Loading?null:<TouchableOpacity
-          style={styles.createView}
-          onPress={() => props.navigation.navigate("GenerateWallet")}
-          disabled={Loading}
-        >
-          <Text style={styles.btnText}>CREATE A NEW WALLET</Text>
-        </TouchableOpacity>} */}
         {enableUserAccess ? <>
           <TouchableOpacity style={styles.createView} onPress={() => { setLoading(true), defaultWalletGenration() }} disabled={Loading}>
             {Loading ? <ActivityIndicator color={"green"} size={"large"} /> : <Text style={styles.btnText}>CREATE A NEW WALLET</Text>}
