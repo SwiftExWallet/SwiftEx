@@ -22,7 +22,7 @@ import W4 from "../../assets/W4.png";
 import CustomImageSlider from '../../Custom_scroller'; // Make sure to create this file
 import { createGuestUser } from "./exchange/crypto-exchange-front-end-main/src/api";
 import { useDispatch } from "react-redux";
-import { AddToAllWallets, Generate_Wallet2, getBalance, setCurrentWallet, setToken, setUser, setWalletType } from "../components/Redux/actions/auth";
+import { AddToAllWallets, Generate_Wallet2, getBalance, setCurrentWallet, setUser, setWalletType } from "../components/Redux/actions/auth";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { alert } from "./reusables/Toasts";
 import { useNavigation } from "@react-navigation/native";
@@ -227,7 +227,6 @@ const Welcome = (props) => {
             );
             dispatch(getBalance(wallet.address));
             dispatch(setWalletType("Multi-coin"));
-            dispatch(setToken(token));
             genrateStellarKeypair(wallet.address,wallet.stellarWallet.publicKey)
             const walletResponse = await AccessNativeStorage.saveWallet({
               name: "Main",

@@ -6,7 +6,7 @@ import title_icon from '../../assets/title_icon.png'
 import { TextInput } from 'react-native-paper';
 import { LinearGradient } from 'react-native-linear-gradient';
 import { useDispatch } from "react-redux";
-import { login, setToken } from "../components/Redux/actions/auth";
+import { login } from "../components/Redux/actions/auth";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 
 export  const LoginPage = ({ navigation }) => {
@@ -65,8 +65,6 @@ export  const LoginPage = ({ navigation }) => {
             alert('invalid credentials')
           }
           if (response.status == "success") {
-            dispatch(setToken(response.token))
-          
             navigation.replace("HomeScreen");
             return response.token
           }

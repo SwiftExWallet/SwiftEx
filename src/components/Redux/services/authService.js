@@ -44,17 +44,6 @@ const logIn = async (user) => {
   }
 };
 
-const setToken = async (token) => {
-  const user = await AsyncStorageLib.getItem("user");
-  if (token) {
-    AsyncStorage.setItem(`${user}-token`, token);
-    return {
-      status: "success",
-      message: "token saved",
-      token: token,
-    };
-  }
-};
 
 const setPlatform = async (platform) => {
   if (platform) {
@@ -467,7 +456,6 @@ export default {
 
   getDirectoryUri,
 
-  setToken,
 
   Generate_Wallet2,
 

@@ -220,19 +220,6 @@ export const getDirectoryUri  = (uri) => (dispatch) => {
   });
 };
 
-export const setToken  = (token) => (dispatch) => {
-  return AuthService.setToken(token).then((response) => {
-    if (response) {
-      dispatch({
-        type: SETTOKEN,
-        payload: { token: response.token},
-      });
-      Promise.resolve();
-      return response;
-      
-    }
-  });
-};
 
 
 export const setUser = (user) => (dispatch) => {
