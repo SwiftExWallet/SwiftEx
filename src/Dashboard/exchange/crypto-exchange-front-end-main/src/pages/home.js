@@ -29,7 +29,6 @@ import Svg,
   Stop,
   Path
 } from "react-native-svg";
-import SELECT_WALLET_EXC from "../../../../Modals/SELECT_WALLET_EXC";
 import { STELLAR_URL } from "../../../../constants";
 import PnlOverView from "../../../../reusables/PnlOverView";
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
@@ -62,7 +61,6 @@ const Sparkline = ({ data, width = 120, height = 40, color = GREEN }) => {
 export const HomeView = () => {
   const prvValue = useRef(null);
   const [openChartApi, setOpenChartApi] = useState(false);
-  const [visibleSelectWallet, setVisibleSelectWallet] = useState(false);
   const [chartIndex, setChartIndex] = useState(0);
   const [stellarKey, setStellarKey] = useState(null);
   const [loadingKey, setLoadingKey] = useState(true);
@@ -429,8 +427,6 @@ export const HomeView = () => {
           </TouchableOpacity>
         </Modal>
       </ScrollView>
-
-      <SELECT_WALLET_EXC visible={visibleSelectWallet} setVisible={() => setVisibleSelectWallet(false)} />
     </View>
   );
 };

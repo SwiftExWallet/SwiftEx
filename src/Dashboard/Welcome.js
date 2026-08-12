@@ -24,7 +24,6 @@ import { createGuestUser } from "./exchange/crypto-exchange-front-end-main/src/a
 import { useDispatch } from "react-redux";
 import { AddToAllWallets, Generate_Wallet2, getBalance, setCurrentWallet, setToken, setUser, setWalletType } from "../components/Redux/actions/auth";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
-import { genUsrToken } from "./Auth/jwtHandler";
 import { alert } from "./reusables/Toasts";
 import { useNavigation } from "@react-navigation/native";
 import apiHelper from "./exchange/crypto-exchange-front-end-main/src/apiHelper";
@@ -157,12 +156,6 @@ const Welcome = (props) => {
   const dispatChingData=async(wallet)=>{
     try {
       const dydxAddress=await dydxAddressDrive(wallet.privateKey)
-      const pin = await AsyncStorageLib.getItem("pin");
-            const body = {
-              accountName: "Main",
-              pin: JSON.parse(pin),
-            };
-            const token = genUsrToken(body);
             const accounts = {
               address: wallet.address,
               name: "Main",
@@ -214,10 +207,6 @@ const Welcome = (props) => {
             AsyncStorageLib.setItem(
               "currentWallet",
               "Main"
-            );
-            AsyncStorageLib.setItem(
-              `${"Main"}-token`,
-              token
             );
   
             dispatch(setUser("Main"));

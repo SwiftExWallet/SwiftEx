@@ -1,19 +1,14 @@
-import React, { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState } from "react";
 import {
   StyleSheet,
   Text,
   View,
-  Button,
-  Image,
-  TouchableOpacity,
-  Alert,
 } from "react-native";
 import {
   widthPercentageToDP as wp,
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
 import { Animated } from "react-native";
-// import title_icon from "../../../assets/title_icon.png";
 import darkBlue from "../../../assets/darkBlue.png";
 import ReactNativePinView from "react-native-pin-view";
 import Icon from "react-native-vector-icons/Ionicons";
@@ -23,12 +18,9 @@ import { useSelector } from "react-redux";
 import { Platform } from "react-native";
 import {
   setPlatform,
-  setWalletType,
 } from "../../components/Redux/actions/auth";
 import Modal from "react-native-modal";
-import AsyncStorageLib from "@react-native-async-storage/async-storage";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { decodeUserToken } from "../Auth/jwtHandler";
+import { useNavigation } from "@react-navigation/native";
 import { SendLoadingComponent } from "../../utilities/loadingComponent";
 import { CommonActions } from "@react-navigation/native";
 import { useToast } from "native-base";
@@ -55,7 +47,6 @@ const TransactionPinModal = ({
 }) => {
   const state = useSelector((state) => state);
   const theme = state.THEME.THEME ? colors.dark : colors.light;
-  const [pin, setPin] = useState();
   const [status, setStatus] = useState("pinset");
   const [showRemoveButton, setShowRemoveButton] = useState(false);
   const [enteredPin, setEnteredPin] = useState("");
@@ -64,10 +55,8 @@ const TransactionPinModal = ({
   const pinView = useRef(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const dispatch = useDispatch();
-  const toast = useToast();
   const Navigate = () => {
     navigation.dispatch((state) => {
-      // Remove the home route from the stack
       const routes = state.routes.filter((r) => r.name !== "Confirm Tx");
 
       return CommonActions.reset({
@@ -141,11 +130,7 @@ const TransactionPinModal = ({
       if (enteredPin.length===6) {
         const validPin=await CheckPasscode(enteredPin);
         setPinViewVisible(false);
-        // setLoader(true);
         if (validPin) {
-          const emailid = await state.user;
-          const token = await state.token;
-  
           if (type === "Eth") {
 
             const { res, err } = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, {signedTx:rawTransaction});
@@ -197,44 +182,6 @@ const TransactionPinModal = ({
                 setPinViewVisible(false);
                 console.log(e);
   
-                alert("error", e);
-              }
-            }
-          } else if (type === "Matic") {
-            let alchemy = provider;
-            let txx = await alchemy.core.sendTransaction(
-              rawTransaction
-            );
-            console.log("Sent transaction", txx.hash);
-            if (txx.hash) {
-              try {
-                const type = "Send";
-                const chainType = "Matic";
-  
-                const saveTransaction = await SaveTransaction(
-                  type,
-                  txx.hash,
-                  emailid,
-                  token,
-                  walletType
-                );
-  
-                console.log(saveTransaction);
-                // ShowToast(toast, "Transaction Successful");
-  
-                setLoading(false);
-                setLoader(false);
-                setDisable(false);
-                setPinViewVisible(false);
-                getAllBalances(state,dispatch)
-                Navigate();
-                navigation.navigate("Transactions");
-              } catch (e) {
-                setDisable(false);
-                setLoader(false);
-                setPinViewVisible(false);
-                setLoading(false);
-                console.log(e);
                 alert("error", e);
               }
             }
@@ -292,42 +239,6 @@ const TransactionPinModal = ({
                 console.log(e);
                 alert("error", e);
               }
-            }
-          } else {
-            try {
-              const client = provider;
-              const signed = rawTransaction;
-              const tx = await client.submitAndWait(signed.tx_blob);
-              const type = "Send";
-              const chainType = "Xrp";
-  
-              const saveTransaction = await SaveTransaction(
-                type,
-                signed.hash,
-                emailid,
-                token,
-                walletType,
-                chainType
-              );
-  
-              console.log(saveTransaction);
-              // ShowToast(toast, "Transaction Successful");
-  
-              setLoading(false);
-              setDisable(false);
-              console.log(tx);
-              setLoader(false);
-              setPinViewVisible(false);
-              getAllBalances(state,dispatch)
-              Navigate();
-              navigation.navigate("Transactions");
-            } catch (e) {
-              setLoader(false);
-              setLoading(false);
-              setDisable(false);
-              setPinViewVisible(false);
-              console.log(e);
-              alert("error", "please try again");
             }
           }
         } else {
