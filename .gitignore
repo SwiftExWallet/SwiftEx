@@ -76,4 +76,5 @@ yarn-error.log
 # Env
 .env*.postman_collection.json
 *.postman_environment.json
+postman-*.json*.postman_collection.json
 postman-*.json
