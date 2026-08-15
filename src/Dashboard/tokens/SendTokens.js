@@ -42,7 +42,9 @@ import { colors } from "../../Screens/ThemeColorsConfig";
 import { ChainSupportedToken } from "../exchange/crypto-exchange-front-end-main/src/components/ChainWithTokenInfo";
 import ShortTermStorage from "../../utilities/ShortTermStorage";
 import MultiChainTokenSend from "../exchange/crypto-exchange-front-end-main/src/components/MultiChainTokenSend";
-import { CHAINS, UI_CHAIN_NAME } from "../../utilities/TokenUtils";
+import { CHAINS, UI_CHAIN_NAME, callWithFallback } from "../../utilities/TokenUtils";
+import { ethers } from "ethers";
+import { getSafeErrorMessage } from "../../utilities/errorSanitizer";
 
 const SendTokens = (props) => {
   const predata = props?.route?.params?.token ?? "ETH";
@@ -403,15 +405,45 @@ const checkPermission = async () => {
             style={[style.input,{color:state.THEME.THEME===false?"black":"#fff"}]}
           ></TextInput>
           <Pressable
-           
-            onPress={() => {
-              console.log("pressed", amount, balance);
+            onPress={async () => {
+              const isNativeSend = !selectedChain?.address ||
+                selectedChain?.address?.toLowerCase() === '0x0000000000000000000000000000000000000000' ||
+                selectedChain?.type === 'native';
+
+              if (!isNativeSend) {
+                setAmount(balance);
+                return;
+              }
+
+              try {
+                const chainKey = selectedChain.symbol === 'BNB' ? 'BSC' : selectedChain.symbol;
+                const GAS_LIMIT = 21000;
+                const feeData = await Promise.race([
+                  callWithFallback(chainKey, (provider) => provider.getFeeData()),
+                  new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+                ]);
+                const gasPrice = feeData.maxFeePerGas || feeData.gasPrice;
+                if (gasPrice) {
+                  const gasCostWei = gasPrice.mul(Math.ceil(GAS_LIMIT * 1.3));
+                  const balanceWei = ethers.utils.parseEther(balance?.toString() || '0');
+                  const maxWei = balanceWei.sub(gasCostWei);
+                  if (maxWei.gt(0)) {
+                    const maxEth = parseFloat(ethers.utils.formatEther(maxWei));
+                    const decimals = selectedChain?.decimals || 18;
+                    const decimalsCap = Math.min(decimals, 8);
+                    const maxSendable = maxEth.toFixed(decimalsCap).replace(/0+$/, '').replace(/\.$/, '') || '0';
+                    setAmount(maxSendable);
+                    return;
+                  }
+                }
+              } catch (e) {
+                console.warn('[MAX] Live gas estimate failed, using fallback:', e.message);
+              }
               setAmount(balance);
             }}
             style={[style.maxButton]}
           >
-            <Text  onPress={()=>{console.log("pressed", amount, balance);
-              setAmount(balance)}} style={style.maxButtonText}>MAX</Text>
+            <Text style={style.maxButtonText}>MAX</Text>
           </Pressable>
         </View>
         </View>
@@ -478,13 +510,15 @@ const checkPermission = async () => {
                     setLoading(false);
                     navigation.navigate("Transactions");
                   }else{
-                    CustomInfoProvider.show("error", "!Opps",txResponse.error||"Transaction failed to send please check and try again.");
+                    CustomInfoProvider.show("error", "!Opps", getSafeErrorMessage(txResponse.error, "Transaction failed to send please check and try again."));
                     setLoading(false);
                   }
                 }
               }
              } catch (error) {
               console.error("--error--",error)
+              setLoading(false);
+              CustomInfoProvider.show("error", "!Opps", getSafeErrorMessage(error, "Transaction failed. Please try again."));
              }
             }}
           >

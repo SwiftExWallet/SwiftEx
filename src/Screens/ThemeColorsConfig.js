@@ -7,7 +7,10 @@ export const colors = {
         smallCardBorderColor: "#5E5C5C66",
         cardSubTx: "#272729",
         inactiveTx: "#7a7878ff",
-        buttonColor: '#5D5FEF'
+        buttonColor: '#5D5FEF',
+        success: '#34D399',
+        fail: '#F87171',
+        warn: '#F59E0B',
     },
     dark: {
         bg: "#0B0B0F",
@@ -17,6 +20,9 @@ export const colors = {
         smallCardBorderColor: "#AAAAAA66",
         cardSubTx: "#E6E8EB",
         inactiveTx: "#AAAAAA",
-        buttonColor: '#5D5FEF'
+        buttonColor: '#5D5FEF',
+        success: '#34D399',
+        fail: '#F87171',
+        warn: '#F59E0B',
     },
 };

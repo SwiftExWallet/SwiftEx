@@ -196,7 +196,8 @@ const getTransactionType = (operation, userPublicKey, isReceived) => {
     if (isNearIntentWithdrawal(operation)) {
       return "Withdrawal";
     }
-    return operation.asset_code || operation.asset_type;
+    if (operation.asset_type === "native") return "XLM";
+    return operation.asset_code || "XLM";
   }
 
   switch (operation.type) {
@@ -892,7 +893,8 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
       }
     };
 
-    const intervalId = setInterval(autoRefreshPendingTxs, 20000);
+    autoRefreshPendingTxs();
+    const intervalId = setInterval(autoRefreshPendingTxs, 15000);
     return () => clearInterval(intervalId);
   }, []);
 

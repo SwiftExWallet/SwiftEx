@@ -593,7 +593,7 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
         onClose={() => {
           setWalletSyncShow(false);
         }}
-        isDark={true}
+        isDark={isDark}
       />
     </View>
   );

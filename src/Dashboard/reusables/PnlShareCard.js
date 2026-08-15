@@ -63,13 +63,6 @@ const PnlShareCard = forwardRef(function PnlShareCard(
   const lastX = CHART_WIDTH;
   const lastY = CHART_HEIGHT - dataPoints[dataPoints.length - 1] * CHART_HEIGHT;
 
-  const formatPercent = (val) => {
-    const num = Number(val);
-    if (isNaN(num)) return '0.0%';
-    const abs = Math.abs(num);
-    const decimals = abs < 0.01 ? 4 : abs < 0.1 ? 2 : 1;
-    return `${num >= 0 ? '+' : ''}${num.toFixed(decimals)}%`;
-  };
 
   const formatDaysLabel = (d) => {
     if (typeof d === 'number') return `${d}D`;
@@ -109,11 +102,11 @@ const PnlShareCard = forwardRef(function PnlShareCard(
 
         <Text style={styles.label}>TOTAL P&L</Text>
         <Text style={[styles.bigPercent, { color: themeColor }]}>
-          {formatPercent(totalPnlPercent)}
+          {totalPnlPercent || 0}
         </Text>
         {!hideTotal&&
         <Text style={[styles.dollarAmount, { color: themeColor }]}>
-          {totalPnlPercent >= 0 ? '+' : '-'}${Math.abs(parseFloat(totalPnlDollar) || 0)}
+          {totalPnlDollar || 0}
         </Text>}
 
         <View style={styles.chartWrapper}>
@@ -149,7 +142,7 @@ const PnlShareCard = forwardRef(function PnlShareCard(
           <View style={[styles.statBox, { marginRight: 0 }]}>
             <Text style={styles.statLabel}>Best trade</Text>
             <Text style={[styles.statValue, { color: (Number(bestTrade) || 0) >= 0 ? '#34d399' : '#f87171' }]} numberOfLines={1}>
-              {formatPercent(bestTrade)}
+              {bestTrade || 0}
             </Text>
           </View>
         </View>

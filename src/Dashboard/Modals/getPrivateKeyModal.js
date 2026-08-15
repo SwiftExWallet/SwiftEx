@@ -104,7 +104,9 @@ export const GetPrivateKeyModal = ({ visible, setVisible, onCrossPress }) => {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                backgroundColor: Checked?"#fff":"gray" ,
+                backgroundColor: Checked?"#fff":themeDark?"black":"#fff" ,
+                borderColor:"gray",
+                borderWidth:0.5,
                 borderRadius: 10,
               }}
             >
@@ -126,7 +128,9 @@ export const GetPrivateKeyModal = ({ visible, setVisible, onCrossPress }) => {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                backgroundColor: Checked2?"#fff":"gray" ,
+                backgroundColor: Checked2?"#fff":themeDark?"black":"#fff" ,
+                borderColor:"gray",
+                borderWidth:0.5,
                 borderRadius: 10,
               }}
             >

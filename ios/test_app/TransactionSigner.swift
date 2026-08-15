@@ -82,6 +82,52 @@ class TransactionSigner: NSObject {
           reject("SIGN_ERROR", error.localizedDescription, error)
       }
   }
+
+@objc
+func signPersonalMessage(
+    _ chainName: String,
+    walletAddress: String,
+    messageHex: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+) {
+    do {
+        guard let privateKeyHex = try getPrivateKey(for: walletAddress, chain: chainName)
+        else { throw SignerError.privateKeyNotFound }
+
+        let privateKeyData = safeHexData(privateKeyHex)
+        guard let privKey = PrivateKey(data: privateKeyData)
+        else { throw SignerError.invalidPrivateKey }
+
+        let messageData: Data
+        if messageHex.lowercased().hasPrefix("0x") {
+            messageData = safeHexData(messageHex)
+        } else {
+            messageData = messageHex.data(using: .utf8) ?? Data()
+        }
+
+        let prefixStr = "\u{19}Ethereum Signed Message:\n\(messageData.count)"
+        guard var prefixed = prefixStr.data(using: .utf8) else {
+            throw SignerError.invalidTransactionData
+        }
+        prefixed.append(messageData)
+
+        let hash = Hash.keccak256(data: prefixed)
+
+        guard let sigData = privKey.sign(digest: hash, curve: .secp256k1),
+              sigData.count == 65
+        else { throw SignerError.signingFailed }
+
+        let r = sigData[0..<32].map  { String(format: "%02x", $0) }.joined()
+        let s = sigData[32..<64].map { String(format: "%02x", $0) }.joined()
+        let v = String(format: "%02x", sigData[64])
+
+        resolve(["success": true, "signature": "0x\(r)\(s)\(v)"])
+    } catch {
+        reject("SIGN_MESSAGE_ERROR", error.localizedDescription, error)
+    }
+}
+
 @objc
 func signTypedData(
     _ chainName: String,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Platform } from "react-native";
+import { View, Text, Platform, Image } from "react-native";
 import { useDispatch, useSelector } from "react-redux";
 import { setUser, Extend, Collapse } from "../components/Redux/actions/auth";
 import Home2 from "./Home2";
@@ -14,6 +14,7 @@ import store from "../components/Redux/Store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { REACT_APP_LOCAL_TOKEN } from "./exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import { ExchangeNavigation } from "./exchange/crypto-exchange-front-end-main/src/Navigation";
+import stellarImg from "../../assets/Stellar_(XLM).png";
 import { ExchangeLogin } from "./exchange/crypto-exchange-front-end-main/src/pages/auth/ExchangeLogin";
 import { AppHeader } from "./reusables/AppHeader";
 import { useIsFocused } from "@react-navigation/native";
@@ -127,8 +128,13 @@ const Dashboard = ({ navigation }) => {
               iconProvider = "ionicon";
               break;
             case "ExchangeHome":
-              iconName = focused?"git-pull-request":"git-pull-request-outline";
-              iconProvider = "ionicon";
+              return (
+                <Image
+                  source={stellarImg}
+                  style={{ width: 50, height: 36 }}
+                  resizeMode="contain"
+                />
+              );
               break;
             default:
               iconName = "ios-home-sharp";

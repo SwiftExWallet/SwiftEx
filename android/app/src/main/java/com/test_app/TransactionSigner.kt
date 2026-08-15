@@ -81,6 +81,51 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
     }
 
     @ReactMethod
+    fun signPersonalMessage(
+        chainName: String,
+        walletAddress: String,
+        messageHex: String,
+        promise: Promise
+    ) {
+        try {
+            val privateKeyHex = getPrivateKey(chainName)
+                ?: return promise.reject("PRIVATE_KEY_NOT_FOUND", "Private key not found")
+
+            val credentials = Credentials.create(privateKeyHex)
+
+            val messageBytes: ByteArray = if (
+                messageHex.length >= 2 &&
+                messageHex[0] == '0' &&
+                (messageHex[1] == 'x' || messageHex[1] == 'X')
+            ) {
+                Numeric.hexStringToByteArray(messageHex.substring(2))
+            } else {
+                messageHex.toByteArray(Charsets.UTF_8)
+            }
+
+            val prefix = "\u0019Ethereum Signed Message:\n${messageBytes.size}"
+                .toByteArray(Charsets.UTF_8)
+
+            val prefixedMsg = prefix + messageBytes
+            val hash = Hash.sha3(prefixedMsg)
+
+            val signature = Sign.signMessage(hash, credentials.ecKeyPair, false)
+
+            val r = Numeric.toHexStringNoPrefix(signature.r).padStart(64, '0')
+            val s = Numeric.toHexStringNoPrefix(signature.s).padStart(64, '0')
+            val v = (signature.v[0].toInt() and 0xFF).toString(16).padStart(2, '0')
+
+            val result = Arguments.createMap().apply {
+                putBoolean("success", true)
+                putString("signature", "0x$r$s$v")
+            }
+            promise.resolve(result)
+        } catch (e: Exception) {
+            promise.reject("SIGN_MESSAGE_ERROR", e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    @ReactMethod
     fun signTypedData(
         chainName: String,
         walletAddress: String,

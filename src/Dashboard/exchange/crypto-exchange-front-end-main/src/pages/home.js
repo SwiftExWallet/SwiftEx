@@ -72,19 +72,11 @@ export const HomeView = () => {
   const [pnl, setPnl] = useState(null);
   const [ordersCount, setOrdersCount] = useState(null);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [selectedTimeline, setSelectedTimeline] = useState("1week");
   const state = useSelector((s) => s);
   const theme = state.THEME.THEME ? colors.dark : colors.light;
   const st = useMemo(() => getStyles(theme), [theme]);
   const navigation = useNavigation();
   const focused = useIsFocused();
-
-  const TIMELINES = [
-    { label: '1 Week', value: '1week' },
-    { label: '1 Month', value: '1month' },
-    { label: '2 Month', value: '2month' },
-    { label: '3 Month', value: '3month' },
-  ];
   const CHART_API = [
     { id: 0, name: "XLM", name_0: "USDC", url: "https://horizon.stellar.lobstr.co/trade_aggregations?base_asset_type=native&counter_asset_type=credit_alphanum4&counter_asset_code=USDC&counter_asset_issuer=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN&start_time=1722320811000&resolution=60000&offset=0&limit=30&order=desc", img_0: 'https://s2.coinmarketcap.com/static/img/coins/64x64/512.png', img: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png" },
     { id: 1, name: "ETH", name_0: "USDC", url: "https://horizon.stellar.lobstr.co/trade_aggregations?base_asset_type=credit_alphanum4&base_asset_code=ETH&base_asset_issuer=GBFXOHVAS43OIWNIO7XLRJAHT3BICFEIKOJLZVXNT572MISM4CMGSOCC&counter_asset_type=credit_alphanum4&counter_asset_code=USDC&counter_asset_issuer=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN&start_time=1722320811000&resolution=60000&offset=0&limit=30&order=desc", img: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png", img_0: "https://tokens.pancakeswap.finance/images/0x2170Ed0880ac9A755fd29B2688956BD959F933F8.png" },
@@ -195,7 +187,7 @@ export const HomeView = () => {
     <View style={st.container}>
       <StatusBar barStyle="light-content" />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: hp(10) }}>
+      <ScrollView ref={prvValue} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: hp(10) }}>
 
         <LinearGradient
           colors={state.THEME.THEME?['#2E2E5D', '#12121A', '#0B0B0F']: ['#e7e6e2ff', '#F7F6FC', '#ECEBF7']}
@@ -278,60 +270,8 @@ export const HomeView = () => {
           </View>
         </LinearGradient>
 
-        <FlatList
-          horizontal
-          data={PnlOverViewConfig}
-          keyExtractor={(item) => item.label}
-          renderItem={renderStatCard}
-          style={st.statsRow}
-          showsHorizontalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={{ width: 8 }} />}
-          contentContainerStyle={{ paddingEnd: hp(3) }}
-        />
-
-        <View style={st.sec}>
-          <View style={st.pnlHead}>
-            <View>
-              <Text style={[st.secTitle,{fontSize:20}]}>PnL Overview</Text>
-            <Text style={st.freshnessTag}>Freshness: ~15 mins</Text>
-            </View>
-            <PnlOverView stellarKey={stellarKey} onSummaryUpdate={setPnl} selectedTimeline={selectedTimeline} />
-          </View>
-
-          <View style={{ flexDirection: "row" }}>
-            <View style={{ flex: 1 }}>
-              <Text style={st.pnlLabel}>Total PnL</Text>
-              <Text style={[st.pnlBigVal, { color: pnl?.totalPnL < 0 ? RED : GREEN }]}>
-                {pnl?.totalPnL < 0 ? "-" : "+"}${Math.abs(pnl?.totalPnL || 0).toFixed(3)}
-              </Text>
-              <View style={{ marginTop: 10 }}>
-                <Sparkline data={rawCloses?.length > 2 ? rawCloses : [10, 25, 12, 35, 20, 50]} color={pnl?.totalPnL < 0 ? RED : GREEN} width={wp(35)} />
-              </View>
-            </View>
-            <View style={st.pnlGrid}>
-              <GridItem st={st} label="Win Rate" val={`${pnl?.winRate || 0}%`} sub="▲ 5.2%" subCol={GREEN} />
-              <GridItem st={st} label="Total Trades" val={pnl?.tradeCount || 0} sub="▲ 2" subCol={GREEN} />
-              <GridItem st={st} label="Net Flow" val={`-$${Math.abs(pnl?.netUSDCFlow || 0).toFixed(3)}`} sub="▼ 1.1%" subCol={RED} isNeg />
-              <GridItem st={st} label="Positions" val={pnl?.positionCount || 0} sub="— 0%" subCol={theme.cardSubTx} />
-            </View>
-          </View>
-
-          <View style={st.timelineContainer}>
-            {TIMELINES.map((item) => {
-              const isActive = selectedTimeline === item.value;
-              return (
-                <TouchableOpacity
-                  key={item.value}
-                  onPress={() => setSelectedTimeline(item.value)}
-                  style={[st.timelineBtn, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }, isActive && st.timelineBtnActive]}
-                >
-                  <Text style={[st.timelineText, { color: theme.inactiveTx }, isActive && st.timelineTextActive]}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+        <View style={[st.sec,{marginTop:hp(-0.1)}]}>
+          <PnlOverView stellarKey={stellarKey} onSummaryUpdate={setPnl} activeTheme={theme} />
         </View>
 
         <View style={st.sec}>
@@ -848,32 +788,6 @@ const getStyles = (theme) => StyleSheet.create({
     fontSize: 16,
     color: theme.headingTx,
     fontWeight: "600"
-  },
-  timelineContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 1,
-    gap: 9
-  },
-  timelineBtn: {
-    flex: 1,
-    paddingVertical: 7,
-    borderRadius: 10,
-    alignItems: 'center',
-    borderWidth: 1
-  },
-  timelineBtnActive: {
-    backgroundColor: 'rgba(86, 88,233,0.2) ',
-    borderColor: '#4052D6'
-  },
-  timelineText: {
-    fontSize: 12,
-    fontWeight: '500'
-  },
-  timelineTextActive: {
-    color: '#4052D6',
-    fontWeight: '700'
   },
   freshnessTag: {
     color: theme.inactiveTx,

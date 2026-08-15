@@ -7,6 +7,9 @@ const GAS_PRICE_BUFFER_PCT = 120; // 20% extra
 const GAS_LIMIT_BUFFER_PCT = 120; // 20% extra
 const NATIVE_TRANSFER_GAS_LIMIT = ethers.BigNumber.from(21000);
 
+const OP_STACK_CHAIN_IDS = new Set([10, 8453, 34443, 7777777]); // OPT, Base, Mode, Zora
+const OPT_L1_FEE_BUFFER = ethers.BigNumber.from("2000000000"); // ~2 Gwei fixed buffer
+
 export const evmTxManager = async (chainName, fromAddress, amount, toAddress) => {
     const chainConfig = CHAINS[chainName];
     if (!chainConfig) {
@@ -56,7 +59,10 @@ export const evmTxManager = async (chainName, fromAddress, amount, toAddress) =>
         const gasLimitBuffered = gasLimit.mul(GAS_LIMIT_BUFFER_PCT).div(100);
         const gasCost = gasPrice.mul(gasLimitBuffered);
 
-        if (balance.lte(gasCost)) {
+        const isOpStack = OP_STACK_CHAIN_IDS.has(config.chainId);
+        const totalGasCost = isOpStack ? gasCost.add(OPT_L1_FEE_BUFFER) : gasCost;
+
+        if (balance.lte(totalGasCost)) {
             throw new Error("Balance too low to cover gas fees");
         }
 
@@ -65,12 +71,12 @@ export const evmTxManager = async (chainName, fromAddress, amount, toAddress) =>
 
         if (requestedValue.gte(balance)) {
             isMaxSend = true;
-            finalValue = balance.sub(gasCost);
+            finalValue = balance.sub(totalGasCost);
             if (finalValue.lte(0)) {
                 throw new Error("Balance too low to cover gas fees");
             }
         } else {
-            const totalRequired = requestedValue.add(gasCost);
+            const totalRequired = requestedValue.add(totalGasCost);
             if (balance.lt(totalRequired)) {
                 throw new Error("Insufficient balance to cover amount and gas");
             }

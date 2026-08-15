@@ -256,7 +256,6 @@ const SendXLM = (props) => {
         async function send_XLM(sourcePublic, destinationPublic, amount) {
             Keyboard.dismiss();
             try {
-              Showsuccesstoast(toast,"Sending Payment");
               const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
               StellarSdk.Networks.PUBLIC;
               const sourceAccount = await server.loadAccount(sourcePublic);
@@ -516,7 +515,7 @@ useEffect(() => {
              else{
               setdisable(true)
              if (validateStellarAddress(address)) {
-                 Showsuccesstoast(toast,"Valid Stellar address");
+                 alert("success","Valid Stellar address");
                  send_XLM(steller_key, address, amount)
              } else {
                  console.log('Invalid Stellar address');

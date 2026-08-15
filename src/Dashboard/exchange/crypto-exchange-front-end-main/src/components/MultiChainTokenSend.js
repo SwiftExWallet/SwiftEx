@@ -39,6 +39,7 @@ import LinearGradient from "react-native-linear-gradient";
 import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
 import { CHAINS, getProvider } from "../../../../../utilities/TokenUtils";
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
+import getSafeErrorMessage from "../../../../../utilities/errorSanitizer";
 const MultiChainTokenSend = ({ route }) => {
   const { hasPermission, requestPermission } = useCameraPermission();
   const toast = useToast();
@@ -90,7 +91,7 @@ const MultiChainTokenSend = ({ route }) => {
       const data = tokenInterface.encodeFunctionData('transfer', [toAddress, formattedAmount]);
 
       const [nonce, feeData, estimatedGas] = await Promise.all([
-        provider.getTransactionCount(activeWalletAddress, 'pending'),
+        provider.getTransactionCount(activeWalletAddress, 'latest'),
         provider.getFeeData(),
         provider.estimateGas({
           from: activeWalletAddress,
@@ -149,7 +150,7 @@ const MultiChainTokenSend = ({ route }) => {
       }
     } catch (error) {
       console.error("Transaction Error:", error);
-      CustomInfoProvider.show("error", "Transaction failed try again.");
+      CustomInfoProvider.show("error", getSafeErrorMessage(error, "Transaction failed. Please try again."));
     } finally {
       setAddress();
       setAmount();
@@ -522,7 +523,7 @@ const MultiChainTokenSend = ({ route }) => {
         theme={state.THEME.THEME === false ? "light" : "dark"}
         onNextStep={() => {
           setShowTxInfo(false);
-          sendERCTokens(route?.tokenType?.slice(0, 3), route?.tokenAddress, route?.tokenDecimals, address, amount);
+          sendERCTokens(route?.tokenType, route?.tokenAddress, route?.tokenDecimals, address, amount);
         }}
       />
     </>

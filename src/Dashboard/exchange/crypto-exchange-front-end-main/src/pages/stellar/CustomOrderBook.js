@@ -108,16 +108,15 @@ const CustomOrderBook = ({ visibleTabs = ['chart', 'trades', 'bids', 'asks'] }) 
     outputRange: ['0deg', '360deg']
   });
 
-  const chartData1 = priceHistory
-  ?.map(point => ({
-    x: new Date(`1970-01-01T${point?.timestamp}Z`)?.getTime(), // Convert HH:mm:ss to timestamp
-    y: isNaN(point?.close) ? 0 : point?.close // Ensure y is a valid number
-  }))
-  .filter(point => !isNaN(point?.x) && !isNaN(point?.y)); // Remove NaN values
-  const chartData = chartData1.map((d) => ({
-    value: d.y,
-    label: '',
-  }));
+  const prices = priceHistory?.map(r => r.close) || [];
+  const minPrice = prices?.length > 0 ? Math.min(...prices) : 0;
+  const maxPrice = prices?.length > 0 ? Math.max(...prices) : 0;
+  const priceDiff = maxPrice - minPrice;
+
+  const chartData = priceHistory?.map((item) => ({
+    value: item?.close,
+    label: item?.timestamp,
+  })).reverse(); 
 const minY = Math.min(...chartData?.map(d => d?.y)?.filter(y => !isNaN(y)));
 const maxY = Math.max(...chartData?.map(d => d?.y)?.filter(y => !isNaN(y)));
   
@@ -452,22 +451,35 @@ const connectEventSource = useCallback(() => {
             {priceHistory.length >= 2 ? (
               <LineChart
                 data={chartData}
-                width={350}
-                height={200}
+                width={width - 60}
+                height={220}
                 color={"#44bd32"}
-                thickness={2}
+                thickness={3}
                 curved
                 areaChart
                 startFillColor={"#44bd32"}
-                startOpacity={0.4}
+                startOpacity={0.3}
                 endFillColor={"#44bd32"}
-                endOpacity={0}
-                hideDataPoints
-                hideYAxisText
-                hideXAxisText
-                hideAxesAndRules
-                initialSpacing={0}
-                endSpacing={0}
+                endOpacity={0.01}
+                yAxisOffset={minPrice - (priceDiff * 0.05)} 
+                hideDataPoints={false}
+                dataPointsColor={"#44bd32"}
+                dataPointsRadius={2}
+                hideYAxisText={true}
+                hideXAxisText={true}
+                hideAxesAndRules={true}
+                initialSpacing={10}
+                endSpacing={10}
+                pointerConfig={{
+                  pointerStripColor: '#44bd32',
+                  pointerStripWidth: 2,
+                  pointerColor: '#44bd32',
+                  radius: 4,
+                  pointerLabelComponent: items => {
+                    setpoints_data(items[0].value.toFixed(6));
+                    return null;
+                  },
+                }}
               />
             ) : (
               <View style={styles.noChartContainer}>

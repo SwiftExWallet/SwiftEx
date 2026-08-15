@@ -16,7 +16,6 @@ import { STELLAR_URL } from "../../../../../constants";
 import LinearGradient from "react-native-linear-gradient";
 import { colors } from "../../../../../../Screens/ThemeColorsConfig";
 import CustomInfoProvider from "../../components/CustomInfoProvider";
-import DragToProcced from "../AnimatedComponent/DragToProcced"
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.8;
 
@@ -162,13 +161,42 @@ const ClaimableBalanceChecker = ({
     };
   };
 
+  const evaluatePredicate = (predicate, now = new Date()) => {
+    if (!predicate || predicate.unconditional) return true;
+    if (predicate.abs_before) return now < new Date(predicate.abs_before);
+    if (predicate.abs_after) return now >= new Date(predicate.abs_after);
+    if (predicate.not) return !evaluatePredicate(predicate.not, now);
+    if (predicate.and) return predicate.and.every(p => evaluatePredicate(p, now));
+    if (predicate.or) return predicate.or.some(p => evaluatePredicate(p, now));
+    return false;
+  };
+
+  const extractUnlockTime = (predicate) => {
+    if (!predicate) return null;
+    if (predicate.not?.abs_before) {
+      return new Date(predicate.not.abs_before).toLocaleString();
+    }
+    if (predicate.abs_after) {
+      return new Date(predicate.abs_after).toLocaleString();
+    }
+    if (predicate.and) {
+      for (const p of predicate.and) {
+        const t = extractUnlockTime(p);
+        if (t) return t;
+      }
+    }
+    return null;
+  };
+
   const getClaimCondition = (claimants) => {
     if (!claimants || claimants.length === 0) return { text: "No conditions", color: "#6B7280", isReady: false };
     const predicate = claimants[0].predicate;
-    if (predicate && predicate.unconditional) {
+    const isReady = evaluatePredicate(predicate);
+    if (isReady) {
       return { text: "Ready to Claim", color: "#10b981", isReady: true };
     }
-    return { text: "Time Locked", color: "#f59e0b", isReady: false };
+    const unlockTime = extractUnlockTime(predicate);
+    return { text: "Time Locked", color: "#f59e0b", isReady: false, unlockTime };
   };
 
   const toggleExpand = (index) => {
@@ -248,7 +276,7 @@ const ClaimableBalanceChecker = ({
 
                 {!loading && !error && balances.map((balance, index) => {
                   const condition = getClaimCondition(balance.claimants);
-                  const isExpanded = expandedIndex === index && condition.text !== 'Time Locked';
+                  const isExpanded = expandedIndex === index;
                   const assetString = typeof balance.asset === 'string' ? balance.asset : '';
                   const issuerAddress = assetString.includes(':')
                     ? `${assetString.split(":")[1].slice(0, 8)}...${assetString.split(":")[1].slice(-8)}`
@@ -319,17 +347,29 @@ const ClaimableBalanceChecker = ({
                           <View style={[styles.noteContainer, { backgroundColor: isDark ? 'rgba(245,158,11,0.08)' : '#FFFBF0', borderColor: isDark ? 'rgba(245,158,11,0.2)' : '#FDE68A' }]}>
                             <Icon name="info-outline" size={16} color="#D97706" style={{ marginRight: 6, marginTop: 1 }} />
                             <Text style={styles.noteText}>
-                              A small network fee in XLM is required for each claim operation.
+                              {!condition.isReady
+                                ? `This balance is time-locked${condition.unlockTime ? ` and can be claimed after ${condition.unlockTime}` : ''}. You cannot claim it yet.`
+                                : 'A small network fee in XLM is required for each claim operation.'
+                              }
                             </Text>
                           </View>
 
                           <View style={styles.actionBtnRow}>
-                            <DragToProcced
-                              onDragComplete={() => handleClaimAsset(balance)}
-                              disabled={!condition.isReady}
-                              isProccessing={claimingId === balance.id}
-                              heading={`Slide to Claim ${currentAssetCode}`}
-                            />
+                            <TouchableOpacity
+                              onPress={() => condition.isReady && handleClaimAsset(balance)}
+                              disabled={!condition.isReady || claimingId === balance.id}
+                              style={[
+                                styles.claimBtn,
+                                { backgroundColor: condition.isReady ? '#4052D6' : '#9CA3AF', opacity: claimingId === balance.id ? 0.7 : 1 }
+                              ]}
+                            >
+                              {claimingId === balance.id
+                                ? <ActivityIndicator color="#fff" size="small" />
+                                : <Text style={styles.claimBtnText}>
+                                    {condition.isReady ? `Claim ${currentAssetCode}` : `Locked — Not Yet Claimable`}
+                                  </Text>
+                              }
+                            </TouchableOpacity>
                           </View>
                         </View>
                       )}
@@ -553,6 +593,17 @@ const styles = StyleSheet.create({
   },
   actionBtnRow: {
     marginTop: 12,
+  },
+  claimBtn: {
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  claimBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
   claimActionBtn: {
     flexDirection: 'row',

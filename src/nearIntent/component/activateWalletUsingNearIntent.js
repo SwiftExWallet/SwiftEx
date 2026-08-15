@@ -15,6 +15,7 @@ import {
   UIManager,
   ScrollView,
   Image,
+  BackHandler,
 } from "react-native";
 import { Networks } from "@stellar/stellar-sdk";
 
@@ -188,7 +189,13 @@ function pickDefaultFromPortfolio(portfolio, activationChains) {
 }
 
 function normalizeChain(chain) {
-  return chain === "BNB" ? "BSC" : chain;
+  const MAP = {
+    BNB:   'BSC',
+    OP:    'OPT',
+    AVA:   'AVAX',
+    BAS:   'BASE',
+  };
+  return MAP[chain] ?? chain;
 }
 function isSameChain(portfolioChain, chainEntry) {
   return (
@@ -744,18 +751,11 @@ export default function StellarSetupBottomSheet({
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) =>
-        !processing && g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx),
+        g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx),
       onPanResponderMove: (_, g) => {
-        if (!processing && g.dy > 0) translateY.setValue(g.dy);
+        if (g.dy > 0) translateY.setValue(g.dy);
       },
       onPanResponderRelease: (_, g) => {
-        if (processing) {
-          // Gesture may have started before `processing` flipped true
-          // mid-drag (e.g. a poll kicked off). Snap back rather than
-          // leaving the sheet visually stuck mid-drag.
-          Animated.spring(translateY, { toValue: 0, useNativeDriver: true }).start();
-          return;
-        }
         if (g.dy > 120) {
           handleDismiss();
         } else {
@@ -769,7 +769,6 @@ export default function StellarSetupBottomSheet({
   ).current;
 
   const handleDismiss = useCallback(() => {
-    if (processing) return;
     Animated.timing(translateY, {
       toValue: SHEET_HEIGHT,
       duration: 260,
@@ -778,7 +777,7 @@ export default function StellarSetupBottomSheet({
     }).start(() => {
       onDismiss && onDismiss();
     });
-  }, [processing, onDismiss]);
+  }, [onDismiss]);
 
   const setStepStatus = (key, status) =>
     setSteps((prev) => ({ ...prev, [key]: status }));
