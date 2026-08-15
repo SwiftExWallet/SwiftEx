@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import {
   Modal, View, Text, TouchableOpacity, StyleSheet,
   Dimensions, Animated, TouchableWithoutFeedback,
+  Platform,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -104,7 +105,6 @@ const TokenQrCode = ({ modalVisible, setModalVisible, iconType, qrvalue, isDark 
                 <View style={[s.qrWrapper, { backgroundColor: "#FFFFFF" }]}>
                   <QRCode value={qrvalue || " "} size={wp(45)} logoBorderRadius={10} />
                 </View>
-
                 <Text style={[s.middleHeading, { color: isDark ? "#fff" : "#272729" }]}>
                   Your {iconType} Address
                 </Text>
@@ -140,13 +140,14 @@ const TokenQrCode = ({ modalVisible, setModalVisible, iconType, qrvalue, isDark 
         options={{ format: "png", quality: 1 }}
         style={s.offscreen}
       >
+      
         <LinearGradient
           colors={["#0d0b1f", "#171335", "#0d0b1f"]}
           start={{ x: 0.3, y: 0 }}
           end={{ x: 0.7, y: 1 }}
-          style={s.card}
+          style={Platform.OS==="android"?s.card:s.cardISO}
         >
-          <View style={s.cardHeader}>
+          <View style={Platform.OS==="android"?s.cardHeader:s.cardHeaderIOS}>
             <View style={s.brandRow}>
               <Image source={darkBlue} style={s.logo} />
               <View style={{ marginLeft: -5 }}>
@@ -168,7 +169,7 @@ const TokenQrCode = ({ modalVisible, setModalVisible, iconType, qrvalue, isDark 
           </View>
 
           <Text style={s.cardLabel}>WALLET ADDRESS</Text>
-          <View style={s.cardAddressBox}>
+          <View style={Platform.OS==="android"?s.cardAddressBox:s.cardAddressBoxIOS}>
             <Text style={s.cardAddress}>{qrvalue}</Text>
           </View>
 
@@ -266,7 +267,21 @@ const s = StyleSheet.create({
     padding: 24,
     alignSelf: "center",
   },
+  cardISO: {
+    width: wp(99),
+    borderRadius: 28,
+    paddingHorizontal:wp(2),
+    paddingVertical:20,
+    alignSelf: "center",
+  },
   cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 28,
+  },
+  cardHeaderIOS: {
+    width:wp(90),
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -306,6 +321,14 @@ const s = StyleSheet.create({
     textAlign: "center",
   },
   cardAddressBox: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    marginBottom: 24,
+  },
+  cardAddressBoxIOS: {
+    width:wp(89),
     backgroundColor: "rgba(255,255,255,0.05)",
     borderRadius: 14,
     paddingVertical: 12,
