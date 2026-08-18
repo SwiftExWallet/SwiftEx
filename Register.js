@@ -47,12 +47,10 @@ function ValidateEmail(mail)
       minUppercase: 1, minNumbers: 1, minSymbols: 1
     })) {
       setErrorMessage('Is Strong Password')
-      console.log(errorMessage)
       return true
     } else {
       setErrorMessage('Is Not Strong Password')
       alert("password must contain atleast 1 uppercase, 1 lowercase, 1 number and 1 special character")
-      console.log(errorMessage)
       return false
     }
   }
@@ -70,37 +68,6 @@ async function register(){
     setLoading(false)
     return alert("passwords doesn't match")
    }
-   
-    fetch(`http://${urls.testUrl}/user/register`, {
-      method: 'POST',
-      headers: {
-               Accept: 'application/json',
-               'Content-Type': 'application/json'
-      },
-     body: JSON.stringify({
-               emailId: username,
-               password: password})
-     }).then((response) => response.json())
-     .then((responseJson) => {
-      if(responseJson.responseCode===200){
-        setLoading(false)
-        alert('please validate your account using OTP')
-        navigation.navigate('confirmOtp',{
-          emailId:username,
-          wallet:props.route.params.wallet
-        })
-        
-      }
-      else{
-        setLoading(false)
-        alert(responseJson.responseMessage)
-      }
-               console.log(responseJson);
-    })
-    .catch((error)=>{
-      setLoading(false)
-      alert(error)
-    })
   }else{
     setLoading(false)
     return
@@ -114,7 +81,6 @@ async function register(){
   useEffect(async ()=>{
     const platform = await AsyncStorageLib.getItem('platform')
     setPlatform(platform)
-    console.log(platform)
   },[])
 
   return (
@@ -233,7 +199,6 @@ async function register(){
       >
       <TouchableOpacity onPress={ ()=>{
       const result = register()
-      console.log(result)
        
       }}>
           <Text style={styles.buttonText}>{loading? <View ><ActivityIndicator size="small" color="white" /></View>:'Create my account'}</Text>

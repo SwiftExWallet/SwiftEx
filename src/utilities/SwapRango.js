@@ -5,6 +5,7 @@ import { CHAINS, isNativeTokenAddress } from './TokenUtils';
 import CustomInfoProvider from '../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import ShortTermStorage from './ShortTermStorage';
 import Web3 from 'web3';
+import { getSafeErrorMessage } from './errorSanitizer';
 
 export const swapBestRoute = async (
     fromTokenBlockchain, fromTokenSymbol, fromTokenAddress,
@@ -238,10 +239,11 @@ export async function performeRangoSwap(rangoQuoteInfo, state, fromToken, toToke
         );
 
         if (!responses.status) {
-            CustomInfoProvider.show("error", "!Opps", responses.error || "Route confirmation failed.");
+            const safeRouteError = getSafeErrorMessage(responses.error, "Route confirmation failed.");
+            CustomInfoProvider.show("error", "!Opps", safeRouteError);
             return {
                 status: false,
-                error: responses.error || "Route confirmation failed."
+                error: safeRouteError
             };
         }
 
@@ -270,10 +272,14 @@ export async function performeRangoSwap(rangoQuoteInfo, state, fromToken, toToke
         const hasError = Array.isArray(swapPreparedTxRes.response) && swapPreparedTxRes.response.some(item => item?.ok === false);
         if (hasError || swapPreparedTxRes.status === false) {
             const firstError = Array.isArray(swapPreparedTxRes.response) ? swapPreparedTxRes.response.find(item => item.ok === false) : null;
-            CustomInfoProvider.show("error", "!Opps", firstError?.error || swapPreparedTxRes.error);
+            const safePrepareTxError = getSafeErrorMessage(
+                firstError?.error || swapPreparedTxRes.error,
+                "Failed to prepare transaction."
+            );
+            CustomInfoProvider.show("error", "!Opps", safePrepareTxError);
             return {
                 status: false,
-                error: firstError?.error || swapPreparedTxRes.error
+                error: safePrepareTxError
             };
         }
 
@@ -286,6 +292,8 @@ export async function performeRangoSwap(rangoQuoteInfo, state, fromToken, toToke
                         requestId: rangoQuoteInfo.requestId,
                         txHash:  tx.transactionHash,
                         walletAddress: state?.wallet?.address,
+                        fromAddress: state?.wallet?.address,
+                        toAddress: toToken.chain === "STR" ? state.STELLAR_PUBLICK_KEY : state?.wallet?.address,
                         provider: tx?.type === "approve" ? "EVMTX" : "RANGO",
                         fromChain: CHAINS[fromToken.chain].chainName,
                         fromToken: fromToken.symbol,
@@ -293,7 +301,8 @@ export async function performeRangoSwap(rangoQuoteInfo, state, fromToken, toToke
                         toToken: toToken.symbol,
                         amountIn: rangoQuoteInfo?.requestAmount,
                         amountOut: rangoQuoteInfo?.result?.outputAmount,
-                        txType:tx?.type==="approve"?"Token Approval":"Swap"
+                        txType:tx?.type==="approve"?"Token Approval":"Swap",
+                        fromTokenMetaData:fromToken.address
                     })
                 }
                 const isApprovalTx = swapPreparedTxRes.response.some(item => item?.transaction?.isApprovalTx === true);
@@ -329,10 +338,11 @@ export async function performeRangoSwap(rangoQuoteInfo, state, fromToken, toToke
                 }
             }
         } else {
-            CustomInfoProvider.show("error", "!Opps", submitTx.error || "Swap failed");
+            const safeSubmitError = getSafeErrorMessage(submitTx.error, "Swap failed");
+            CustomInfoProvider.show("error", "!Opps", safeSubmitError);
             return {
                 status: false,
-                error: submitTx.error || "Swap failed."
+                error: safeSubmitError
             };
         }
     } catch (error) {
@@ -430,10 +440,11 @@ export async function ensureFusionAllowance(tokenAddress, walletAddress, amountB
             rawTransaction = rawTransaction.replace(/^0x/, '');
         }
         const txHash = await rpcProvider.send('eth_sendRawTransaction', [rawTransaction]);
-        return { status: true, txHash };
+        const receipt = await rpcProvider.waitForTransaction(txHash, 2, 60_000);
+        return { status: true, txHash:txHash };
     } catch (error) {
         console.error('[ensureFusionAllowance] Error:', error);
-        return { status: false, error };
+        return { status: false,txHash:null ,error };
     }
 }
 

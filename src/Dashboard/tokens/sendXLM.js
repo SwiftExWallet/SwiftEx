@@ -256,7 +256,6 @@ const SendXLM = (props) => {
         async function send_XLM(sourcePublic, destinationPublic, amount) {
             Keyboard.dismiss();
             try {
-              Showsuccesstoast(toast,"Sending Payment");
               const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
               StellarSdk.Networks.PUBLIC;
               const sourceAccount = await server.loadAccount(sourcePublic);
@@ -350,6 +349,8 @@ const SendXLM = (props) => {
                   ) {
                     CustomInfoProvider.show("warning", "Permission Denied", "Camera permission requird for scaning QR Code.");
                   }
+                }else{
+                   setModalVisible(true);
                 }
               } else {
                 if (!hasPermission) {
@@ -393,7 +394,7 @@ useEffect(() => {
                 onClose={handleCloseModal}
                 title="Reserved"
               />
-            <View style={[style.Body,{ backgroundColor: state.THEME.THEME===false?"#FFFFFF":"#1B1B1C"}]}>
+            <View style={[style.Body,{ backgroundColor: state.THEME.THEME===false?"#FFFFFF":"#0B0B0F"}]}>
             <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
          <View style={{
           flexDirection:"row",
@@ -412,7 +413,7 @@ useEffect(() => {
             </TouchableOpacity>
          </View>
           <View style={[style.inputContainer, {
-            backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+            backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
           }]}>
               <TextInput
                 value={address}
@@ -462,7 +463,7 @@ useEffect(() => {
             Amount
           </Text>
           <View style={[style.inputContainer, {
-            backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+            backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
           }]}>
                           <TextInput
                         value={amount}
@@ -514,7 +515,7 @@ useEffect(() => {
              else{
               setdisable(true)
              if (validateStellarAddress(address)) {
-                 Showsuccesstoast(toast,"Valid Stellar address");
+                 alert("success","Valid Stellar address");
                  send_XLM(steller_key, address, amount)
              } else {
                  console.log('Invalid Stellar address');

@@ -14,7 +14,8 @@
       android:allowBackup="false"
       android:theme="@style/AppTheme"
       android:supportsRtl="true"
-      android:usesCleartextTraffic="true"
+      android:usesCleartextTraffic="false"
+      android:networkSecurityConfig="@xml/network_security_config"
       >
      
       <activity
@@ -48,6 +49,14 @@
               android:scheme="https"
               android:host="app.swiftexchange.io"/>
         </intent-filter>        
+
+        <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" 
+                      android:host="swiftexwallet.chottu.link" />
+        </intent-filter>     
       </activity>
 
       <activity android:name=".ApplicationValidationFailUI"

@@ -42,20 +42,23 @@ import { colors } from "../../Screens/ThemeColorsConfig";
 import { ChainSupportedToken } from "../exchange/crypto-exchange-front-end-main/src/components/ChainWithTokenInfo";
 import ShortTermStorage from "../../utilities/ShortTermStorage";
 import MultiChainTokenSend from "../exchange/crypto-exchange-front-end-main/src/components/MultiChainTokenSend";
-import { UI_CHAIN_NAME } from "../../utilities/TokenUtils";
+import { CHAINS, UI_CHAIN_NAME, callWithFallback } from "../../utilities/TokenUtils";
+import { ethers } from "ethers";
+import { getSafeErrorMessage } from "../../utilities/errorSanitizer";
 
 const SendTokens = (props) => {
+  const predata = props?.route?.params?.token ?? "ETH";
   const { hasPermission, requestPermission } = useCameraPermission();
   const cameraRef = useRef(null);
   const device = useCameraDevice('back');
   const [selectedChain, setSelectedChain] = useState({
-    "name": "Ethereum",
-    "address": "0x0000000000000000000000000000000000000000",
-    "symbol": "ETH",
-    "decimals": 18,
-    "type": "ETHEREUM",
-    "logoURI": "https://coin-images.coingecko.com/coins/images/279/large/ethereum.png?1696501628",
-    "chain": "ETH"
+    "name": CHAINS[predata].name,
+    "address": CHAINS[predata].nativeToken.address,
+    "symbol": CHAINS[predata].symbol,
+    "decimals": CHAINS[predata].nativeToken.decimals,
+    "type": CHAINS[predata].chainNameInThirdParty,
+    "logoURI": CHAINS[predata].imageUrl,
+    "chain": CHAINS[predata].chainName
 });
   const [address, setAddress] = useState("");
   const [amount, setAmount] = useState("");
@@ -278,14 +281,14 @@ const checkPermission = async () => {
   return (
 <>
     <Wallet_screen_header title={`Send `+selectedChain?.name || selectedChain.domain} onLeftIconPress={() => navigation.goBack()} />
-      <View style={[style.Body,{ backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C"}]}>
+      <View style={[style.Body,{ backgroundColor: theme.bg}]}>
     <ErrorComponet
           isVisible={ErroVisible}
           onClose={() => setErroVisible(false)}
           message="The scanned QR code contains an invalid public key. Please make sure you're scanning the correct QR code and try again."
         />
-        <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
-          <TouchableOpacity style={[style.inputContainer, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C", paddingVertical: hp(1.5), justifyContent: "space-between",paddingHorizontal:wp(3) }]} onPress={() => { setShowTokens(true) }}>
+        <View style={[style.card, { backgroundColor: theme.cardBg }]}>
+          <TouchableOpacity style={[style.inputContainer, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F", paddingVertical: hp(1.5), justifyContent: "space-between",paddingHorizontal:wp(3) }]} onPress={() => { setShowTokens(true) }}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Image source={{ uri: selectedChain.logoURI }} width={30} height={30} />
               <Text style={[style.txtHeading, { color: theme.headingTx }]}>{selectedChain?.name || selectedChain.domain}</Text>
@@ -294,7 +297,7 @@ const checkPermission = async () => {
           </TouchableOpacity>
           </View>
           {!showErcSend?<>
-<View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
+<View style={[style.card, { backgroundColor: theme.cardBg }]}>
          <View style={{
           flexDirection:"row",
           justifyContent:"space-between",
@@ -312,7 +315,7 @@ const checkPermission = async () => {
             </TouchableOpacity>
          </View>
           <View style={[style.inputContainer, {
-            backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+            backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
           }]}>
             <TextInput
               value={address}
@@ -375,12 +378,12 @@ const checkPermission = async () => {
 
 
         <View>
-        <View style={[style.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
+        <View style={[style.card, { backgroundColor: theme.cardBg }]}>
           <Text style={[style.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
             Amount
           </Text>
           <View style={[style.inputContainer, {
-            backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+            backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
           }]}>
           <TextInput
             value={amount}
@@ -402,15 +405,45 @@ const checkPermission = async () => {
             style={[style.input,{color:state.THEME.THEME===false?"black":"#fff"}]}
           ></TextInput>
           <Pressable
-           
-            onPress={() => {
-              console.log("pressed", amount, balance);
+            onPress={async () => {
+              const isNativeSend = !selectedChain?.address ||
+                selectedChain?.address?.toLowerCase() === '0x0000000000000000000000000000000000000000' ||
+                selectedChain?.type === 'native';
+
+              if (!isNativeSend) {
+                setAmount(balance);
+                return;
+              }
+
+              try {
+                const chainKey = selectedChain.symbol === 'BNB' ? 'BSC' : selectedChain.symbol;
+                const GAS_LIMIT = 21000;
+                const feeData = await Promise.race([
+                  callWithFallback(chainKey, (provider) => provider.getFeeData()),
+                  new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+                ]);
+                const gasPrice = feeData.maxFeePerGas || feeData.gasPrice;
+                if (gasPrice) {
+                  const gasCostWei = gasPrice.mul(Math.ceil(GAS_LIMIT * 1.3));
+                  const balanceWei = ethers.utils.parseEther(balance?.toString() || '0');
+                  const maxWei = balanceWei.sub(gasCostWei);
+                  if (maxWei.gt(0)) {
+                    const maxEth = parseFloat(ethers.utils.formatEther(maxWei));
+                    const decimals = selectedChain?.decimals || 18;
+                    const decimalsCap = Math.min(decimals, 8);
+                    const maxSendable = maxEth.toFixed(decimalsCap).replace(/0+$/, '').replace(/\.$/, '') || '0';
+                    setAmount(maxSendable);
+                    return;
+                  }
+                }
+              } catch (e) {
+                console.warn('[MAX] Live gas estimate failed, using fallback:', e.message);
+              }
               setAmount(balance);
             }}
             style={[style.maxButton]}
           >
-            <Text  onPress={()=>{console.log("pressed", amount, balance);
-              setAmount(balance)}} style={style.maxButtonText}>MAX</Text>
+            <Text style={style.maxButtonText}>MAX</Text>
           </Pressable>
         </View>
         </View>
@@ -461,6 +494,8 @@ const checkPermission = async () => {
                     await ShortTermStorage.syncTx({
                       txHash: txResponse.txResponse?.hash,
                       walletAddress: state.wallet.address,
+                      fromAddress: state.wallet.address,
+                      toAddress: address,
                       provider: "EVMTX",
                       fromChain: selectedChain.symbol,
                       fromToken: selectedChain.symbol,
@@ -468,19 +503,22 @@ const checkPermission = async () => {
                       toToken: selectedChain.symbol,
                       amountIn: amount?.toString(),
                       amountOut: amount?.toString(),
-                      txType: "Native Transfer"
+                      txType: "Native Transfer",
+                      fromTokenMetaData:"native"
                     });
                     CustomInfoProvider.show("success", "Transaction Successful","Transaction has been successfully sent to the receiver.");
                     setLoading(false);
                     navigation.navigate("Transactions");
                   }else{
-                    CustomInfoProvider.show("error", "!Opps",txResponse.error||"Transaction failed to send please check and try again.");
+                    CustomInfoProvider.show("error", "!Opps", getSafeErrorMessage(txResponse.error, "Transaction failed to send please check and try again."));
                     setLoading(false);
                   }
                 }
               }
              } catch (error) {
               console.error("--error--",error)
+              setLoading(false);
+              CustomInfoProvider.show("error", "!Opps", getSafeErrorMessage(error, "Transaction failed. Please try again."));
              }
             }}
           >

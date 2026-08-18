@@ -12,6 +12,7 @@ import { REACT_APP_LOCAL_TOKEN } from "../exchange/crypto-exchange-front-end-mai
 import { useSelector } from "react-redux";
 import { createGuestUser } from "../exchange/crypto-exchange-front-end-main/src/api";
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
+import { colors } from "../../Screens/ThemeColorsConfig";
 
 export const ExchangeHeaderApp = () => {
   const navigation = useNavigation();
@@ -98,18 +99,18 @@ export const Exchange_screen_header = ({ title, onLeftIconPress, onRightIconPres
 
   return (
     <>
-      <View style={[styles.exchangeheaderContainer, { height: Platform.OS === "ios" ? hp(8) : hp(6),backgroundColor:state.THEME.THEME?"#1B1B1C":"#FFFFFF" }]}>
+      <View style={[styles.exchangeheaderContainer, { height: Platform.OS === "ios" ? hp(8) : hp(6),backgroundColor:state.THEME.THEME?colors.dark.bg:colors.light.bg }]}>
         <TouchableOpacity onPress={onLeftIconPress} style={[styles.exchangeleftIconContainer, { marginTop: Platform.OS === "ios" && hp(4) }]}>
           <Icon
             name={"arrow-left"}
             type={"materialCommunity"}
             size={30}
-            color={state.THEME.THEME?"#FFFFFF":"#1B1B1C"}
+            color={state.THEME.THEME?"#FFFFFF":"#0B0B0F"}
           />
         </TouchableOpacity>
-        <Text style={[styles.exchangeheaderTitle, { marginTop: Platform.OS === "ios" && hp(4),color:state.THEME.THEME?"#FFFFFF":"#1B1B1C" }]}>{title}</Text>
+        <Text style={[styles.exchangeheaderTitle, { marginTop: Platform.OS === "ios" && hp(4),color:state.THEME.THEME?"#FFFFFF":"#0B0B0F" }]}>{title}</Text>
         <TouchableOpacity disabled={true} onPress={toggleDrawer} style={[styles.exchangerightIconContainer, { marginTop: Platform.OS === "ios" && hp(4) }]}>
-          <Icon name={"menu"} type={"materialCommunity"} size={30} color={state.THEME.THEME?"#1B1B1C":"#FFFFFF"} />
+          <Icon name={"menu"} type={"materialCommunity"} size={30} color={state.THEME.THEME?colors.dark.bg:colors.light.bg} />
         </TouchableOpacity>
       </View>
       <CustomDrawer isVisible={isDrawerVisible} onClose={toggleDrawer} />
@@ -192,7 +193,7 @@ export const Wallet_screen_header = ({ title, onLeftIconPress,rightIcon, onRight
   const state = useSelector((state) => state);
   return (
     <>
-      <View style={[styles.exchangeheaderContainer, { backgroundColor:state.THEME.THEME===false?"#fff":"#1B1B1C",height: Platform.OS === "ios" ? hp(8) : hp(6) }]}>
+      <View style={[styles.exchangeheaderContainer, { backgroundColor:state.THEME.THEME===false?colors.light.bg:colors.dark.bg,height: Platform.OS === "ios" ? hp(8) : hp(6) }]}>
         <TouchableOpacity onPress={onLeftIconPress} style={[styles.exchangeleftIconContainer, { marginTop: Platform.OS === "ios" && hp(4) }]}>
           <Icon
             name={"arrow-left"}

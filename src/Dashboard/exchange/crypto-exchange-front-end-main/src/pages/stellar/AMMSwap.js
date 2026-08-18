@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,9 @@ import {
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
 import { colors } from '../../../../../../Screens/ThemeColorsConfig';
+import { GetAquariusSwapQuote, ExecuteAquariusSwap } from '../../../../../../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/stellar/AquariusUtil';
+import { getSafeErrorMessage } from '../../../../../../utilities/errorSanitizer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   const state=useSelector((state)=>state);
@@ -57,11 +60,21 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
     icon: "https://stellar.myfilebase.com/ipfs/QmUjsGiNcUFTbiKoMZyBtgkSwfndBXSbRKFpGrYKvHC1fX",
     decimals: 7
   },);
+  const slippageScale = [
+    { value: "0.1", key: "0.1%" },
+    { value: "0.5", key: "0.5%" },
+    { value: "1", key: "1%" },
+    { value: "1.5", key: "1.5%" },
+    { value: "2", key: "2%" },
+    { value: "2.5", key: "2.5%" },
+  ];
   const navigation=useNavigation();
   const [fromAmount, setFromAmount] = useState('');
   const [toAmount, setToAmount] = useState('');
   const [fromBal, setFromBal] = useState(0.00);
   const [toBal, setToBal] = useState(0.00);
+  const [refreshingFromBal, setRefreshingFromBal] = useState(false);
+  const [refreshingToBal, setRefreshingToBal] = useState(false);
   const [exchangeRes, setexchangeRes] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [tokenBurn, settokenBurn] = useState(false);
@@ -71,6 +84,30 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   const [showReverse,setshowReverse]=useState(false);
   const isFocused=useIsFocused();
   const [findToken, setfindToken] = useState('');
+  const [activeProvider, setActiveProvider] = useState("SDEX");
+  const [isOptionsVisible, setIsOptionsVisible] = useState(false);
+  const [isAquaSwapUse, setIsAquaSwapUse] = useState(true);
+  const [optionalSlippage, setOptionalSlippage] = useState(slippageScale[2].key);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await AsyncStorage.getItem("isAquaSwapUse");
+        if (saved !== null) {
+          setIsAquaSwapUse(saved === 'true');
+        }
+      } catch (e) {
+        console.error('Error loading isAquaSwapUse preference:', e);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem("isAquaSwapUse", String(isAquaSwapUse)).catch((e) => {
+      console.error('Error saving isAquaSwapUse preference:', e);
+    });
+  }, [isAquaSwapUse]);
+  
   
   useEffect(()=>{
     setassetTrustRequired([]);
@@ -102,18 +139,64 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
     const res= await BridgeUSDCValidation(asset==="XLM"?"native":asset,assetIssuer);
     if(res!=null)
     {
-      setFromBal(parseFloat(res?.balance));
+      setFromBal(parseFloat(res?.balance)?.toFixed(7));
     }else{
       setFromBal(0.00);
     }
     const res1= await BridgeUSDCValidation(asset1==="XLM"?"native":asset1,asset1Issuer);
     if(res1!=null)
       {
-        setToBal(parseFloat(res1?.balance));
+        setToBal(parseFloat(res1?.balance)?.toFixed(7));
       }else{
         setToBal(0.00);
       }
   }
+
+  const myAssetBalances = React.useMemo(() => {
+    const portfolioTokens = state?.activeWalletPortFolio;
+    const map = new Map();
+    if (!Array.isArray(portfolioTokens)) return map;
+
+    portfolioTokens
+      .filter((t) => t.chain === 'Stellar' || t.chain === 'STR')
+      .forEach((t) => {
+        const key = t.contractAddress === 'Native' ? 'native' : `${t.symbol}:${t.contractAddress}`;
+        map.set(key, parseFloat(t.balance) || 0);
+      });
+    return map;
+  }, [state?.activeWalletPortFolio]);
+
+  const refreshFromBalance = async () => {
+    if (refreshingFromBal) return;
+    setRefreshingFromBal(true);
+    try {
+      const res = await BridgeUSDCValidation(
+        fromToken?.code === "XLM" ? "native" : fromToken?.code,
+        fromToken?.issuer
+      );
+      setFromBal(res != null ? parseFloat(res?.balance)?.toFixed(7) : 0.00);
+    } catch (e) {
+      console.error("refreshFromBalance error:", e);
+    } finally {
+      setRefreshingFromBal(false);
+    }
+  };
+
+  const refreshToBalance = async () => {
+    if (refreshingToBal) return;
+    setRefreshingToBal(true);
+    try {
+      const res = await BridgeUSDCValidation(
+        toToken?.code === "XLM" ? "native" : toToken?.code,
+        toToken?.issuer
+      );
+      setToBal(res != null ? parseFloat(res?.balance)?.toFixed(7) : 0.00);
+    } catch (e) {
+      console.error("refreshToBalance error:", e);
+    } finally {
+      setRefreshingToBal(false);
+    }
+  };
 
   useEffect(()=>{
     handleInitBal(fromToken?.code,toToken?.code,fromToken?.issuer,toToken?.issuer)
@@ -121,6 +204,13 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
       handleInputChange(fromAmount)
     }
   },[fromToken,toToken])
+
+  useEffect(()=>{
+    if (isValidNumber(fromAmount) && fromAmount !== "null") {
+      setIsLoading(true)
+      handleQoutesFeatch(fromToken.code, fromToken.issuer, toToken.code, toToken.issuer, fromAmount);
+    }
+  },[isAquaSwapUse, optionalSlippage])
   
 
   function isAssetData(state) {
@@ -186,28 +276,93 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
     }
   };
   // Handle input change and calculate the output amount
+  const handleQoutesFeatchRef = useRef();
+  useEffect(() => {
+    handleQoutesFeatchRef.current = handleQoutesFeatch;
+  });
+
   const fetchQuote = useCallback(
     debounce((fromTokenCode,fromTokenIssuer,toTokenCode,toTokenIssuer,value) => {
       setIsLoading(true)
-      handleQoutesFeatch(fromTokenCode,fromTokenIssuer,toTokenCode,toTokenIssuer,value)
+      handleQoutesFeatchRef.current(fromTokenCode,fromTokenIssuer,toTokenCode,toTokenIssuer,value)
     }, 400),
     []
   );
 
+  const toStellarAsset = (code, issuer) => {
+    if (code === "XLM" || code === "native") return StellarSdk.Asset.native();
+    return new StellarSdk.Asset(code, issuer);
+  };
+
+  const buildAquariusExchangeRes = (aquariusQuote, sourceAmount, fromCode, fromIssuer, toCode, toIssuer) => {
+    const rate = parseFloat(aquariusQuote.exchangeRate);
+    const destinationAmount = rate * parseFloat(sourceAmount);
+    return {
+      status: true,
+      network: "SDEX (Aquarius)",
+      source: {
+        code: fromCode,
+        issuer: fromIssuer,
+        amount: parseFloat(sourceAmount).toFixed(7),
+      },
+      destination: {
+        code: toCode,
+        issuer: toIssuer,
+        amount: destinationAmount.toFixed(7),
+      },
+      exchangeRate: {
+        rate: `1 ${fromCode} = ${rate.toFixed(7)} ${toCode}`,
+        inverse: `1 ${toCode} = ${(1 / rate).toFixed(7)} ${fromCode}`,
+      },
+      swapDetails: {
+        slippageTolerance: aquariusQuote.slippageTolerance,
+        minReceived: aquariusQuote.minimumReceived,
+      },
+    };
+  };
+
   const handleQoutesFeatch=async(fromName,fromAdd,toName,toAdd,amount) => {
       const res=await getSwapQuote(fromName,fromAdd,toName,toAdd,amount)
-      if(res.status===true)
-      {
+
+      let aquariusRes = null;
+      if (isAquaSwapUse) {
+        try {
+          const assetIn = toStellarAsset(fromName, fromAdd);
+          const assetOut = toStellarAsset(toName, toAdd);
+          const aquariusQuote = await GetAquariusSwapQuote({
+            assetIn,
+            assetOut,
+            amount,
+            slippageBps: Math.round(parseFloat(optionalSlippage) * 100),
+          });
+          aquariusRes = buildAquariusExchangeRes(aquariusQuote, amount, fromName, fromAdd, toName, toAdd);
+        } catch (err) {
+          console.error("error in aquarius quote:", err?.message || err);
+          aquariusRes = null;
+        }
+      }
+
+      const sdexAmount = res?.status === true ? parseFloat(res?.destination?.amount) : null;
+      const aquariusAmount = aquariusRes?.status === true ? parseFloat(aquariusRes?.destination?.amount) : null;
+
+      if (aquariusAmount !== null && (sdexAmount === null || aquariusAmount > sdexAmount)) {
+        setshowReverse(false)
+        setexchangeRes(aquariusRes)
+        setToAmount(aquariusRes?.destination?.amount);
+        setActiveProvider("Aquarius");
+        setIsLoading(false)
+      } else if (sdexAmount !== null) {
         setshowReverse(false)
         setexchangeRes(res)
         setToAmount(res?.destination?.amount);
+        setActiveProvider("SDEX");
         setIsLoading(false)
       }
       else{
         setexchangeRes(null);
         setToAmount('');
         setIsLoading(false)
-        CustomInfoProvider.show("Info","!Opps",res?.error||"Unable to fetch quotes");
+        CustomInfoProvider.show("Info","!Opps",getSafeErrorMessage(res?.error, "Unable to fetch quotes"));
       }
   }
   function URLBuilder(
@@ -365,7 +520,11 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   }
 
   
-  const renderTokenItem = ({ item }) => (
+  const renderTokenItem = ({ item }) => {
+    const key = item.issuer ? `${item.code}:${item.issuer}` : 'native';
+    const heldBalance = myAssetBalances.get(key);
+
+    return (
     <TouchableOpacity 
       style={[styles.tokenItem,{backgroundColor:theme.cardBg}]} 
       onPress={() =>{handleTokenSelection(item)}}
@@ -378,11 +537,43 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
         <Text style={[styles.tokenSymbol,{color:theme.headingTx}]}>{item.code}</Text>
         <Text style={[styles.tokenName,{color:theme.inactiveTx}]}>{item.name}</Text>
       </View>
+      {heldBalance !== undefined && (
+        <Text style={[styles.heldTokenBalance, { color: theme.headingTx }]}>
+          {heldBalance}
+          </Text>
+      )}
     </TouchableOpacity>
   );
+  };
 
   const handleSwap=async()=>{
     settokenBurn(true)
+
+    if (activeProvider === "Aquarius") {
+      const assetIn = toStellarAsset(fromToken.code, fromToken.issuer);
+      const assetOut = toStellarAsset(toToken.code, toToken.issuer);
+
+      const respo = await ExecuteAquariusSwap({
+        assetIn,
+        assetOut,
+        amount: fromAmount,
+        publicKey: state?.STELLAR_PUBLICK_KEY,
+      });
+
+      if (respo.status === true) {
+        CustomInfoProvider.show("success", "Transaction successful!");
+        settokenBurn(false)
+        setTimeout(() => {
+          navigation.navigate("Transactions", { txType: "STR" });
+        }, 2000)
+      } else {
+        settokenBurn(false)
+        console.log("error in aquarius execute", respo.error)
+        CustomInfoProvider.show("error", "!Opps", getSafeErrorMessage(respo.error, "Transaction Failed."));
+      }
+      return;
+    }
+
     const respo=await AMMSWAPTESTNET(fromToken.code,fromToken.issuer,toToken.code,toToken.issuer,state?.STELLAR_PUBLICK_KEY,fromAmount,assetTrustRequired)
     if(respo.status===true)
     {
@@ -396,7 +587,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
     else{
       settokenBurn(false)
       console.log("--Error--",respo.error)
-      CustomInfoProvider.show("error","!Opps",respo.error.result_codes==="op_under_dest_min"?"Swap cannot be completed because the amount is too small.":"Transaction Failed.");
+      CustomInfoProvider.show("error","!Opps",respo.error?.result_codes==="op_under_dest_min"?"Swap cannot be completed because the amount is too small.":"Transaction Failed.");
     }
   }
 
@@ -404,20 +595,29 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   const theme = state.THEME.THEME ? colors.dark : colors.light;
 
   const getFilteredTokens = () => {
-    if (!findToken.trim()) {
-      return stellarTokens?.assets || [];
+    let list = stellarTokens?.assets || [];
+
+    if (findToken.trim()) {
+      const query = findToken.toLowerCase();
+
+      list = list.filter((token) => {
+        const code = token.code?.toLowerCase() || '';
+        const issuer = token.issuer?.toLowerCase() || '';
+        const name = token.name?.toLowerCase() || '';
+
+        return code.includes(query) ||
+          issuer.includes(query) ||
+          name.includes(query);
+      });
     }
 
-    return stellarTokens?.assets?.filter(token => {
-      const query = findToken.toLowerCase();
-      const code = token.asset_code?.toLowerCase() || '';
-      const issuer = token.asset_issuer?.toLowerCase() || '';
-      const name = token.name?.toLowerCase() || '';
-
-      return code.includes(query) ||
-        issuer.includes(query) ||
-        name.includes(query);
-    }) || [];
+    return list.slice().sort((a, b) => {
+      const keyA = a.issuer ? `${a.code}:${a.issuer}` : 'native';
+      const keyB = b.issuer ? `${b.code}:${b.issuer}` : 'native';
+      const balA = myAssetBalances.get(keyA) || 0;
+      const balB = myAssetBalances.get(keyB) || 0;
+      return balB - balA;
+    });
   };
   
   return (
@@ -427,8 +627,20 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         style={{ flex: 1, backgroundColor: theme.bg }}
       >
-        <ScrollView contentContainerStyle={styles.scrollView}>
-          
+        <ScrollView contentContainerStyle={styles.scrollView} keyboardShouldPersistTaps="always">
+          <View style={styles.headerCon}>
+            <View style={[styles.activeProviderContainer, { backgroundColor: theme.cardBg }]}>
+              <Text style={[styles.cardLabel, { color: theme.inactiveTx }]}>
+                Swap handled by{' '}
+                <Text style={[styles.cardLabel, styles.providerName, { color: theme.headingTx }]}>
+                  {activeProvider}
+                </Text>
+              </Text>
+            </View>
+            <TouchableOpacity style={[styles.optionContainer, { backgroundColor: theme.cardBg }]} onPress={() => { setIsOptionsVisible(true) }}>
+              <Ionicons name="options-sharp" size={25} color={theme.headingTx} />
+            </TouchableOpacity>
+          </View>
           {/* From Token Input */}
           <View style={[styles.card,{backgroundColor:theme.cardBg}]}>
             <View style={styles.cardHeader}>
@@ -458,9 +670,18 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
                 <Ionicons name="chevron-down" size={20} color={theme.headingTx} />
               </TouchableOpacity>
             </View>
-            <Text style={[styles.balanceText,{color:theme.inactiveTx}]}>
-                Balance: {isNaN(fromBal) || fromBal === null || fromBal === undefined ? '0.00' : fromBal} {fromToken.code}
-              </Text>
+            <View style={styles.balanceRow}>
+              <TouchableOpacity onPress={refreshFromBalance} disabled={refreshingFromBal} style={styles.balanceRefreshBtn}>
+                {refreshingFromBal ? (
+                  <ActivityIndicator size="small" color={theme.inactiveTx} />
+                ) : (
+                  <Ionicons name="refresh" size={14} color={theme.inactiveTx} />
+                )}
+              </TouchableOpacity>
+              <Text style={[styles.balanceText,{color:theme.inactiveTx}]}>
+                  Balance: {isNaN(fromBal) || fromBal === null || fromBal === undefined ? '0.00' : fromBal} {fromToken.code}
+                </Text>
+            </View>
           </View>
 
           {/* Swap Button */}
@@ -479,7 +700,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
                 placeholder="0.00"
                 placeholderTextColor="#8A8A8A"
                 keyboardType="decimal-pad"
-                value={toAmount}
+                value={toAmount==="NaN"?"0.0":toAmount}
                 editable={false}
               />
               <TouchableOpacity style={[styles.tokenSelector,{backgroundColor:theme.bg}]} onPress={()=>{settokenTypeSelection(1),setTokenModalVisible(true),setfindToken("")}}>
@@ -492,9 +713,18 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
                 <Ionicons name="chevron-down" size={20} color={theme.headingTx} />
               </TouchableOpacity>
             </View>
-            <Text style={[styles.balanceText,{color:theme.inactiveTx}]}>
-                Balance: {isNaN(toBal) || toBal === null || toBal === undefined ? '0.00' : toBal} {toToken.code}
-              </Text>
+            <View style={styles.balanceRow}>
+              <TouchableOpacity onPress={refreshToBalance} disabled={refreshingToBal} style={styles.balanceRefreshBtn}>
+                {refreshingToBal ? (
+                  <ActivityIndicator size="small" color={theme.inactiveTx} />
+                ) : (
+                  <Ionicons name="refresh" size={14} color={theme.inactiveTx} />
+                )}
+              </TouchableOpacity>
+              <Text style={[styles.balanceText,{color:theme.inactiveTx}]}>
+                  Balance: {isNaN(toBal) || toBal === null || toBal === undefined ? '0.00' : toBal} {toToken.code}
+                </Text>
+            </View>
           </View>
           
           {/* Swap Details */}
@@ -516,12 +746,14 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
 
             <View style={styles.detailRow}>
               <Text style={[styles.detailLabel,{color:theme.headingTx}]}>Slippage Tolerance</Text>
-              <Text style={[styles.detailValue,{color:theme.headingTx}]}>{exchangeRes?.swapDetails?.slippageTolerance}</Text>
+              <Text style={[styles.detailValue, { color: theme.headingTx }]}>{`${exchangeRes?.network === "Stellar"? exchangeRes?.swapDetails?.slippageTolerance ?? "0.5": optionalSlippage}`}</Text>
             </View>
 
             <View style={styles.detailRow}>
               <Text style={[styles.detailLabel,{color:theme.headingTx}]}>Minimum Received</Text>
-              <Text style={[styles.detailValue,{color:theme.headingTx}]}>{exchangeRes?.swapDetails?.minReceived}</Text>
+              <Text style={[styles.detailValue,{color:theme.headingTx}]}>
+                {isNaN(Number(exchangeRes?.swapDetails?.minReceived)) ? "0.00" : exchangeRes?.swapDetails?.minReceived}
+              </Text>
             </View>
           </View> : null}
           
@@ -531,7 +763,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
               styles.swapActionButton,
               (!fromAmount || parseFloat(fromAmount) <= 0||parseFloat(fromBal)===0||parseFloat(fromAmount)>parseFloat(fromBal)) && styles.disabledButton,
             ]}
-            disabled={!fromAmount || parseFloat(fromAmount) <= 0 || isLoading||parseFloat(fromBal)===0||parseFloat(fromAmount)>parseFloat(fromBal)}
+            disabled={!fromAmount || parseFloat(fromAmount) <= 0 || isLoading || tokenBurn || parseFloat(fromBal)===0||parseFloat(fromAmount)>parseFloat(fromBal)}
             onPress={()=>{handleSwap()}}
           >
               {isLoading||tokenBurn ? (
@@ -547,7 +779,11 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
         visible={tokenModalVisible}
         onRequestClose={() => setTokenModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
+        <TouchableOpacity
+              style={styles.modalContainer}
+              activeOpacity={1}
+              onPress={() => setTokenModalVisible(false)}
+            >
           <View style={[styles.modalContent,{backgroundColor:theme.bg}]}>
             <View style={styles.modalHandle} />
             
@@ -579,6 +815,7 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
               renderItem={renderTokenItem}
               keyExtractor={item => item.id}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="always"
               ListEmptyComponent={
                     findToken.trim() ? (
                       <View style={styles.emptyContainer}>
@@ -597,8 +834,66 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
                 }
             />
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
+
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={isOptionsVisible}
+            onRequestClose={() => setIsOptionsVisible(false)}
+          >
+            <TouchableOpacity
+              style={styles.modalContainer}
+              activeOpacity={1}
+              onPress={() => setIsOptionsVisible(false)}
+            >
+              <TouchableOpacity
+                activeOpacity={1}
+                onPress={() => {}}
+                style={[styles.modalContent, { backgroundColor: theme.bg, height: '60%', }]}
+              >
+                <View style={styles.modalHandle} />
+                <View style={styles.modalHeader}>
+                  <Text style={[styles.modalTitle, { color: theme.headingTx, fontSize: 19 }]}>Swap settings</Text>
+                  <TouchableOpacity style={[styles.optionContainer, { backgroundColor: theme.cardBg }]} onPress={() => setIsOptionsVisible(false)}>
+                    <MaterialIcons name="close" size={24} color={theme.headingTx} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.cardLabel, { color: theme.inactiveTx }]}>Liquidity source</Text>
+                <View style={[styles.infoCon, { backgroundColor: theme.cardBg }]}>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Image source={{ uri: "https://aqua.network/assets/img/aqua-logo.png" }} width={41} height={40} />
+                    <View style={{ marginLeft: wp(2) }}>
+                      <Text style={[styles.cardLabel, { color: theme.inactiveTx }]}>Aquarius AMM</Text>
+                      <Text style={[styles.cardLabel, { color: theme.inactiveTx,fontSize:12 }]}>Use Aquarius if better rate available</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setIsAquaSwapUse(prev => !prev)}
+                    style={[styles.toggleCon, { backgroundColor: isAquaSwapUse ? 'green' : 'gray' }]}
+                  >
+                    <View style={[styles.toggleView, { alignSelf: isAquaSwapUse ? 'flex-end' : 'flex-start' }]} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={[styles.cardLabel, { color: theme.inactiveTx }]}>Slippage tolerance</Text>
+                <View style={{flexDirection:"row",marginVertical:hp(1.5)}}>
+                  {slippageScale.map((item, index) => {
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      style={[styles.slippageCon, { backgroundColor: theme.cardBg,borderWidth:optionalSlippage===item.key?2:0 }]}
+                      onPress={() => {setOptionalSlippage(item?.key)}}
+                    >
+                      <Text style={[styles.tokenSymbol, { color: theme.headingTx }]}>{item?.key}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
+                </View>
+                <Text style={[styles.cardLabel, { color: theme.inactiveTx, fontWeight: "400" }]}>Your swap will fail if the exchange rate moves against you by more than your selected slippage tolerance before the transaction is confirmed. Increasing the slippage tolerance can improve the chances of success, but you may receive a less favorable exchange rate.</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </Modal>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -644,7 +939,15 @@ const styles = StyleSheet.create({
   balanceText: {
     color: '#BBBBBB',
     fontSize: 14,
-    alignSelf:"flex-end"
+  },
+  balanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+  },
+  balanceRefreshBtn: {
+    padding: 4,
+    marginRight: 4,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -821,6 +1124,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
+  heldTokenBalance: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   findIcon: {
     marginRight: 8,
   },
@@ -838,6 +1145,53 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 12,
     textAlign: 'center',
+  },
+  headerCon: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: hp(1),
+    marginHorizontal: wp(1.5)
+  },
+  optionContainer: {
+    borderRadius: 30,
+    padding: 10,
+  },
+  activeProviderContainer: {
+    alignItems: "center",
+    width: wp(60),
+    borderRadius: 15,
+    padding: 10,
+    justifyContent: "center"
+  },
+  infoCon: {
+    flexDirection: "row",
+    borderRadius: 10,
+    padding: 10,
+    marginVertical:hp(1.3),
+    alignItems:"center",
+    justifyContent:"space-between"
+  },
+  toggleCon: {
+    padding: 2,
+    justifyContent: 'center',
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+  },
+  toggleView: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#fff',
+  },
+  slippageCon: {
+    alignItems: 'center',
+    justifyContent:"center",
+    height:hp(4),
+    width:wp(14),
+    borderRadius:10,
+    marginRight:wp(2),
+    borderColor:"#4052D6"
   },
 });
 

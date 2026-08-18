@@ -68,6 +68,8 @@ const ConfirmTransaction = (props) => {
           await ShortTermStorage.syncTx({
             txHash: res?.txHash,
             walletAddress: state && state.wallet && state.wallet.address,
+            fromAddress: props?.route?.params?.info?.addressFrom,
+            toAddress: props?.route?.params?.info?.addressTo,
             provider: "EVMTX",
             fromChain: "ETH",
             fromToken: "ETH",
@@ -75,7 +77,8 @@ const ConfirmTransaction = (props) => {
             toToken: "ETH",
             amountIn: props?.route?.params?.info?.amount,
             amountOut: props?.route?.params?.info?.amount,
-            txType: "Native Transfer"
+            txType: "Native Transfer",
+            fromTokenMetaData:"native"
           });
           setLoading(false);
           setDisable(false);
@@ -103,6 +106,8 @@ const ConfirmTransaction = (props) => {
           await ShortTermStorage.syncTx({
             txHash: res?.txHash,
             walletAddress: state && state.wallet && state.wallet.address,
+            fromAddress: props?.route?.params?.info?.addressFrom,
+            toAddress: props?.route?.params?.info?.addressTo,
             provider: "EVMTX",
             fromChain: "BSC",
             fromToken: "BSC",
@@ -110,7 +115,8 @@ const ConfirmTransaction = (props) => {
             toToken: "BSC",
             amountIn: props?.route?.params?.info?.amount,
             amountOut: props?.route?.params?.info?.amount,
-            txType: "Native Transfer"
+            txType: "Native Transfer",
+            fromTokenMetaData:"native"
           });
           setLoading(false);
           setDisable(false);
@@ -205,6 +211,7 @@ const ConfirmTransaction = (props) => {
         SaveTransaction={SaveTransaction}
         setLoading={setLoading}
         setDisable={setDisable}
+        txAmt={props?.route?.params?.info?.amount}
       />
     </View>
     </>

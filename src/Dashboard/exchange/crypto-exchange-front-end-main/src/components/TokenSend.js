@@ -41,7 +41,7 @@ import TokenTxDetails from "./TokenTxDetails";
 import LinearGradient from "react-native-linear-gradient";
 import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
 import AccessNativeStorage from "../../../../Wallets/AccessNativeStorage";
-import { CHAINS } from "../../../../../utilities/TokenUtils";
+import { CHAINS, getProvider } from "../../../../../utilities/TokenUtils";
 const TokenSend = ({ route }) => {
   const { hasPermission, requestPermission } = useCameraPermission();
   const toast = useToast();
@@ -86,7 +86,7 @@ const TokenSend = ({ route }) => {
         'function transfer(address to, uint256 amount) returns (bool)',
       ];
 
-      const provider = new ethers.providers.JsonRpcProvider(activeChain.rpcUrl);
+      const provider = await getProvider(chain);
 
       const tokenInterface = new ethers.utils.Interface(ERC20_ABI);
       const formattedAmount = ethers.utils.parseUnits(amount, tokenDecimals);
@@ -134,6 +134,8 @@ const TokenSend = ({ route }) => {
         await ShortTermStorage.syncTx({
           txHash: txResponse.hash,
           walletAddress: activeWalletAddress,
+          fromAddress: activeWalletAddress,
+          toAddress: toAddress,
           provider: "EVMTX",
           fromChain: chain,
           fromToken: route?.params?.tokenSymbol || 'TOKEN',
@@ -141,7 +143,8 @@ const TokenSend = ({ route }) => {
           toToken: route?.params?.tokenSymbol || 'TOKEN',
           amountIn: amount?.toString(),
           amountOut: amount?.toString(),
-          txType: "Token Transfer"
+          txType: "Token Transfer",
+          fromTokenMetaData: route?.params?.tokenAddress
         });
         navigation.navigate("Transactions");
       } else {
@@ -343,7 +346,7 @@ const TokenSend = ({ route }) => {
         message="The scanned QR code contains an invalid public key. Please make sure you're scanning the correct QR code and try again."
       />
       
-      <View style={[styles.container, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C" }]}>
+      <View style={[styles.container, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F" }]}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           
           {/* Recipient Address Card */}
@@ -365,7 +368,7 @@ const TokenSend = ({ route }) => {
             </TouchableOpacity>
          </View>
             <View style={[styles.inputContainer, { 
-              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
             }]}>
               <TextInput
                 value={address}
@@ -426,7 +429,7 @@ const TokenSend = ({ route }) => {
               Amount
             </Text>
             <View style={[styles.inputContainer, { 
-              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
             }]}>
               <TextInput
                 value={amount}
@@ -546,7 +549,8 @@ const TokenSend = ({ route }) => {
           amount: amount,
           networkName: route?.params?.tokenType?.toLowerCase(),
           network: route?.params?.tokenType?.slice(0,3),
-          tokenDecimals:route?.params?.tokenDecimals
+          tokenDecimals:route?.params?.tokenDecimals,
+          metadata:route?.params
         }}
         theme={state.THEME.THEME === false ? "light" : "dark"}
         onNextStep={() => {

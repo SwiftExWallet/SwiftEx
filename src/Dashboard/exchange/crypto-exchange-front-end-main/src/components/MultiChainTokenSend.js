@@ -37,7 +37,9 @@ import QRScannerComponent from "../../../../Modals/QRScannerComponent";
 import TokenTxDetails from "./TokenTxDetails";
 import LinearGradient from "react-native-linear-gradient";
 import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
-import { CHAINS } from "../../../../../utilities/TokenUtils";
+import { CHAINS, getProvider } from "../../../../../utilities/TokenUtils";
+import { colors } from "../../../../../Screens/ThemeColorsConfig";
+import getSafeErrorMessage from "../../../../../utilities/errorSanitizer";
 const MultiChainTokenSend = ({ route }) => {
   const { hasPermission, requestPermission } = useCameraPermission();
   const toast = useToast();
@@ -82,14 +84,14 @@ const MultiChainTokenSend = ({ route }) => {
         'function transfer(address to, uint256 amount) returns (bool)',
       ];
 
-      const provider = new ethers.providers.JsonRpcProvider(activeChain.rpcUrl);
+      const provider = await getProvider(chain);
 
       const tokenInterface = new ethers.utils.Interface(ERC20_ABI);
       const formattedAmount = ethers.utils.parseUnits(amount, tokenDecimals);
       const data = tokenInterface.encodeFunctionData('transfer', [toAddress, formattedAmount]);
 
       const [nonce, feeData, estimatedGas] = await Promise.all([
-        provider.getTransactionCount(activeWalletAddress, 'pending'),
+        provider.getTransactionCount(activeWalletAddress, 'latest'),
         provider.getFeeData(),
         provider.estimateGas({
           from: activeWalletAddress,
@@ -130,6 +132,8 @@ const MultiChainTokenSend = ({ route }) => {
         await ShortTermStorage.syncTx({
           txHash: txResponse.hash,
           walletAddress: activeWalletAddress,
+          fromAddress: activeWalletAddress,
+          toAddress: toAddress,
           provider: "EVMTX",
           fromChain: chain,
           fromToken: route?.tokenSymbol || 'TOKEN',
@@ -137,7 +141,8 @@ const MultiChainTokenSend = ({ route }) => {
           toToken: route?.tokenSymbol || 'TOKEN',
           amountIn: amount?.toString(),
           amountOut: amount?.toString(),
-          txType: "Token Transfer"
+          txType: "Token Transfer",
+          fromTokenMetaData: route?.tokenAddress
         });
         navigation.navigate("Transactions");
       } else {
@@ -145,7 +150,7 @@ const MultiChainTokenSend = ({ route }) => {
       }
     } catch (error) {
       console.error("Transaction Error:", error);
-      CustomInfoProvider.show("error", "Transaction failed try again.");
+      CustomInfoProvider.show("error", getSafeErrorMessage(error, "Transaction failed. Please try again."));
     } finally {
       setAddress();
       setAmount();
@@ -309,11 +314,11 @@ const MultiChainTokenSend = ({ route }) => {
         message="The scanned QR code contains an invalid public key. Please make sure you're scanning the correct QR code and try again."
       />
 
-      <View style={[styles.container, { backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C" }]}>
+      <View style={[styles.container, { backgroundColor: state.THEME.THEME === false ? colors.light.bg : colors.dark.bg }]}>
         <ScrollView showsVerticalScrollIndicator={false} >
 
           {/* Recipient Address Card */}
-          <View style={[styles.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
+          <View style={[styles.card, { backgroundColor: state.THEME.THEME === false ? colors.light.cardBg:colors.dark.cardBg }]}>
             <View style={{
               flexDirection: "row",
               justifyContent: "space-between",
@@ -331,7 +336,7 @@ const MultiChainTokenSend = ({ route }) => {
               </TouchableOpacity>
             </View>
             <View style={[styles.inputContainer, {
-              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
             }]}>
               <TextInput
                 value={address}
@@ -387,12 +392,12 @@ const MultiChainTokenSend = ({ route }) => {
           </View>
 
           {/* Amount Card */}
-          <View style={[styles.card, { backgroundColor: state.THEME.THEME === false ? "#F4F4F8" : "#242426" }]}>
+          <View style={[styles.card, { backgroundColor: state.THEME.THEME === false ? colors.light.cardBg:colors.dark.cardBg }]}>
             <Text style={[styles.label, { color: state.THEME.THEME === false ? "#6C757D" : "#8B93A7" }]}>
               Amount
             </Text>
             <View style={[styles.inputContainer, {
-              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
+              backgroundColor: state.THEME.THEME === false ? "#FFFFFF" : "#0B0B0F",
             }]}>
               <TextInput
                 value={amount}
@@ -512,12 +517,13 @@ const MultiChainTokenSend = ({ route }) => {
           amount: amount,
           networkName: route?.tokenType?.toLowerCase(),
           network: route?.tokenType?.slice(0, 3),
-          tokenDecimals: route?.tokenDecimals
+          tokenDecimals: route?.tokenDecimals,
+          metadata:route
         }}
         theme={state.THEME.THEME === false ? "light" : "dark"}
         onNextStep={() => {
           setShowTxInfo(false);
-          sendERCTokens(route?.tokenType?.slice(0, 3), route?.tokenAddress, route?.tokenDecimals, address, amount);
+          sendERCTokens(route?.tokenType, route?.tokenAddress, route?.tokenDecimals, address, amount);
         }}
       />
     </>

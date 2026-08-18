@@ -18,6 +18,7 @@ import darkBlue from "../../../assets/darkBlue.png";
 import { useNavigation } from "@react-navigation/native";
 import Icon from "../../icon";
 import { Checkbox } from "react-native-paper";
+import { colors } from "../../Screens/ThemeColorsConfig";
 
 export const GetPrivateKeyModal = ({ visible, setVisible, onCrossPress }) => {
   const state=useSelector((state)=>state);
@@ -73,7 +74,7 @@ export const GetPrivateKeyModal = ({ visible, setVisible, onCrossPress }) => {
         <View
           style={[
             styles.sheetBody,
-            { backgroundColor: themeDark ? "#242426" : "#F4F4F8" },
+            { backgroundColor: themeDark ? colors.dark.bg : colors.light.bg },
           ]}
         >
           <Icon
@@ -103,7 +104,9 @@ export const GetPrivateKeyModal = ({ visible, setVisible, onCrossPress }) => {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                backgroundColor: Checked?"#fff":"gray" ,
+                backgroundColor: Checked?"#fff":themeDark?"black":"#fff" ,
+                borderColor:"gray",
+                borderWidth:0.5,
                 borderRadius: 10,
               }}
             >
@@ -125,7 +128,9 @@ export const GetPrivateKeyModal = ({ visible, setVisible, onCrossPress }) => {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                backgroundColor: Checked2?"#fff":"gray" ,
+                backgroundColor: Checked2?"#fff":themeDark?"black":"#fff" ,
+                borderColor:"gray",
+                borderWidth:0.5,
                 borderRadius: 10,
               }}
             >

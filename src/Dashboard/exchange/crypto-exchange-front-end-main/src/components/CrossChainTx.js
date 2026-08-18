@@ -620,6 +620,8 @@ const CrossChainTx = ({ props }) => {
           await ShortTermStorage.syncTx({
           txHash: res.approvalTxHash,
           walletAddress: state && state.wallet && state.wallet.address,
+          fromAddress: state?.wallet?.address,
+          toAddress: selectedToNetwork.subName==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address,
           provider: "EVMTX",
           fromChain:  selectedFromNetwork.chainName,
           fromToken: selectedFromAsset.symbol,
@@ -627,7 +629,8 @@ const CrossChainTx = ({ props }) => {
           toToken: selectedToAsset.symbol,
           amountIn: fromAmount.toString(),
           amountOut: fromAmount.toString(),
-          txType:"Token Approval"
+          txType:"Token Approval",
+          fromTokenMetaData:selectedFromAsset.address
         })
           txHashes.push({
             chain: selectedFromNetwork.chainName,
@@ -638,6 +641,8 @@ const CrossChainTx = ({ props }) => {
         await ShortTermStorage.syncTx({
           txHash: res.transferTxHash,
           walletAddress: state && state.wallet && state.wallet.address,
+          fromAddress: state?.wallet?.address,
+          toAddress: selectedToNetwork.subName==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address,
           provider: "ALLBRIDGE",
           fromChain:  selectedFromNetwork.chainName,
           fromToken: selectedFromAsset.symbol,
@@ -645,7 +650,8 @@ const CrossChainTx = ({ props }) => {
           toToken: selectedToAsset.symbol,
           amountIn: fromAmount.toString(),
           amountOut: fromAmount.toString(),
-          txType:"Bridge"
+          txType:"Bridge",
+          fromTokenMetaData:selectedFromAsset.address
         })
         await LocalTxManager.saveTx(state && state.wallet && state.wallet.address, {
           chain: selectedFromNetwork.chainName,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Platform } from "react-native";
+import { View, Text, Platform, Image } from "react-native";
 import { useDispatch, useSelector } from "react-redux";
 import { setUser, Extend, Collapse } from "../components/Redux/actions/auth";
 import Home2 from "./Home2";
@@ -14,11 +14,13 @@ import store from "../components/Redux/Store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { REACT_APP_LOCAL_TOKEN } from "./exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import { ExchangeNavigation } from "./exchange/crypto-exchange-front-end-main/src/Navigation";
+import stellarImg from "../../assets/Stellar_(XLM).png";
 import { ExchangeLogin } from "./exchange/crypto-exchange-front-end-main/src/pages/auth/ExchangeLogin";
 import { AppHeader } from "./reusables/AppHeader";
 import { useIsFocused } from "@react-navigation/native";
 import { HomeView } from "./exchange/crypto-exchange-front-end-main/src/pages/home";
 import Icon from "../icon";
+import { colors } from "../Screens/ThemeColorsConfig";
 
 const Tab = createBottomTabNavigator();
 
@@ -87,10 +89,19 @@ const Dashboard = ({ navigation }) => {
 
   const Header3 = (title) => <AppHeader name={title} />;
 
+  const isDarkMode = statee.THEME.THEME !== false;
+  const activeColor = colors.light.buttonColor;
+  const inactiveColor = colors.dark.inactiveTx;
+  const bgColor = isDarkMode ? colors.dark.cardBg:colors.light.cardBg;
+
   return (
     <Tab.Navigator
   shifting={false}
   screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarActiveTintColor: activeColor,
+        tabBarInactiveTintColor: inactiveColor,
+
     tabBarIcon: ({ focused, color, size = 25 }) => {
       let iconName;
       let iconProvider;
@@ -117,8 +128,13 @@ const Dashboard = ({ navigation }) => {
               iconProvider = "ionicon";
               break;
             case "ExchangeHome":
-              iconName = focused?"git-pull-request":"git-pull-request-outline";
-              iconProvider = "ionicon";
+              return (
+                <Image
+                  source={stellarImg}
+                  style={{ width: 50, height: 36 }}
+                  resizeMode="contain"
+                />
+              );
               break;
             default:
               iconName = "ios-home-sharp";
@@ -152,10 +168,21 @@ const Dashboard = ({ navigation }) => {
         tabBarInactiveTintColor:
           statee.THEME.THEME === false ? "black" : "#FFFF",
     tabBarStyle: {
-      backgroundColor: statee.THEME.THEME === false ? "#FFFFFF" : "#1B1B1C",
-      height: Platform.OS === "android" ? 70 : 56,
-      paddingBottom: Platform.OS === "android" ? 1 : 1,
-      paddingTop: 8,
+      position: 'absolute',
+      bottom: Platform.OS === 'ios' ? 4 : 8,
+      left: 15,
+      right: 15,
+      height: 75,
+      backgroundColor: bgColor,
+      borderRadius: 20,
+      borderTopWidth: 0,
+      paddingBottom: Platform.OS === "android" ? 1 : 10,
+      paddingTop: 12,
+      elevation: 10,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.3,
+      shadowRadius: 10,
     },
     headerTitleAlign: "center",
   })}

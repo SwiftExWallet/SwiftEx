@@ -174,7 +174,7 @@ export async function PATCH(opts) {
 }
 
 // Add guest auth
-export const createGuestUser=async()=>{
+export const createGuestUser=async(referralCode)=>{
   try {
   const token = await messaging().getToken();
   console.log("----createGuestUser----")
@@ -187,7 +187,8 @@ export const createGuestUser=async()=>{
       "uniqueId": await DeviceInfo.getUniqueIdSync(),
       "type": await DeviceInfo.getDeviceType(),
       "macAddress": await DeviceInfo.getMacAddress()||"00000",
-      "fcmToken":token
+      "fcmToken":token,
+      ...(referralCode && { referralCode: referralCode })
   });
   
   const requestOptions = {

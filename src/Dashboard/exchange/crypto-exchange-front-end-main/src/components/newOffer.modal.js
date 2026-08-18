@@ -372,35 +372,27 @@ export const NewOfferModal = () => {
     return { unavilabeAsset: unavilabeAsset, assetStatus: false }
   }, [supportedAssetsList]);
 
-  const get_stellar = useCallback(async (asset) => {
+  const get_stellar = useCallback(async (asset, issuer) => {
     return safeCall(async (signal) => {
       try {
         setbalance("");
         setreserveLoading(true);
 
-
         if (asset === stellarConfig.ASSET_TYPES.NATIVE || asset === stellarConfig.ASSET_TYPES.XLM) {
-          const result = await GetStellarAvilabelBalance(
-            state.STELLAR_PUBLICK_KEY,
-            { signal }
-          );
+          const result = await GetStellarAvilabelBalance(state.STELLAR_PUBLICK_KEY, { signal });
           if (!result) return;
-
           setbalance(result.availableBalance);
           setassetInfo(parseFloat(result.availableBalance) === 0);
         } else {
           const result = await GetStellarUSDCAvilabelBalance(
             state.STELLAR_PUBLICK_KEY,
             asset,
-            asset?stellarConfig.ISSUERS[asset]:stellarConfig.ISSUERS.USDC,
+            issuer,
             { signal }
           );
           if (!result) return;
-
           setbalance(result.availableBalance);
-          setassetInfo(
-            parseFloat(result.availableBalance) === 0 || result.status === false
-          );
+          setassetInfo(parseFloat(result.availableBalance) === 0 || result.status === false);
         }
 
         setreserveLoading(false);
@@ -526,7 +518,7 @@ export const NewOfferModal = () => {
       setACTIVATION_MODAL_PROD(walletStatus);
       checkToStatusTrust(top_value_0);
       getLastTradePrice(top_value, AssetIssuerPublicKey, top_value_0, AssetIssuerPublicKey1);
-      get_stellar(top_value);
+      get_stellar(top_value, AssetIssuerPublicKey);
     }, 350);
   }, [
     top_value,
@@ -592,7 +584,7 @@ export const NewOfferModal = () => {
 
         setTimeout(() => {
           const assetCodeToCheck = assetType === "XLM" ? "native" : assetType;
-          get_stellar(assetCodeToCheck);
+          get_stellar(assetCodeToCheck, incomingAsset.issuer);
           getLastTradePrice(assetCodeToCheck, incomingAsset.issuer, "USDC", usdcAsset.issuer);
         }, 300);
       }
@@ -648,19 +640,56 @@ export const NewOfferModal = () => {
     }, [])
   );
 
+  const myAssetBalances = useMemo(() => {
+    const portfolioTokens = state?.activeWalletPortFolio;
+    const map = new Map();
+    if (!Array.isArray(portfolioTokens)) return map;
+
+    portfolioTokens
+      .filter((t) => t.chain === 'Stellar' || t.chain === 'STR')
+      .forEach((t) => {
+        const key = t.contractAddress === 'Native' ? 'native' : `${t.symbol}:${t.contractAddress}`;
+        map.set(key, parseFloat(t.balance) || 0);
+      });
+    return map;
+  }, [state?.activeWalletPortFolio]);
+
   const filteredAssets = useMemo(() => {
-    if (!findBar.trim()) return supportedAssetsList;
-    return supportedAssetsList?.filter((item) =>
+    let list = supportedAssetsList;
+    if (findBar.trim()) {
+      list = supportedAssetsList?.filter((item) =>
       item?.code?.toLowerCase()?.includes(findBar.toLowerCase()) ||
       item?.domain?.toLowerCase()?.includes(findBar.toLowerCase()) ||
       item?.issuer?.toLowerCase()?.includes(findBar.toLowerCase())
     );
-  }, [findBar, supportedAssetsList]);
+    }
+    if (!Array.isArray(list)) return list;
+
+    return list.slice().sort((a, b) => {
+      const keyA = a?.code === 'XLM' ? 'native' : `${a?.code}:${a?.issuer}`;
+      const keyB = b?.code === 'XLM' ? 'native' : `${b?.code}:${b?.issuer}`;
+      const balA = myAssetBalances.get(keyA) || 0;
+      const balB = myAssetBalances.get(keyB) || 0;
+      return balB - balA;
+    });
+  }, [findBar, supportedAssetsList, myAssetBalances]);
+
+  const refreshBalance = useCallback(async () => {
+    try {
+      setreserveLoading(true);
+      await get_stellar(top_value, AssetIssuerPublicKey);
+    } catch (error) {
+      console.log("Balance refresh error:", error);
+    } finally {
+      setreserveLoading(false);
+    }
+  }, [get_stellar, top_value, AssetIssuerPublicKey]);
+
 
   return (
     <View style={[styles.scrollView0, { backgroundColor: theme.bg }]}>
       <Exchange_screen_header 
-        title="" 
+        title="Trade" 
         onLeftIconPress={() => {showOneTap?setshowOneTap(false):navigation.goBack()}} 
         onRightIconPress={() => console.log('Pressed')} 
       />
@@ -779,7 +808,7 @@ export const NewOfferModal = () => {
         )}
       </View>
 
-      <ScrollView style={{ width: "99%" }}>
+      <ScrollView style={{ width: "99%" }} keyboardShouldPersistTaps="always">
         
           <InfoComponent
             visible={infoVisible}
@@ -789,8 +818,8 @@ export const NewOfferModal = () => {
           />
 
           <View>
-            <ScrollView contentContainerStyle={styles.scrollView}>
-              {!showOneTap && (
+            <ScrollView contentContainerStyle={styles.scrollView} keyboardShouldPersistTaps="always">
+              {/* {!showOneTap && (
                 <Animated.View
                   style={[styles.glowContainer, { borderColor }]}
                 >
@@ -808,7 +837,7 @@ export const NewOfferModal = () => {
                     </TouchableOpacity>
                   </View>
                 </Animated.View>
-              )}
+              )} */}
               {activeTab === SUB_TAB_CONFIG.TRADE.id && (
                 showOneTap?<CrossChainTx />:
                 activeTradeType === TAB_CONFIG.INSTANT_TRADE.id ? (
@@ -884,7 +913,7 @@ export const NewOfferModal = () => {
                               Account : 
                             </Text>
                             <View style={{ width: wp(40) }}>
-                              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: wp(35) }}>
+                              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: wp(35) }} keyboardShouldPersistTaps="always">
                                 <Text 
                                   style={[styles.accountInfoCon.accountInfoText, { color: theme.headingTx }]} 
                                   numberOfLines={1}
@@ -896,9 +925,23 @@ export const NewOfferModal = () => {
                           </View>
                           
                           <View style={{ flexDirection: "row" }}>
+                            <View style={{ flexDirection: "row", alignItems: "center" }}>
                               <Text style={[styles.pairHeadingText, { color: theme.inactiveTx }]}>
                                 Balance :
                               </Text>
+                              <TouchableOpacity
+                                style={{ marginRight: 6 }}
+                                onPress={refreshBalance}
+                                disabled={reserveLoading}
+                              >
+                                <Icon
+                                  type={"ionicon"}
+                                  name="refresh"
+                                  size={18}
+                                  color={theme.inactiveTx}
+                                />
+                              </TouchableOpacity>
+                            </View>
                             {reserveLoading ? (
                               <ActivityIndicator color={"green"} />
                             ) : (
@@ -936,7 +979,7 @@ export const NewOfferModal = () => {
                               styles.pairSelectionSubCon.pairSelectionName,
                               { color: btnRoot === 0 ? "#fff" : theme.headingTx }
                             ]}>
-                              Send
+                              Sell
                             </Text>
                           </TouchableOpacity>
                           
@@ -959,7 +1002,7 @@ export const NewOfferModal = () => {
                               styles.pairSelectionSubCon.pairSelectionName,
                               { color: btnRoot === 1 ? "#fff" : theme.headingTx }
                             ]}>
-                              Receive
+                              Buy
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -975,6 +1018,16 @@ export const NewOfferModal = () => {
                                 <Icon name={"arrow-right"} type={"materialCommunity"} size={19} color={theme.headingTx} style={{ marginHorizontal: 4 }} />
                                 {getAssetDisplayName(top_value_0)}</Text>
                             </View>
+                            <TouchableOpacity style={[styles.maxButton,{backgroundColor:theme.buttonColor}]} onPress={()=>{
+                              onChangeamount(Balance ? Balance : "0.000");
+                              if (parseFloat(Balance) > parseFloat(Balance)) {
+                                setinfoVisible(true);
+                                setinfotype("error");
+                                setinfomessage("Inputed Balance not found in account.");
+                              }
+                            }}>
+                              <Text style={styles.maxButtonText}>MAX</Text>
+                            </TouchableOpacity>
                           </View>
                       
                         
@@ -1089,7 +1142,7 @@ export const NewOfferModal = () => {
                       {/* Total view */}
                       <View style={[styles.priceInfoCon, { backgroundColor: theme.cardBg }]}>
                         <View style={styles.amountSubinfo}>
-                          <Text style={[styles.pairHeadingText]}>Total </Text>
+                          <Text style={[styles.pairHeadingText]}>Total {top_value_0}</Text>
                         </View>
                         <Text 
                           style={[styles.accountInfoCon.accountInfoText, { fontWeight: "900", color: theme.headingTx }]} 
@@ -1190,6 +1243,7 @@ export const NewOfferModal = () => {
 
                           <FlatList
                             data={filteredAssets}
+                            keyboardShouldPersistTaps="always"
                             keyExtractor={(item,index) => index}
                             renderItem={({ item }) => {
                             const isDisabled =
@@ -1247,6 +1301,17 @@ export const NewOfferModal = () => {
                                       </View>
                                     </View>
 
+                                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                      {(() => {
+                                        const key = item?.code === 'XLM' ? 'native' : `${item?.code}:${item?.issuer}`;
+                                        const heldBalance = myAssetBalances.get(key);
+                                        if (heldBalance === undefined) return null;
+                                        return (
+                                          <Text style={{ color: theme.headingTx, fontSize: 14, fontWeight: '600', marginRight: 8 }}>
+                                            {heldBalance}
+                                          </Text>
+                                        );
+                                      })()}
                                     {pairPickerStep === 'base' && !isDisabled && (
                                       <Icon
                                         name="arrowright"
@@ -1265,6 +1330,7 @@ export const NewOfferModal = () => {
                                         style={{ marginRight: 4 }}
                                       />
                                     )}
+                                  </View>
                                   </TouchableOpacity>
                                 );
                               }}
@@ -1881,7 +1947,17 @@ const styles = StyleSheet.create({
     height: 49,
     borderWidth: 1,
     borderColor: 'rgba(64,82,214,0.2)'
-  }
+  },
+  maxButton: {
+    paddingHorizontal: 19,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  maxButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 12,
+  },
 });
 
 export const stellarConfig = {

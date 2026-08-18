@@ -68,6 +68,7 @@ export async function getChainTokenData(sourceChain, destChain, sourceToken, des
         slippageTolerance: 1,
         completionTime: trasTM + " Min",
         fee: feeObj,
+        provider:"Allbridge"
       }
     };
   } catch (error) {
@@ -187,6 +188,8 @@ export async function swapPepare(
        await ShortTermStorage.syncTx({
           txHash: sent.hash,
           walletAddress: stellarWallet.publicKey,
+          fromAddress: stellarWallet.publicKey,
+          toAddress: recipientAddress,
           provider: "ALLBRIDGE",
           fromChain: sourceChain,
           fromToken: sourceTokenSymbol,
@@ -194,7 +197,8 @@ export async function swapPepare(
           toToken: destTokenSymbol,
           amountIn: amount?.toString(),
           amountOut: amount?.toString(),
-          txType:"Bridge"
+          txType:"Bridge",
+          fromTokenMetaData:srcToken.tokenAddress
         })
 
       return { success: true, txHash: sent.hash };

@@ -6,8 +6,10 @@ import { FOLIO_BASE_ROUTE, REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL, REACT_APP_HOST
 import apiHelper from "../../src/Dashboard/exchange/crypto-exchange-front-end-main/src/apiHelper";
 import PancakeList from "../../src/Dashboard/tokens/pancakeSwap/PancakeList.json";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ethers } from "ethers";
 const BASEROUTE = `${REACT_APP_HOST}/v1/portfolio/`;
 
+const providerCache = new Map();
 const CONFIG = {
   TIMEOUT: 10000,
   APIS: {
@@ -21,7 +23,7 @@ const CONFIG = {
 };
 
 const CACHE_CONFIG = {
-  TTL: 60 * 1000,
+  TTL: 2 * 1000,
 };
 
 export const EVM_NETWORK_CONFIG = {
@@ -71,8 +73,23 @@ export const EVM_NETWORK_CONFIG = {
 
 const walletCache = new Map();
 
-const getCacheKey = (evmAddress, stellarAddress) => {
-  return `${evmAddress || 'null'}_${stellarAddress || 'null'}`;
+const priceCache = new Map();
+const PRICE_CACHE_TTL = 60 * 1000;
+
+const getCachedPrice = (key) => {
+  const cached = priceCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp < PRICE_CACHE_TTL) return cached.data;
+  return null;
+};
+
+const setCachedPrice = (key, data) => {
+  priceCache.set(key, { data, timestamp: Date.now() });
+};
+
+const pendingRequests = new Map();
+const getCacheKey = (evmAddress, stellarAddress, dydxAddress) => {
+  return `${evmAddress || 'null'}_${stellarAddress || 'null'}_${dydxAddress || 'null'}`;
 };
 
 const getFromCache = (cacheKey) => {
@@ -94,6 +111,11 @@ const isValidAddress = (address) => {
   if (/^0x[a-fA-F0-9]{40}$/.test(address)) return true;
   if (/^G[A-Z2-7]{55}$/.test(address)) return true;
   return false;
+};
+
+const isValidDydxAddress = (address) => {
+  if (typeof address !== 'string' || !address) return false;
+  return /^dydx1[0-9a-z]{38,58}$/.test(address);
 };
 
 const parseNumber = (value, decimals = 6) => {
@@ -143,12 +165,18 @@ const getStellarTokenImage = (symbol = null, issuer = null, contractAddress = nu
 };
 
 const getXLMPrice = async () => {
+  const cacheKey = 'xlm-usd-price';
+  const cached = getCachedPrice(cacheKey);
+  if (cached !== null) return cached;
+
   try {
     const response = await axios.get(CONFIG.APIS.COINGECKO, {
       params: { ids: 'stellar', vs_currencies: 'usd' },
       timeout: CONFIG.TIMEOUT
     });
-    return response.data?.stellar?.usd || 0.10;
+    const price = response.data?.stellar?.usd || 0.10;
+    setCachedPrice(cacheKey, price);
+    return price;
   } catch (error) {
     return 0.10;
   }
@@ -187,6 +215,22 @@ const getEVMTokens = async (network, walletAddress, onProgress = null, cacheKey 
       totalValueUSD += balanceUSD;
     }
 
+    const hasNativeToken = tokens.some(t => t.contractAddress === 'Native');
+    if (!hasNativeToken) {
+      tokens.unshift({
+        chain: config.chain,
+        name: config.nativeName,
+        symbol: config.nativeSymbol,
+        balance: 0,
+        balanceUSD: 0,
+        decimals: 18,
+        contractAddress: 'Native',
+        active: true,
+        price: 0,
+        imageUrl: config.nativeImage,
+      });
+    }
+
     if (onProgress) {
       onProgress({
         chain: config.chain,
@@ -207,7 +251,21 @@ const getEVMTokens = async (network, walletAddress, onProgress = null, cacheKey 
         return { tokens: cachedTokens, totalValueUSD: cachedTokens.reduce((s, t) => s + t.balanceUSD, 0) };
       }
     }
-    return { tokens: [], totalValueUSD: 0 };
+    return {
+      tokens: [{
+        chain: config.chain,
+        name: config.nativeName,
+        symbol: config.nativeSymbol,
+        balance: 0,
+        balanceUSD: 0,
+        decimals: 18,
+        contractAddress: 'Native',
+        active: true,
+        price: 0,
+        imageUrl: config.nativeImage,
+      }],
+      totalValueUSD: 0
+    };
   }
 };
 
@@ -342,9 +400,15 @@ const getStellarTokenPrices = async (balances) => {
         if (b.asset_type === 'native') return 'XLM:native';
         return `${b.asset_code}:${b.asset_issuer}`;
       }); 
-    const response = await apiHelper.post(`${FOLIO_BASE_ROUTE}/prices`,{ addresses });
 
-    return response.data?.prices || {};
+    const cacheKey = `stellar-prices_${[...addresses].sort().join(',')}`;
+    const cached = getCachedPrice(cacheKey);
+    if (cached !== null) return cached;
+
+    const response = await apiHelper.post(`${FOLIO_BASE_ROUTE}/prices`,{ addresses });
+    const prices = response.data?.prices || {};
+    setCachedPrice(cacheKey, prices);
+    return prices;
   } catch {
     return {};
   }
@@ -425,13 +489,13 @@ const getDydxBalance = async (walletAddress, onProgress = null, cacheKey = null)
   }
 };
 
-export async function GetWalletTokens(evmAddress = null, stellarAddress = null, dydxAddress = null, onProgress = null) {
+export async function GetWalletTokens(evmAddress = null, stellarAddress = null, dydxAddress = null, onProgress = null, forceRefresh = false) {
   console.log("GetWalletTokens", evmAddress, stellarAddress);
   if (!evmAddress && !stellarAddress) {
     throw new Error('At least one wallet address is required');
   }
 
-  const cacheKey = getCacheKey(evmAddress, stellarAddress);
+  const cacheKey = getCacheKey(evmAddress, stellarAddress, dydxAddress);
   const cachedData = getFromCache(cacheKey);
   if (cachedData) {
     console.debug('returning cached data (under 1 minute old)');
@@ -439,6 +503,7 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
       onProgress({
         allTokens: cachedData.tokens,
         totalValueUSD: cachedData.totalValueUSD,
+        totalSTRUSD: cachedData.totalSTRUSD,
         isPartial: false,
         fromCache: true
       });
@@ -446,6 +511,27 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
     return cachedData;
   }
 
+  const existing = pendingRequests.get(cacheKey);
+  if (existing) {
+    console.log(`GetWalletTokens: reusing in-flight request for ${cacheKey}`);
+    if (onProgress) existing.listeners.add(onProgress);
+    try {
+      return await existing.promise;
+    } finally {
+      if (onProgress) existing.listeners.delete(onProgress);
+    }
+  }
+
+  const listeners = new Set();
+  if (onProgress) listeners.add(onProgress);
+
+  const notifyProgress = (update) => {
+    listeners.forEach((fn) => {
+      try { fn(update); } catch (e) { console.error('progress listener error:', e); }
+    });
+  };
+
+  const fetchPromise = (async () => {
   try {
     const allTokens = [];
     let totalValueUSD = 0;
@@ -457,19 +543,20 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
       }
 
       let apiTokens = [];
-      const portfolioResult = await apiHelper.get(`${BASEROUTE}${evmAddress}`);
+      const portfolioUrl = forceRefresh
+        ? `${BASEROUTE}${evmAddress}?hardRefresh=true`
+        : `${BASEROUTE}${evmAddress}`;
+      const portfolioResult = await apiHelper.get(portfolioUrl);
       if (portfolioResult.success) {
         apiTokens = portfolioResult.data.data.tokens || [];
       }
 
       const progressHandler = (update) => {
-        if (onProgress) {
-          onProgress({
+          notifyProgress({
             ...update,
             allTokens: [...allTokens, ...update.tokens],
             totalValueUSD: totalValueUSD + update.totalValueUSD
           });
-        }
       };
 
       Object.keys(EVM_NETWORK_CONFIG).forEach(network => {
@@ -483,30 +570,30 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
       }
       fetchPromises.push(
         getStellarTokens(stellarAddress, (update) => {
-          if (onProgress) {
-            onProgress({
+            notifyProgress({
               ...update,
               allTokens: [...allTokens, ...update.tokens],
               totalValueUSD: totalValueUSD + update.totalValueUSD
             });
-          }
         }, cacheKey)
       );
     }
 
-     if (dydxAddress) {
-      fetchPromises.push(
-        getDydxBalance(dydxAddress, (update) => {
-          if (onProgress) {
-            onProgress({
-              ...update,
-              allTokens: [...allTokens, ...update.tokens],
-              totalValueUSD: totalValueUSD + update.totalValueUSD
-            });
-          }
-        }, cacheKey)
-      );
-    }
+    // if (dydxAddress) {
+    //   if (!isValidDydxAddress(dydxAddress)) {
+    //     console.warn('Invalid dYdX address format, skipping dYdX fetch:', dydxAddress);
+    //   } else {
+    //     fetchPromises.push(
+    //       getDydxBalance(dydxAddress, (update) => {
+    //         notifyProgress({
+    //           ...update,
+    //           allTokens: [...allTokens, ...update.tokens],
+    //           totalValueUSD: totalValueUSD + update.totalValueUSD
+    //         });
+    //       }, cacheKey)
+    //     );
+    //   }
+    // }
 
     const results = await Promise.allSettled(fetchPromises);
     results.forEach(result => {
@@ -517,9 +604,14 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
     });
 
     allTokens.sort((a, b) => b.balanceUSD - a.balanceUSD);
+      const totalSTRUSD = allTokens
+        .filter(t => t.chain === 'Stellar')
+        .reduce((sum, t) => sum + (t.balanceUSD || 0), 0);
+
     const result = {
       tokens: allTokens,
-      totalValueUSD: parseNumber(totalValueUSD, 2)
+      totalValueUSD: parseNumber(totalValueUSD, 2),
+      totalSTRUSD: parseNumber(totalSTRUSD, 2)
     };
     saveToCache(cacheKey, result);
     console.debug('data cached successfully');
@@ -533,6 +625,15 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
       return cachedData.data;
     }
     throw new Error(`Failed to fetch wallet tokens: ${error.message}`);
+  }
+})();
+
+  pendingRequests.set(cacheKey, { promise: fetchPromise, listeners });
+
+  try {
+    return await fetchPromise;
+  } finally {
+    pendingRequests.delete(cacheKey);
   }
 }
 
@@ -670,18 +771,18 @@ export const TemporaryTokens=[
         "symbol": "BASE",
         "navigationPath":"Send"
     },
-    {
-        "balance":0.0,
-        "balanceUSD": 0.00,
-        "chain": DYDX.symbol,
-        "contractAddress": "Native",
-        "decimals": 6,
-        "imageUrl": DYDX.imageUrl,
-        "name": DYDX.symbol,
-        "price":0,
-        "symbol": DYDX.symbol,
-        "navigationPath":"Send"
-    },
+    // {
+    //     "balance":0.0,
+    //     "balanceUSD": 0.00,
+    //     "chain": DYDX.symbol,
+    //     "contractAddress": "Native",
+    //     "decimals": 6,
+    //     "imageUrl": DYDX.imageUrl,
+    //     "name": DYDX.symbol,
+    //     "price":0,
+    //     "symbol": DYDX.symbol,
+    //     "navigationPath":"Send"
+    // },
 ];
 
 export const CHAINS = {
@@ -714,7 +815,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:ARB.supportedForInterSwap,
     chainNameInThirdParty:ARB.chainNameInThirdParty,
-    eipId:ARB.eipId
+    eipId:ARB.eipId,
+    backupRPCUrls:ARB.backupRPCS
   },
   POL: {
     rpcUrl: POL.RPC,
@@ -745,7 +847,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:POL.supportedForInterSwap,
     chainNameInThirdParty:POL.chainNameInThirdParty,
-    eipId:POL.eipId
+    eipId:POL.eipId,
+    backupRPCUrls:POL.backupRPCS
   },
   OPT: {
     rpcUrl: OPT.RPC,
@@ -776,7 +879,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:OPT.supportedForInterSwap,
     chainNameInThirdParty:OPT.chainNameInThirdParty,
-    eipId:OPT.eipId
+    eipId:OPT.eipId,
+    backupRPCUrls:OPT.backupRPCS
   },
   AVAX: {
     rpcUrl: AVAX.RPC,
@@ -807,7 +911,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:AVAX.supportedForInterSwap,
     chainNameInThirdParty:AVAX.chainNameInThirdParty,
-    eipId:AVAX.eipId
+    eipId:AVAX.eipId,
+    backupRPCUrls:AVAX.backupRPCS
   },
   BASE: {
     rpcUrl: BASE.RPC,
@@ -838,7 +943,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:BASE.supportedForInterSwap,
     chainNameInThirdParty:BASE.chainNameInThirdParty,
-    eipId:BASE.eipId
+    eipId:BASE.eipId,
+    backupRPCUrls:BASE.backupRPCS
   },
   ETH: {
     rpcUrl: ETH.RPC,
@@ -869,7 +975,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:ETH.supportedForInterSwap,
     chainNameInThirdParty:ETH.chainNameInThirdParty,
-    eipId:ETH.eipId
+    eipId:ETH.eipId,
+    backupRPCUrls:ETH.backupRPCS
   },
   BNB: {
     rpcUrl: BSC.RPC,
@@ -900,7 +1007,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:BSC.supportedForInterSwap,
     chainNameInThirdParty:BSC.chainNameInThirdParty,
-    eipId:BSC.eipId
+    eipId:BSC.eipId,
+    backupRPCUrls:BSC.backupRPCS
   },
   STR: {
     rpcUrl: STR.RPC,
@@ -930,7 +1038,8 @@ export const CHAINS = {
     importForSetupedApp:true,
     supportedForInterSwap:STR.supportedForInterSwap,
     chainNameInThirdParty:STR.chainNameInThirdParty,
-    eipId:STR.eipId
+    eipId:STR.eipId,
+    backupRPCUrls:STR.backupRPCS
   },
   DYDX: {
     rpcUrl: DYDX.RPC,
@@ -974,14 +1083,15 @@ export const CHAINS = {
     },
     bridgeSupportTokens: DYDX.bridgeSupportTokens,
     sendEnable: false,
-    receiveEnable: true,
+    receiveEnable: false,
     bridgeEnable: false,
     swapEnable: false,
     importForSetupApp:false,
     importForSetupedApp:false,
     supportedForInterSwap:DYDX.supportedForInterSwap,
     chainNameInThirdParty:DYDX.chainNameInThirdParty,
-    eipId:DYDX.eipId
+    eipId:DYDX.eipId,
+    backupRPCUrls:DYDX.backupRPCS
   },
   BSC: {
     rpcUrl: BSC.RPC,
@@ -1012,7 +1122,8 @@ export const CHAINS = {
     importForSetupedApp:false,
     supportedForInterSwap:BSC.supportedForInterSwap,
     chainNameInThirdParty:BSC.chainNameInThirdParty,
-    eipId:BSC.eipId
+    eipId:BSC.eipId,
+    backupRPCUrls:BSC.backupRPCS
   },
 };
 
@@ -1067,4 +1178,105 @@ export const UI_CHAIN_NAME = {
   BSC: "BNB",
   SRB: "SRB",
   DYDX: "DYDX"
+};
+
+export async function CoinsToUSD(chainName, tokenAddress, amount) {
+  try {
+    const CHAIN_ALIASES = {
+      POL: "polygon",
+      ARB: "arbitrum",
+      OPT: "optimism",
+      AVA: "avax",
+      BAS: "base",
+      ETH: "ethereum",
+      BSC: "bsc",
+      SRB: "stellar"
+    };
+
+    const chain = CHAIN_ALIASES[chainName.toUpperCase()] || chainName.toLowerCase();
+    const NATIVE_ADDRESS = "0x0000000000000000000000000000000000000000";
+    const isNative = !tokenAddress || tokenAddress.toLowerCase() === "native";
+    const address = isNative ? NATIVE_ADDRESS : tokenAddress;
+
+    const key = `${chain}:${address}`;
+    const res = await fetch(`https://coins.llama.fi/prices/current/${key}`);
+    if (!res.ok) return 0;
+
+    const data = await res.json();
+    const coin = data.coins[key];
+    if (!coin || typeof coin.price !== "number") return 0;
+
+    return amount * coin.price;
+  } catch (err) {
+    return 0;
+  }
+}
+
+const testRpc = async (url, expectedChainId, timeoutMs = 4000) => {
+  const provider = new ethers.providers.JsonRpcProvider(url);
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('RPC timeout')), timeoutMs)
+  );
+
+  const network = await Promise.race([provider.getNetwork(), timeout]);
+
+  if (network.chainId !== expectedChainId) {
+    throw new Error(`Chain ID mismatch: expected ${expectedChainId}, got ${network.chainId}`);
+  }
+
+  return provider;
+};
+
+export const getProvider = async (chainKey) => {
+  const config = CHAINS[chainKey];
+  if (!config) throw new Error(`Unknown chain: ${chainKey}`);
+
+  const cached = providerCache.get(chainKey);
+  if (cached) return cached;
+
+  let lastError = null;
+
+  for (const url of config.backupRPCUrls) {
+    try {
+      const provider = await testRpc(url, config.chainId);
+      providerCache.set(chainKey, provider);
+      return provider;
+    } catch (err) {
+      lastError = err;
+      console.warn(`RPC failed: ${url} — ${err.message}, trying next...`);
+      continue; 
+    }
+  }
+
+  throw new Error(
+    `All RPC endpoints failed for ${config.name}. Last error: ${lastError?.message}`
+  );
+};
+
+export const callWithFallback = async (chainKey, fn) => {
+  const config = CHAINS[chainKey];
+  let lastError = null;
+
+  for (const url of config.backupRPCUrls) {
+    try {
+      const provider = new ethers.providers.JsonRpcProvider(url);
+      const result = await fn(provider);
+      providerCache.set(chainKey, provider);
+      return result;
+    } catch (err) {
+      lastError = err;
+      const isRateLimited =
+        err?.code === 429 ||
+        err?.message?.toLowerCase().includes('rate limit') ||
+        err?.message?.toLowerCase().includes('too many requests') ||
+        err?.message?.toLowerCase().includes('timeout');
+
+      console.warn(`RPC call failed on ${url}: ${err.message}`);
+
+      if (!isRateLimited) throw err;
+      continue;
+    }
+  }
+
+  throw new Error(`All RPC endpoints failed for ${config.name}: ${lastError?.message}`);
 };

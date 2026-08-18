@@ -22,9 +22,8 @@ import W4 from "../../assets/W4.png";
 import CustomImageSlider from '../../Custom_scroller'; // Make sure to create this file
 import { createGuestUser } from "./exchange/crypto-exchange-front-end-main/src/api";
 import { useDispatch } from "react-redux";
-import { AddToAllWallets, Generate_Wallet2, getBalance, setCurrentWallet, setToken, setUser, setWalletType } from "../components/Redux/actions/auth";
+import { AddToAllWallets, Generate_Wallet2, getBalance, setCurrentWallet, setUser, setWalletType } from "../components/Redux/actions/auth";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
-import { genUsrToken } from "./Auth/jwtHandler";
 import { alert } from "./reusables/Toasts";
 import { useNavigation } from "@react-navigation/native";
 import apiHelper from "./exchange/crypto-exchange-front-end-main/src/apiHelper";
@@ -33,10 +32,15 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 import AccessNativeStorage from "./Wallets/AccessNativeStorage";
 import crashlytics from '@react-native-firebase/crashlytics';
 import { dydxAddressDrive } from "../dydx/dydxAddressDrive";
+import ReferralBottomSheet from "./reusables/ReferralBottomSheet";
+import { clearReferralCode, getSavedReferralCode, initReferral, subscribeReferral } from "../utilities/referralUtil";
+import { CHOTTU_URL } from "./constants";
 
 const Welcome = (props) => {
   const [Loading,setLoading]=useState(false)
   const [enableUserAccess,setenableUserAccess]=useState(false);
+  const [referralCode, setReferralCode] = useState(null);
+  const [sheetVisible, setSheetVisible] = useState(false);
   const dispatch = useDispatch();
   const navigation=useNavigation();
   const images = [W1];
@@ -68,16 +72,31 @@ const Welcome = (props) => {
     const initGuestUser = async () => {
       try {
         setLoading(true);
+        await initReferral(CHOTTU_URL);
+        await getSavedReferralCode().then((saved) => {
+          if (saved) {
+            setReferralCode(saved);
+            setSheetVisible(true);
+          }
+        });
+
+        const unsubscribe = subscribeReferral((code) => {
+          setReferralCode(code);
+          setSheetVisible(true);
+        });
+
         const appReset=await NativeModules.StorageModule.clearAll();
         crashlytics().setCrashlyticsCollectionEnabled(true);
-        const userStatus=await createGuestUser();
+        const userStatus=await createGuestUser(referralCode);
         console.log("userStatus:-",userStatus.status,appReset)
         if(userStatus.status)
         {
+          await clearReferralCode();
           setenableUserAccess(true);
         }else{
           setenableUserAccess(false);
         }
+        return unsubscribe;
       } catch (error) {
         console.error("Failed to create guest user:", error);
       } finally {
@@ -137,12 +156,6 @@ const Welcome = (props) => {
   const dispatChingData=async(wallet)=>{
     try {
       const dydxAddress=await dydxAddressDrive(wallet.privateKey)
-      const pin = await AsyncStorageLib.getItem("pin");
-            const body = {
-              accountName: "Main",
-              pin: JSON.parse(pin),
-            };
-            const token = genUsrToken(body);
             const accounts = {
               address: wallet.address,
               name: "Main",
@@ -195,10 +208,6 @@ const Welcome = (props) => {
               "currentWallet",
               "Main"
             );
-            AsyncStorageLib.setItem(
-              `${"Main"}-token`,
-              token
-            );
   
             dispatch(setUser("Main"));
             dispatch(
@@ -218,7 +227,6 @@ const Welcome = (props) => {
             );
             dispatch(getBalance(wallet.address));
             dispatch(setWalletType("Multi-coin"));
-            dispatch(setToken(token));
             genrateStellarKeypair(wallet.address,wallet.stellarWallet.publicKey)
             const walletResponse = await AccessNativeStorage.saveWallet({
               name: "Main",
@@ -272,13 +280,6 @@ const Welcome = (props) => {
       <CustomImageSlider images={images} />
       <Animated.View style={[styles.buttonContainer, { opacity: fadeAnim }]}>
        <Text style={styles.termsTxt}>By continuing, you agree to the <Text style={styles.openLink} onPress={() => { Linking.openURL("https://swiftexwallet.com/terms-of-service") }}>Terms</Text> and <Text style={styles.openLink} onPress={()=>{ Linking.openURL("https://swiftexwallet.com/privacy-policy") }}>Privacy Policy.</Text></Text>
-        {/* {Loading?null:<TouchableOpacity
-          style={styles.createView}
-          onPress={() => props.navigation.navigate("GenerateWallet")}
-          disabled={Loading}
-        >
-          <Text style={styles.btnText}>CREATE A NEW WALLET</Text>
-        </TouchableOpacity>} */}
         {enableUserAccess ? <>
           <TouchableOpacity style={styles.createView} onPress={() => { setLoading(true), defaultWalletGenration() }} disabled={Loading}>
             {Loading ? <ActivityIndicator color={"green"} size={"large"} /> : <Text style={styles.btnText}>CREATE A NEW WALLET</Text>}
@@ -295,6 +296,11 @@ const Welcome = (props) => {
        
 
       </Animated.View>
+      <ReferralBottomSheet
+        visible={sheetVisible}
+        referralCode={referralCode}
+        onClose={() => setSheetVisible(false)}
+      />
     </View>
   );
 };

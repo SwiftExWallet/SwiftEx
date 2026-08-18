@@ -9,7 +9,6 @@ import { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ethers } from "ethers";
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
-import { genUsrToken } from "../Auth/jwtHandler";
 import { AddToAllWallets, getBalance, setCurrentWallet, setToken, setUser, setWalletType } from "../../components/Redux/actions/auth";
 import AccessNativeStorage from "../Wallets/AccessNativeStorage";
 import apiHelper from "../exchange/crypto-exchange-front-end-main/src/apiHelper";
@@ -464,14 +463,6 @@ export const WalletNetworkSelection = (props) => {
                     publicKey: accountFromMnemonic.stellar.publicKey
                 },
             };
-            const pin = await AsyncStorage.getItem("pin");
-            const body = {
-                accountName: accountName,
-                pin: JSON.parse(pin),
-            };
-            const token = genUsrToken(body);
-            console.log(token);
-
             const accounts = {
                 address: wallet.address,
                 name: accountName,
@@ -518,7 +509,6 @@ export const WalletNetworkSelection = (props) => {
             );
             AsyncStorage.setItem("user", accountName);
             AsyncStorage.setItem("currentWallet", accountName);
-            AsyncStorage.setItem("token", token);
             dispatch(setUser(accountName));
             dispatch(
                 setCurrentWallet(
@@ -531,7 +521,6 @@ export const WalletNetworkSelection = (props) => {
             );
             dispatch(AddToAllWallets(wallets, accountName));
             dispatch(getBalance(wallet.address));
-            dispatch(setToken(token));
             dispatch(setWalletType("Multi-coin"));
             const walletResponse = await AccessNativeStorage.saveWallet({
                 name: accountName,
@@ -621,14 +610,6 @@ export const WalletNetworkSelection = (props) => {
                     publicKey: accountFromMnemonic.original.publicKey
                 },
             };
-            const pin = await AsyncStorage.getItem("pin");
-            const body = {
-                accountName: accountName,
-                pin: JSON.parse(pin),
-            };
-            const token = genUsrToken(body);
-            console.log(token);
-
             const accounts = {
                 address: wallet.address,
                 name: accountName,
@@ -675,7 +656,6 @@ export const WalletNetworkSelection = (props) => {
             );
             AsyncStorage.setItem("user", accountName);
             AsyncStorage.setItem("currentWallet", accountName);
-            AsyncStorage.setItem("token", token);
             dispatch(setUser(accountName));
             dispatch(
                 setCurrentWallet(
@@ -690,7 +670,6 @@ export const WalletNetworkSelection = (props) => {
             );
             dispatch(AddToAllWallets(wallets, accountName));
             dispatch(getBalance(wallet.address));
-            dispatch(setToken(token));
             dispatch(setWalletType("Multi-coin"));
             const walletResponse = await AccessNativeStorage.saveWallet({
                 name: accountName,

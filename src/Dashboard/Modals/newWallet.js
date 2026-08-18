@@ -27,6 +27,7 @@ import { LinearGradient } from "react-native-linear-gradient";
 import darkBlue from "../../../assets/darkBlue.png";
 import Icon from "../../icon";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
+import { colors } from "../../Screens/ThemeColorsConfig";
 
 const NewWalletModal = ({ props,onCrossPress, visible, setVisible, setModalVisible }) => {
   const state=useSelector((state)=>state);
@@ -73,7 +74,7 @@ const NewWalletModal = ({ props,onCrossPress, visible, setVisible, setModalVisib
             style={style.modal}
             >
               <Animated.View style={[style.overlay]}>
-                <View style={[style.Body, { backgroundColor: state.THEME.THEME ? "#242426" : "#F4F4F8" }]}>
+                <View style={[style.Body, { backgroundColor: state.THEME.THEME ? colors.dark.bg : colors.light.bg }]}>
           <TouchableOpacity disabled={loading} onPress={()=>{onCrossPress()}} style={style.crossIcon}>
           <Icon type={'entypo'} name='cross' color={"black"} size={28}/>
           </TouchableOpacity>

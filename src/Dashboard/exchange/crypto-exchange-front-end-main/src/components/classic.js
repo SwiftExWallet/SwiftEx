@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import { Exchange_screen_header } from '../../../../reusables/ExchangeHeader';
 import { useNavigation } from '@react-navigation/native';
 import Icon from '../../../../../icon';
 import { getTokenBalancesUsingAddress } from '../utils/getWalletInfo/EtherWalletService';
-import { GetStellarAvilabelBalance, GetStellarUSDCAvilabelBalance, stellarWalletStatus } from '../../../../../utilities/StellarUtils';
+import { GetStellarAvilabelBalance, GetStellarUSDCAvilabelBalance, stellarWalletStatus, stellarWalletStatusWithUSDC } from '../../../../../utilities/StellarUtils';
 import { getChainTokenData, swapPepare } from '../../../../../utilities/AllbridgeUtil';
 import { alert } from '../../../../reusables/Toasts';
 import { debounce } from 'lodash';
@@ -29,8 +29,13 @@ import CustomInfoProvider from './CustomInfoProvider';
 import WalletActivationComponent from '../utils/WalletActivationComponent';
 import { swap_prepare } from '../../../../../../All_bridge';
 import { CHAINS } from '../../../../../utilities/TokenUtils';
+import { getHighestNativeBalanceToken, getBestAssetForChain, PORTFOLIO_CHAIN_TO_CHAINS_KEY } from '../../../../../utilities/portfolioSelectors';
 import ShortTermStorage from '../../../../../utilities/ShortTermStorage';
-import { StrKey } from '@stellar/stellar-sdk';
+import { Networks, StrKey } from '@stellar/stellar-sdk';
+import { configure, getQuote, NEARINTENT_ENUM, NearIntentSwapExecute, resolveAssetPair } from '../../../../../nearIntent/nearIntentUtil';
+import { QuoteRequest } from '@defuse-protocol/one-click-sdk-typescript';
+import StellarSetupBottomSheet from '../../../../../nearIntent/component/activateWalletUsingNearIntent';
+import { STELLAR_URL } from '../../../../constants';
 
 const classic = ({ props }) => {
   const navigation = useNavigation();
@@ -160,7 +165,6 @@ const classic = ({ props }) => {
       fontSize: 20,
     },
     availableContainer: {
-      alignItems: 'flex-end',
       gap: 8,
       width:wp(19)
     },
@@ -411,6 +415,16 @@ const classic = ({ props }) => {
       paddingHorizontal: wp(2.4),
       backgroundColor: theme.bg,
     },
+    maxBtnCon: {
+      backgroundColor: theme.buttonColor,
+      paddingHorizontal: 13,
+      paddingVertical: 7,
+      borderRadius: 8
+    },
+    maxBtnTxt: {
+      color: "#fff",
+      fontSize: 16
+    }
   });
 
   const [fromAmount, setFromAmount] = useState(0.0);
@@ -432,6 +446,7 @@ const classic = ({ props }) => {
   const [showWalletActivation,setShowWalletActivation] = useState(false);
   const [walletActivationWarning,setWalletActivationWarning] = useState(false);
   const [recieverAddress, setRecieverAddress] = useState("");
+  const [provider, setProvider] = useState("ALLBRIDGE");
 
   const getFromNetworkTokens = () => {
     return CHAINS[selectedFromNetwork.symbol].bridgeSupportTokens;
@@ -448,11 +463,35 @@ const classic = ({ props }) => {
     setSelectedToAsset(CHAINS[selectedToNetwork.symbol].bridgeSupportTokens[0]);
   }, [selectedToNetwork]);
 
+  const hasAutoSelectedFromRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoSelectedFromRef.current) return;
+
+    const topNativeToken = getHighestNativeBalanceToken(
+      state,
+      (chainKey) =>
+        CHAINS[chainKey]?.bridgeEnable &&
+        CHAINS[chainKey]?.swapEnable &&
+        chainKey !== selectedToNetwork.symbol
+    );
+    if (!topNativeToken) return;
+
+    const chainKey = PORTFOLIO_CHAIN_TO_CHAINS_KEY[topNativeToken.chain];
+    const chainConfig = chainKey && CHAINS[chainKey];
+    if (!chainConfig) return;
+
+    const matchedAsset = getBestAssetForChain(state, topNativeToken.chain, chainConfig);
+    if (!matchedAsset) return;
+    hasAutoSelectedFromRef.current = true;
+    setSelectedFromNetwork(chainConfig);
+    setSelectedFromAsset(matchedAsset);
+  }, [state.activeWalletPortFolio]);
+
   useEffect(() => {
     const initService = async () => {
       if (fromAmount) {
         setQuotesLoading(true);
-        await fetchPairQuotes(selectedFromNetwork.chainName, selectedToNetwork.chainName, selectedFromAsset.symbol, selectedToAsset.symbol, fromAmount);
+        await fetchPairQuotes(selectedFromNetwork.chainName, selectedToNetwork.chainName, selectedFromAsset.symbol, selectedToAsset.symbol, fromAmount, selectedFromAsset.address ,selectedToAsset.address);
       }
       await fetchSelectedTokenBalance()
     }
@@ -460,13 +499,20 @@ const classic = ({ props }) => {
   }, [selectedFromAsset, selectedFromNetwork,selectedToAsset,selectedToNetwork]);
 
   useEffect(() => {
-    const init = async () => {
-      setRecieverAddress(state?.STELLAR_PUBLICK_KEY);
-      const walletStatus = await stellarWalletStatus(state?.STELLAR_PUBLICK_KEY);
-      setShowWalletActivation(walletStatus);
+    if (!recieverAddress && state?.STELLAR_PUBLICK_KEY) {
+      setRecieverAddress(state.STELLAR_PUBLICK_KEY);
+      return;
     }
-    init()
-  }, [])
+
+    const init = async () => {
+      const address = recieverAddress || state?.STELLAR_PUBLICK_KEY;
+      if (!address) return;
+      const walletStatus = await stellarWalletStatusWithUSDC(address);
+      setShowWalletActivation(walletStatus);
+    };
+
+    init();
+  }, [recieverAddress, state?.STELLAR_PUBLICK_KEY, showFromAssetModal]);
 
   const handleNetworkSelect = (network) => {
     if (modalType === 'from') {
@@ -533,23 +579,115 @@ const classic = ({ props }) => {
       return;
     }
     setQuotesLoading(true);
-    fetchPairQuotes(selectedFromNetwork.chainName, selectedToNetwork.chainName, selectedFromAsset.symbol, selectedToAsset.symbol, cleanValue);
+    fetchPairQuotes(selectedFromNetwork.chainName, selectedToNetwork.chainName, selectedFromAsset.symbol, selectedToAsset.symbol, cleanValue ,selectedFromAsset.address ,selectedToAsset.address );
   }
-  const fetchPairQuotes = useCallback(
-    debounce(async (sourceChainName, destChainName, sourceTokenSymbol, destTokenSymbol, qouteValue) => {
+  const fetchAllbridgeQuote = async (sourceChainName, destChainName, sourceTokenSymbol, destTokenSymbol, qouteValue) => {
+    try {
       const qoutesRep = await getChainTokenData(sourceChainName, destChainName, sourceTokenSymbol, destTokenSymbol, qouteValue);
       if (qoutesRep.success) {
-        setPairQuotes(qoutesRep.info);
-        setQuotesLoading(false);
-        Keyboard.dismiss();
-      } else {
-        setQuotesLoading(false);
-        setPairQuotes(null);
-        Keyboard.dismiss();
-        alert("error", qoutesRep.error)
+        return { success: true, provider: "ALLBRIDGE", data: qoutesRep.info };
       }
+      return { success: false, provider: "ALLBRIDGE", error: qoutesRep.error };
+    } catch (error) {
+      return { success: false, provider: "ALLBRIDGE", error: error.message };
+    }
+  };
+
+  const formatCompletionTime = (seconds) => {
+    const secs = Number(seconds || 0);
+    if (!secs || secs <= 0) return "~1 Min";
+    if (secs < 60) return `${Math.ceil(secs)} Sec`;
+    const mins = Math.floor(secs / 60);
+    const remSecs = Math.round(secs % 60);
+    return remSecs > 0 ? `${mins} Min ${remSecs} Sec` : `${mins} Min`;
+  };
+  const fetchNearIntentQuote = async (sourceChainName, destChainName, sourceTokenSymbol, destTokenSymbol, qouteValue ,selectedFromAssetAddress ,selectedToAssetAddress) => {
+    try {
+      configure();
+      const response = await getQuote({
+        originBlockchain: NEARINTENT_ENUM[sourceChainName],
+        originSymbol: sourceTokenSymbol,
+        destinationBlockchain: NEARINTENT_ENUM[destChainName],
+        destinationSymbol: destTokenSymbol,
+        amount: qouteValue,
+        recipient: recieverAddress,
+        refundTo: state?.wallet?.address,
+        recipientType: QuoteRequest.recipientType.DESTINATION_CHAIN,
+        refundType:QuoteRequest.refundType.ORIGIN_CHAIN,
+        depositType:QuoteRequest.depositType.ORIGIN_CHAIN,
+        depositMode:QuoteRequest.depositMode.SIMPLE,
+        originSymbolAddress:selectedFromAssetAddress,
+        destinationSymbolAddress:selectedToAssetAddress
+      });
+      if (response.success) {
+        return {
+          success: true,
+          provider: "Near-Intent",
+          data: {
+            provider: "Near-Intent",
+            conversionRate: (
+              Number(response.data.quote.amountInFormatted) /
+              Number(response.data.quote.amountOutFormatted)
+            ).toFixed(6),
+            minimumAmountOut: parseFloat(
+              response.data.quote.minAmountOutFormatted ??
+              response.data.quote.amountOutFormatted ??
+              0
+            ).toFixed(6),
+            slippageTolerance: 1,
+            completionTime: formatCompletionTime(response.data.quote.timeEstimate),
+            fee: {
+              native: { amount: 0.0, symbol: selectedFromNetwork.subName },
+              stablecoin: { amount: 0.0, symbol: selectedFromAsset.symbol },
+            },
+          },
+        };
+      }
+      return { success: false, provider: "Near-Intent", error: response.error };
+    } catch (error) {
+      return { success: false, provider: "Near-Intent", error: error.message };
+    }
+  };
+
+  const fetchPairQuotes = useCallback(
+    debounce(async (sourceChainName, destChainName, sourceTokenSymbol, destTokenSymbol, qouteValue ,selectedFromAssetAddress ,selectedToAssetAddress) => {
+      const [nearIntentResult] = await Promise.allSettled([
+        // fetchAllbridgeQuote(sourceChainName, destChainName, sourceTokenSymbol, destTokenSymbol, qouteValue),
+        fetchNearIntentQuote(sourceChainName, destChainName, sourceTokenSymbol, destTokenSymbol, qouteValue ,selectedFromAssetAddress ,selectedToAssetAddress),
+      ]);
+
+      // const allbridgeQuote = allbridgeResult.status === "fulfilled" ? allbridgeResult.value : { success: false, error: allbridgeResult.reason?.message };
+      const nearIntentQuote = nearIntentResult.status === "fulfilled" ? nearIntentResult.value : { success: false, error: nearIntentResult.reason?.message };
+
+      // if (allbridgeQuote.success && nearIntentQuote.success) {
+      //   // const allbridgeOut = parseFloat(allbridgeQuote.data.minimumAmountOut || 0);
+      //   const allbridgeOut = parseFloat(0);
+      //   const nearIntentOut = parseFloat(nearIntentQuote.data.minimumAmountOut || 0);
+
+      //   if (nearIntentOut > allbridgeOut) {
+      //     setPairQuotes(nearIntentQuote.data);
+      //     setProvider("Near-Intent");
+      //   } else {
+      //     setPairQuotes(allbridgeQuote.data);
+      //     setProvider("ALLBRIDGE");
+      //   }
+      // } else 
+      //   if (allbridgeQuote.success) {
+      //   setPairQuotes(allbridgeQuote.data);
+      //   setProvider("ALLBRIDGE");
+      // } else 
+        if (nearIntentQuote.success) {
+        setPairQuotes(nearIntentQuote.data);
+        setProvider("Near-Intent");
+      } else {
+        setPairQuotes(null);
+        alert("error", nearIntentQuote?.error?.body?.message||"Failed to fetch quotes.");
+      }
+
+      setQuotesLoading(false);
+      Keyboard.dismiss();
     }, 500),
-    []
+    [recieverAddress, selectedFromAsset, selectedFromNetwork]
   );
 
   const nextStep=()=>{
@@ -571,22 +709,85 @@ const classic = ({ props }) => {
 
   const swapManager = async () => {
     Keyboard.dismiss();
-    if(validateStellarAddress(recieverAddress)){
-    if(selectedFromNetwork.chainName!==selectedToNetwork.chainName){
-      if (parseFloat(fromAmount) <= 0) {
-        CustomInfoProvider.show("error","Please enter a valid amount.");
-      } else {
-        if (selectedFromNetwork.subName === "STR") {
-          await executeNonEvmSwap();
+    if (validateStellarAddress(recieverAddress)) {
+      if (selectedFromNetwork.chainName !== selectedToNetwork.chainName) {
+        if (parseFloat(fromAmount) <= 0) {
+          CustomInfoProvider.show("error", "Please enter a valid amount.");
         } else {
-          await executeSwap();
+          if (provider === "Near-Intent") {
+            await executeNearIntentSwap();
+          } else if (selectedFromNetwork.subName === "STR") {
+            await executeNonEvmSwap();
+          } else {
+            await executeSwap();
+          }
         }
+      } else {
+        CustomInfoProvider.show("error", "The source and destination networks cannot be the same.");
       }
-    }else{
-      CustomInfoProvider.show("error","The source and destination networks cannot be the same.");
+    } else {
+      CustomInfoProvider.show("error", "Please provide the valid receiver address.");
     }
-    }else{
-      CustomInfoProvider.show("error","Please provide the valid receiver address.");
+  };
+
+    const executeNearIntentSwap = async () => {
+    setSwapLoading(true);
+    try {
+      const responseOfNearIntent = await NearIntentSwapExecute({
+        originBlockchain: NEARINTENT_ENUM[selectedFromNetwork.chainName],
+        originSymbol: selectedFromAsset.symbol,
+        originTokenContract:selectedFromAsset.address,
+        destinationBlockchain: NEARINTENT_ENUM[selectedToNetwork.chainName],
+        destinationSymbol: selectedToAsset.symbol,
+        amount: fromAmount,
+        recipient: recieverAddress,
+        rpcUrl:CHAINS[selectedFromNetwork.symbol].backupRPCUrls[0],
+        chain:selectedFromAsset.name?.toLowerCase(),
+        activeWalletAddress: state?.wallet?.address,
+        activeChain: selectedFromAsset.chainId,
+        refundType:QuoteRequest.refundType.ORIGIN_CHAIN,
+        refundTo:state?.wallet?.address,
+        destinatTokenContract:selectedToAsset.address,
+        chainConfig:CHAINS[selectedFromNetwork.symbol]
+      })
+      console.info("swap response of nearIntent:", responseOfNearIntent);
+      if (responseOfNearIntent.success) {
+        await LocalTxManager.saveTx(state && state.wallet && state.wallet.address, {
+          chain: selectedFromNetwork.chainName,
+          hash: responseOfNearIntent.data.depositAddress,
+          status: "pending",
+          statusColor: "#eec14fff",
+          timestamp: Date.now(),
+          symbol: selectedFromAsset.symbol,
+          amount: fromAmount.toString(),
+          txType:"nearIntent"
+        });
+        ShortTermStorage.syncTx({
+          txHash: responseOfNearIntent.data.depositAddress,
+          walletAddress: state.wallet.address,
+          fromAddress: state?.wallet?.address,
+          toAddress: recieverAddress,
+          provider: "NEARINTENT",
+          fromChain: selectedFromNetwork.chainName,
+          fromToken: selectedFromAsset.symbol,
+          toChain: selectedToNetwork.chainName,
+          toToken: selectedToAsset.symbol,
+          amountIn: fromAmount,
+          amountOut: fromAmount,
+          txType: "Bridge",
+          fromTokenMetaData: selectedFromAsset.symbol,
+        })
+        setSwapLoading(false);
+        CustomInfoProvider.show("success", "Hurray", provider+" Order Placed Successfully.", [{ text: "Okay", onPress: nextStep }]);
+      } else {
+        setSwapLoading(false);
+        console.error("Transaction failed:", responseOfNearIntent?.res);
+        CustomInfoProvider.show("error", responseOfNearIntent?.error.message||"Bridge Faild.");
+      }
+    } catch (error) {
+      setSwapLoading(false);
+      console.error("Transaction error:", error);
+      CustomInfoProvider.show("error", "Bridge Faild.");
     }
   }
 
@@ -647,6 +848,8 @@ const classic = ({ props }) => {
           await ShortTermStorage.syncTx({
             txHash: res.approvalTxHash,
             walletAddress: state && state.wallet && state.wallet.address,
+            fromAddress: state?.wallet?.address,
+            toAddress: selectedToNetwork.subName==="STR"?recieverAddress:state?.wallet?.address,
             provider: "EVMTX",
             fromChain: selectedFromNetwork.chainName,
             fromToken: selectedFromAsset.symbol,
@@ -654,7 +857,8 @@ const classic = ({ props }) => {
             toToken: selectedToAsset.symbol,
             amountIn: fromAmount.toString(),
             amountOut: fromAmount.toString(),
-            txType:"Token Approval"
+            txType:"Token Approval",
+            fromTokenMetaData:selectedFromAsset.address
           })
           txHashes.push({
             chain: selectedFromNetwork.chainName,
@@ -665,6 +869,8 @@ const classic = ({ props }) => {
         await ShortTermStorage.syncTx({
           txHash: res.transferTxHash,
           walletAddress: state && state.wallet && state.wallet.address,
+          fromAddress: state?.wallet?.address,
+          toAddress: selectedToNetwork.subName==="STR"?recieverAddress:state?.wallet?.address,
           provider: "ALLBRIDGE",
           fromChain:  selectedFromNetwork.chainName,
           fromToken: selectedFromAsset.symbol,
@@ -672,7 +878,8 @@ const classic = ({ props }) => {
           toToken: selectedToAsset.symbol,
           amountIn: fromAmount.toString(),
           amountOut: fromAmount.toString(),
-          txType:"Bridge"
+          txType:"Bridge",
+          fromTokenMetaData:selectedFromAsset.address
         })
         await LocalTxManager.saveTx(state && state.wallet && state.wallet.address, {
           chain: selectedFromNetwork.chainName,
@@ -715,17 +922,25 @@ const classic = ({ props }) => {
 
   return (
     <View style={styles.container}>
-      <WalletActivationComponent
-       isVisible={showWalletActivation}
-       onClose={() => {setWalletActivationWarning(true),setShowWalletActivation(false)}}
-       onActivate={()=>{setWalletActivationWarning(true),setShowWalletActivation(false)}}
-       navigation={navigation}
-       appTheme={state.THEME.THEME}
-       shouldNavigateBack={true}
+      <StellarSetupBottomSheet
+        visible={showWalletActivation}
+        onDismiss={() => {
+         navigation.goBack();
+        }}
+        onSetupComplete={() => {
+          // fires automatically once all 3 setup steps succeed;
+        }}
+        stellarAcc={recieverAddress}
+        evmAcc={state?.wallet?.address}
+        broadcastTrustline={() => { console.info("call") }}
+        onFinalSwap={async () => {
+          setWalletActivationWarning(false),
+          setShowWalletActivation(false)
+        }}
       />
       <Exchange_screen_header
         title="Bridge"
-        onLeftIconPress={() => navigation.navigate("Home")}
+        onLeftIconPress={() => {navigation.goBack()}}
         onRightIconPress={() => {
           console.log("Right icon pressed");
         }}
@@ -778,7 +993,18 @@ const classic = ({ props }) => {
                 </View>
                 <Icon type="ionicon" name="chevron-down" size={20} color={theme.headingTx} />
               </TouchableOpacity>
-              {showOption && <View style={styles.optionCon}>
+              
+              <View style={{flexDirection:"row"}}>
+                {!showOption ? <View style={styles.availableContainer}>
+                <TouchableOpacity style={{ flexDirection: "row" }} onPress={async () => { await fetchSelectedTokenBalance() }}>
+                  <Text style={styles.availableLabel}>Available</Text>
+                  <Icon type="ionicon" name="refresh" size={16} color={theme.headingTx} />
+                </TouchableOpacity>
+                {balanceLoading ? <ActivityIndicator size={"small"} color={"green"} /> :
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <Text selectable={true} style={styles.availableAmount}>{fromBalance ? fromBalance?.tokenBalance : "0.000"}</Text>
+                  </ScrollView>}
+              </View> :<View style={styles.optionCon}>
                 <TouchableOpacity style={styles.optioBtn} onPress={() => { navigation.navigate("EthSwap", { activeNetwork: selectedFromNetwork.subName, activeAsset: selectedFromAsset }) }}>
                   <Text style={[styles.amountInput, { color: "#fff" }]}>Swap</Text>
                 </TouchableOpacity>
@@ -789,6 +1015,7 @@ const classic = ({ props }) => {
               <TouchableOpacity style={styles.addButton} onPress={() => { setShowOption(!showOption ? true : false) }}>
                 <Icon type="ionicon" name={showOption ? "close-circle-outline" : "add-circle-outline"} size={28} color={theme.headingTx} />
               </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.amountContainer}>
@@ -801,16 +1028,9 @@ const classic = ({ props }) => {
                 keyboardType="numeric"
                 returnKeyType="done"
               />
-              <View style={styles.availableContainer}>
-                <TouchableOpacity style={{ flexDirection: "row" }} onPress={async () => { await fetchSelectedTokenBalance() }}>
-                  <Text style={styles.availableLabel}>Available</Text>
-                  <Icon type="ionicon" name="refresh" size={16} color={theme.headingTx} />
-                </TouchableOpacity>
-                {balanceLoading ? <ActivityIndicator size={"small"} color={"green"} /> :
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <Text selectable={true} style={styles.availableAmount}>{fromBalance ? fromBalance?.tokenBalance : "0.000"}</Text>
-                  </ScrollView>}
-              </View>
+              <TouchableOpacity style={styles.maxBtnCon} onPress={() => { handleInputChange(fromBalance ? fromBalance?.tokenBalance : "0.000") }}>
+                <Text style={styles.maxBtnTxt}>MAX</Text>
+              </TouchableOpacity>
             </View>
             <View style={{ flexDirection: "row" }}>
               <Text style={styles.walletAddress} numberOfLines={1}>Active Wallet : </Text>
@@ -821,23 +1041,26 @@ const classic = ({ props }) => {
           </View>
 
           <View style={[styles.section, styles.toSection]}>
-            <View style={styles.headerRow}>
-              <View style={[styles.networkHeader, { marginTop: hp(-1.5) }]}>
-                <Text style={styles.labelText}>To Network</Text>
-
-              </View>
-              <View
-                style={styles.networkSelector}
-              >
-                <Image
-                  source={{ uri: selectedToNetwork?.imageUrl }}
-                  style={styles.networkIcon}
-                />
-                <Text style={styles.networkName}>{selectedToNetwork.subName}</Text>
-              </View>
+            <View style={[styles.networkHeader, { marginTop: hp(-0.4) }]}>
+              <Text style={styles.labelText}>To Network</Text>
             </View>
+            <View style={styles.headerRow}>
 
-            {selectedToAsset && (
+              <View style={styles.usdcContainer}>
+                <View
+                  style={styles.toAssetSelector}
+                >
+                  <Image
+                    source={{ uri: selectedToNetwork?.imageUrl }}
+                    style={styles.assetIconLarge}
+                  />
+                  <View style={styles.toAssetInfo}>
+                    <Text style={styles.assetLabel}>Network</Text>
+                    <Text style={styles.usdcName}>{selectedToNetwork.name}</Text>
+                  </View>
+                </View>
+              </View>
+
               <View style={styles.usdcContainer}>
                 <View
                   style={styles.toAssetSelector}
@@ -851,53 +1074,13 @@ const classic = ({ props }) => {
                     <Text style={styles.usdcName}>{selectedToAsset.symbol}</Text>
                   </View>
                 </View>
-
-                <View style={styles.relayerFeeContainer}>
-                  <Text style={styles.relayerFeeLabel}>Relayer Fee <Icon name={"gas-station"} type={"materialCommunity"} size={16} color={theme.headingTx} /></Text>
-                  <View style={styles.feeButtons}>
-                    <TouchableOpacity
-                      style={[
-                        styles.feeButton,
-                        selectedRelayerFee === 'native' && styles.feeButtonActive,
-                        styles.gasFeeNativeCon
-                      ]}
-                      onPress={() => setSelectedRelayerFee('native')}
-                    >
-                      <Image
-                        source={{ uri: selectedFromNetwork?.imageUrl }}
-                        style={styles.feeIconSmall}
-                      />
-                      <Text style={[
-                        styles.feeButtonText,
-                        selectedRelayerFee === 'native' && styles.feeButtonTextActive
-                      ]}> Native</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.feeButton,
-                        selectedRelayerFee === 'stablecoin' && styles.feeButtonActive,
-                        styles.gasFeeStableCon
-                      ]}
-                      onPress={() => setSelectedRelayerFee('stablecoin')}
-                    >
-                      <Image
-                        source={{ uri: selectedFromAsset.logoURI }}
-                        style={styles.feeIconSmall}
-                      />
-                      <Text style={[
-                        styles.feeButtonText,
-                        selectedRelayerFee === 'stablecoin' && styles.feeButtonTextActive
-                      ]}> {selectedFromAsset.symbol}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
               </View>
-            )}
+            </View>
 
             <Text style={[styles.labelText,{marginTop:hp(1.2),alignSelf:"flex-start"}]}>Reciever Address</Text>
             <View style={styles.recieverAddressInput}>
               <TextInput
+                editable={false}
                 scrollEnabled={true}
                 value={recieverAddress}
                 style={{color: theme.headingTx,fontSize: 18}}
@@ -924,7 +1107,7 @@ const classic = ({ props }) => {
             <Text style={styles.quoteHeading}>Quote Details</Text>
             <View style={styles.quoteRow}>
               <Text style={[styles.quoteLabel, { color: theme.inactiveTx }]}>Provider</Text>
-              <Text style={[styles.quoteValue, { color: theme.headingTx }]}>Allbridge</Text>
+              <Text style={[styles.quoteValue, { color: theme.headingTx }]}>{pairQuotes.provider}</Text>
             </View>
             <View style={styles.quoteRow}>
               <Text style={[styles.quoteLabel, { color: theme.inactiveTx }]}>Conversion Rate</Text>
