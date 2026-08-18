@@ -161,12 +161,7 @@ const Assets_manage = ({ route }) => {
         const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
         server.loadAccount(state.STELLAR_PUBLICK_KEY)
             .then(account => {
-                setassets(account.balances)
                 setLoading(null)
-                dispatch_({
-                    type: SET_ASSET_DATA,
-                    payload: account.balances,
-                })
                 get_stellar()
             })
             .catch(error => {
@@ -301,20 +296,37 @@ const Assets_manage = ({ route }) => {
             <View style={[styles.main_con, { backgroundColor: theme.bg }]}>
                 <View style={styles.assetCon}>
                      <FlatList
-                        data={assets}
+                        data={assets.filter(item =>
+                            item.asset_type === "native" ||
+                            parseFloat(item.balance) > 0
+                        )}
                         keyExtractor={(item, index) => index.toString()}
                         style={{ marginBottom: hp(5) }}
                         renderItem={({ item, index }) => {
                         return (
-                            <TouchableOpacity key={index} style={[styles.assetCard, { backgroundColor: theme.cardBg }]} onPress={() => { navigation.navigate("send_recive", { bala: item.balance, assetIssuer: item.asset_type === "native" ? "native" : item?.asset_issuer, asset_name: item.asset_type === "native" ? "native" : item.asset_code === "USDC" ? "USDC" : item.asset_code }) }}>
+                            <TouchableOpacity key={index} style={[styles.assetCard, { backgroundColor: theme.cardBg }]}
+                                disabled={item.asset_type === "liquidity_pool_shares"}
+                                onPress={() => {
+                                    if (item.asset_type === "liquidity_pool_shares") return;
+                                    navigation.navigate("send_recive", { bala: item.balance, assetIssuer: item.asset_type === "native" ? "native" : item?.asset_issuer, asset_name: item.asset_type === "native" ? "native" : item.asset_code === "USDC" ? "USDC" : item.asset_code })
+                                }}>
                                 <View style={{flexDirection: "row",alignItems:"center",justifyContent:"flex-start",width:wp(45)}}>
                                     <View style={styles.assetImgCom}>
                                         {item.asset_type === "native" ? <Image source={{uri:stellarTokens?.assets[0]?.icon}} width={43} height={43}/> :
-                                        item.icon===null ? <Text style={[styles.assetLatter,{color:theme.headingTx}]}>{item.asset_type === "native" ? "L" : item?.asset_code[0]?.toUpperCase() }</Text> : <Image source={{uri:item.icon}} width={43} height={43}/>}
+                                        item.asset_type === "liquidity_pool_shares" ? <Text style={[styles.assetLatter,{color:theme.headingTx}]}>LP</Text> :
+                                        (item.icon == null) ? <Text style={[styles.assetLatter,{color:theme.headingTx}]}>{(item?.asset_code?.[0] ?? item?.asset_type?.[0] ?? "?").toUpperCase()}</Text> : <Image source={{uri:item.icon}} width={43} height={43}/>}
                                     </View>
                                     <View style={{ flexDirection: "column",marginLeft:10 }}>
-                                        <Text style={[styles.assetName, { color: theme.headingTx }]}>{item.asset_type === "native" ? "XLM" : item.asset_code}</Text>
-                                        <Text style={[styles.domainName, { color: theme.inactiveTx }]}>{item?.asset_issuer ? item?.asset_issuer?.slice(0, 3) + "...." + item?.asset_issuer?.slice(-3) : "Native Lumens"}</Text>
+                                        <Text style={[styles.assetName, { color: theme.headingTx }]}>
+                                            {item.asset_type === "native" ? "XLM" :
+                                            item.asset_type === "liquidity_pool_shares" ? "Liquidity Pool" :
+                                            (item.asset_code || item.asset_type)}
+                                        </Text>
+                                        <Text style={[styles.domainName, { color: theme.inactiveTx }]} numberOfLines={1}>
+                                            {item.asset_type === "liquidity_pool_shares"
+                                                ? (item?.liquidity_pool_id ? item.liquidity_pool_id.slice(0,6) + "...." + item.liquidity_pool_id.slice(-6) : "Pool")
+                                                : item?.asset_issuer ? item?.asset_issuer?.slice(0, 3) + "...." + item?.asset_issuer?.slice(-3) : "Native Lumens"}
+                                        </Text>
                                     </View>
                                 </View>
                                 {Loading_assets_bal === true ? <ActivityIndicator color={"#4052D6"} /> : <Text style={[styles.assetValue, { color: theme.headingTx }]} numberOfLines={1}>{item.balance}</Text>}

@@ -368,10 +368,6 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
             network,
           });
 
-          await respondOk({ hash: signed.hash });
-          setTxModalVisible(false);
-          setTransactionRequest(null);
-          setLoading(false);
 
           const { Horizon, TransactionBuilder, Networks } = require("@stellar/stellar-sdk");
           const networkPass = network === "testnet" ? Networks.TESTNET : Networks.PUBLIC;
@@ -379,9 +375,14 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
             ? "https://horizon-testnet.stellar.org"
             : "https://horizon.stellar.org";
           const server = new Horizon.Server(horizonUrl);
-          server
-            .submitTransaction(TransactionBuilder.fromXDR(signed.signedXDR, networkPass))
-            .catch((e) => console.warn("Stellar background submit failed:", e));
+          const horizonResult = await server.submitTransaction(
+            TransactionBuilder.fromXDR(signed.signedXDR, networkPass)
+          );
+
+          await respondOk({ hash: horizonResult.hash ?? signed.hash });
+          setTxModalVisible(false);
+          setTransactionRequest(null);
+          setLoading(false);
 
           CustomInfoProvider.show("success", "Approved", "Transaction signed & submitted");
           return;
