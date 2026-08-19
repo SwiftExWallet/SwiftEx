@@ -83,8 +83,8 @@ android {
         applicationId "org.app.swiftEx.wallet"
         minSdkVersion = rootProject.ext.minSdkVersion
         targetSdkVersion = rootProject.ext.targetSdkVersion
-        versionCode 120
-        versionName "1.1.110"
+        versionCode 121
+        versionName "1.1.111"
     }
     externalNativeBuild {
         cmake {

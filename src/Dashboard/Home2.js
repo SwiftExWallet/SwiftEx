@@ -3,6 +3,7 @@ import {
   StyleSheet,
   View,
   AppState,
+  NativeModules,
   BackHandler,
 } from "react-native";
 import { useDispatch, useSelector } from "react-redux";
@@ -143,6 +144,17 @@ const Home2 = ({ navigation }) => {
       try {
         requestUserPermission();
         getToken();
+
+        try {
+          const alreadyMigrated = await NativeModules.StorageModule.isMigrated();
+          if (!alreadyMigrated) {
+            const result = await NativeModules.StorageModule.migrateToSecureStorage();
+            console.log('H-4 migration:', result?.status);
+          }
+        } catch (migErr) {
+          console.warn('H-4 migration (non-fatal):', migErr?.message);
+        }
+
         await SetCurrentWallet()
       } catch (e) {
         console.log(e);
