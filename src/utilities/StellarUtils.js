@@ -1,6 +1,6 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
 import axios from 'axios';
-import { STELLAR_URL } from '../Dashboard/constants';
+import { ENVIRONMENT, STELLAR_URL } from '../Dashboard/constants';
 const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
 
 // Function to calculate total reserved and available balance
@@ -118,7 +118,7 @@ export async function HandleStellarTrustLine(secretKey, assetCode, assetIssuer, 
     const asset = new StellarSdk.Asset(assetCode, assetIssuer);
     const transaction = new TransactionBuilder(account, {
       fee: await server.fetchBaseFee(),
-      networkPassphrase: StellarSdk.Networks.PUBLIC,
+      networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
     })
       .addOperation(
         addTrustline

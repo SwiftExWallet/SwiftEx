@@ -1,10 +1,10 @@
 import axios from 'axios'
 import AsyncStorageLib from '@react-native-async-storage/async-storage'
-import { REACT_APP_HOST, REACT_APP_GOOGLE_VPID_KEY, REACT_APP_LOCAL_TOKEN, REACT_APP_FCM_TOKEN_KEY, REACT_PROXY_HOST} from './ExchangeConstants'
+import { REACT_PROXY_HOST, REACT_APP_GOOGLE_VPID_KEY, REACT_APP_LOCAL_TOKEN, REACT_APP_FCM_TOKEN_KEY} from './ExchangeConstants'
 import DeviceInfo from 'react-native-device-info'
 import messaging from '@react-native-firebase/messaging'
 import { ethers } from 'ethers'
-const SERVER_URL = REACT_APP_HOST
+const SERVER_URL = REACT_PROXY_HOST
 const LOCAL_TOKEN = REACT_APP_LOCAL_TOKEN
 let TOKEN =''
 const HEADERS = { 'Content-type': 'application/json' }
@@ -115,7 +115,7 @@ export const Add_pin = async (userData) => {
     redirect: "follow"
   };
   
-  fetch(REACT_APP_HOST+"/users/updatePasscode", requestOptions)
+  fetch(REACT_PROXY_HOST+"/users/updatePasscode", requestOptions)
     .then((response) => response.text())
     .then((result) => console.log(result))
     .catch((error) => console.log(error));
@@ -198,7 +198,7 @@ export const createGuestUser=async(referralCode)=>{
     redirect: "follow"
   };
   
-  const response = await fetch(REACT_APP_HOST+"/v1/device", requestOptions);
+  const response = await fetch(REACT_PROXY_HOST+"/v1/device", requestOptions);
   if (!response.ok) {
     return {
       status: false,
@@ -227,12 +227,22 @@ export const createGuestUser=async(referralCode)=>{
 export const proxyRequest = async (url, request, body = {}) => {
   try {
     const deviceToken = await getToken();
+    let walletAddress = '';
+    try {
+      const parsedData = await AsyncStorageLib.getItem('wallet');
+      if (parsedData) {
+        const proccessed = parsedData ? JSON.parse(parsedData) : [];
+        walletAddress = proccessed?.address
+      }
+    } catch (_) {}
+
     const opts = {
       url,
       body: body,
       headers: {
         authorization: `Bearer ${deviceToken}`,
         "x-auth-device-token": deviceToken,
+        ...(walletAddress ? { "x-wallet-address": walletAddress } : {}),
       },
     }
 
@@ -309,5 +319,20 @@ export async function PPUT(opts) {
   const header = opts.headers ? opts.headers : HEADERS
   const body = opts.body
   const res = await axios.put(URL, body, { headers: header })
+  return res.data
+}
+export async function PPATCH(opts) {
+  const URL = REACT_PROXY_HOST + opts.url
+  const header = opts.headers ? opts.headers : HEADERS
+  const body = opts.body
+  const res = await axios.patch(URL, body, { headers: header })
+  return res.data
+}
+
+export async function PDELETE(opts) {
+  const URL = REACT_PROXY_HOST + opts.url
+  const header = opts.headers ? opts.headers : HEADERS
+  const body = opts.body
+  const res = await axios.delete(URL, { headers: header, data: body })
   return res.data
 }

@@ -1,6 +1,6 @@
 
 const { proxyRequest, PPOST } = require("../api");
-const getCUSTOMSwapQuote = async (tokenIn,amountIn, tokenName,tokenOut="0xdAC17F958D2ee523a2206206994597C13D831ec7") => {
+const getCUSTOMSwapQuote = async (tokenIn,amountIn, tokenName,tokenOut="0xdAC17F958D2ee523a2206206994597C13D831ec7", recipient="") => {
     try {
         const tokens = [{
             "symbol": 'WETH',
@@ -18,7 +18,7 @@ const getCUSTOMSwapQuote = async (tokenIn,amountIn, tokenName,tokenOut="0xdAC17F
         }];
 
 
- const { res, err } = await proxyRequest("/v1/eth/swap-quote", PPOST, { tokenIn: tokens[0], tokenOut: tokens[1], amount: amountIn });
+ const { res, err } = await proxyRequest("/v1/eth/swap-quote", PPOST, { tokenIn: tokens[0], tokenOut: tokens[1], amount: amountIn, recipient });
     if (err?.status) {
         console.error(`Failed to get swap quote: ${err}`);
         return { status: false, error: err.message };

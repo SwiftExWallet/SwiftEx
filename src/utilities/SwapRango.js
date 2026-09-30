@@ -176,7 +176,14 @@ export const swapTxSign = async (activeChain, activeWalletAddress, response) => 
 
                 const { res, err } = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, {
                     signedTransactions: [rawTx],
-                    broadcastChain: activeChain.symbol
+                    broadcastChain: (() => {
+                        const s = activeChain.symbol;
+                        if (s === "BNB") return "BSC";
+                        if (s === "MATIC") return "POL";
+                        if (s === "AVAX") return "AVA";
+                        if (s === "BASE") return "BAS";
+                        return s;
+                    })()
                 });
 
                 if (err?.status) throw new Error(err.message || 'Broadcast failed');
@@ -289,12 +296,12 @@ export async function performeRangoSwap(rangoQuoteInfo, state, fromToken, toToke
                 const validTxs = submitTx.response.results.filter(item => item.transactionHash);
                 for (const tx of validTxs) {
                     await ShortTermStorage.syncTx({
-                        requestId: rangoQuoteInfo.requestId,
+                        quoteId: rangoQuoteInfo.requestId,
                         txHash:  tx.transactionHash,
                         walletAddress: state?.wallet?.address,
                         fromAddress: state?.wallet?.address,
                         toAddress: toToken.chain === "STR" ? state.STELLAR_PUBLICK_KEY : state?.wallet?.address,
-                        provider: tx?.type === "approve" ? "EVMTX" : "RANGO",
+                        provider: tx?.type === "approve" ? "EVMTX" : "EVMTX",
                         fromChain: CHAINS[fromToken.chain].chainName,
                         fromToken: fromToken.symbol,
                         toChain: CHAINS[toToken.chain].chainName,

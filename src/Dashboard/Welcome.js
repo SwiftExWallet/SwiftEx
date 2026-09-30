@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
+import { PPOST, proxyRequest } from './exchange/crypto-exchange-front-end-main/src/api';
 import {
   StyleSheet,
   Text,
@@ -27,7 +28,6 @@ import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { alert } from "./reusables/Toasts";
 import { useNavigation } from "@react-navigation/native";
 import apiHelper from "./exchange/crypto-exchange-front-end-main/src/apiHelper";
-import { REACT_APP_HOST } from "./exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import * as StellarSdk from '@stellar/stellar-sdk';
 import AccessNativeStorage from "./Wallets/AccessNativeStorage";
 import crashlytics from '@react-native-firebase/crashlytics';
@@ -114,7 +114,7 @@ const Welcome = (props) => {
       const response=await dispatch(Generate_Wallet2())
         if (response) {
           console.log("respoms:",response)
-          const result = await apiHelper.post(REACT_APP_HOST+'/v1/wallet', {
+          const result = await proxyRequest('/v1/wallet', PPOST, {
               "addresses": {
                   "eth": response.wallet.address,
                   "xlm": response.wallet.stellarWallet.publicKey,

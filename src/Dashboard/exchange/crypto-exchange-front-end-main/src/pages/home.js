@@ -85,11 +85,11 @@ export const HomeView = () => {
   ]
 
   const tools = [
-    { name: "Manage Assets", sub: "View and manage your assets", icon: "grid", provider: "feather", color: "#A855F7" },
-    { name: "Fiat Access", sub: "Buy USDC and other assets", icon: "attach-money", provider: "material", color: "#22C55E" },
-    { name: "Pending Trades", sub: "View all your pending trades", icon: "timeline-clock-outline", provider: "materialCommunity", color: "#6366F1" },
-    { name: "Transaction History", sub: "View all your transactions", icon: "history", provider: "material", color: "#6366F1" },
-    { name: "Import Wallet", sub: "Import your existing stellar wallet", icon: "download", provider: "feather", color: "#3B82F6" },
+    { name: "Manage\nAssets", icon: "grid", provider: "feather", color: "#A855F7" },
+    { name: "Fiat\nAccess", icon: "attach-money", provider: "material", color: "#22C55E" },
+    { name: "Pending\nTrades", icon: "timeline-clock-outline", provider: "materialCommunity", color: "#6366F1" },
+    { name: "Transaction\nHistory", icon: "history", provider: "material", color: "#6366F1" },
+    { name: "Import Wallet", icon: "download", provider: "feather", color: "#3B82F6" },
   ];
 
   const PnlOverViewConfig = [
@@ -197,9 +197,9 @@ export const HomeView = () => {
           <View style={st.portfolioInfo}>
             <View style={st.row}>
               <Text style={[st.label,{color:theme.headingTx}]}>Balance</Text>
-              <Icon name="eye-outline" type="ionicon" size={14} color={theme.cardSubTx} style={{ marginLeft: 6 }} />
+              <Icon name={state && state.isTotalInUSDVisible?"eye-off-outline":"eye-outline"} type="ionicon" size={14} color={theme.cardSubTx} style={{ marginLeft: 6 }}/>
             </View>
-            <Text style={[st.balance,{color:theme.headingTx}]}>${portfolioVal}</Text>
+            <Text style={[st.balance,{color:theme.headingTx}]}>${state && state.isTotalInUSDVisible?portfolioVal:"X.XX"}</Text>
             <View style={st.row}>
               <Text style={[st.percentage,{color:theme.inactiveTx}]}><Text style={st.subLabel}>Stellar DEX</Text></Text>
             </View>
@@ -270,24 +270,22 @@ export const HomeView = () => {
           </View>
         </LinearGradient>
 
-        <View style={[st.sec,{marginTop:hp(-0.1)}]}>
+        <View style={st.secPnl}>
           <PnlOverView stellarKey={stellarKey} onSummaryUpdate={setPnl} activeTheme={theme} />
         </View>
 
-        <View style={st.sec}>
-          <Text style={[st.secTitle, { marginBottom: 10 }]}>More Options</Text>
-          {tools.map((t, i) => (
-            <TouchableOpacity key={i} style={[st.toolRow, i === tools.length - 1 && { borderBottomWidth: 0 }]} onPress={() => toolNav(i)}>
-              <View style={[st.toolDot, { backgroundColor: t.color + '15' }]}>
-                <Icon name={t.icon} type={t.provider} size={18} color={t.color} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={st.toolName}>{t.name}</Text>
-                <Text style={st.toolSub}>{t.sub}</Text>
-              </View>
-              <Icon name="chevron-right" type="feather" size={18} color={theme.cardSubTx} />
-            </TouchableOpacity>
-          ))}
+        <View style={st.secMoreOp}>
+          <Text style={st.secTitle}>More Options</Text>
+          <View style={st.moreRow}>
+            {tools.slice(0, 4).map((t, i) => (
+              <TouchableOpacity key={i} style={st.moreOpTile} activeOpacity={0.8} onPress={() => toolNav(i)}>
+                <View style={[st.moreOpIconBox,{backgroundColor:t.color+25}]}>
+                  <Icon name={t.icon} type={t.provider} size={20} color={t.color} />
+                </View>
+                <Text style={st.moreOpLabel}>{t.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         <View style={st.chartSec}>
@@ -319,7 +317,7 @@ export const HomeView = () => {
               data={chartData}
               adjustToWidth
               width={wp(82)}
-              height={hp(28)}
+              height={hp(20)}
               color={lineColor}
               thickness={2}
               curved
@@ -615,9 +613,9 @@ const getStyles = (theme) => StyleSheet.create({
     alignItems: 'center'
   },
   portfolioCard: {
-    padding: 20,
+    paddingHorizontal:20,
+    paddingVertical:12,
     width:wp(93),
-    height: 255,
     borderRadius: 24,
     marginBottom:  20,
     overflow: 'hidden',
@@ -642,7 +640,6 @@ const getStyles = (theme) => StyleSheet.create({
     color: '#FFF',
     fontSize: 34,
     fontWeight: 'bold',
-    marginVertical: 5
   },
   percentage: {
     color: '#10B981',
@@ -718,17 +715,18 @@ const getStyles = (theme) => StyleSheet.create({
 
   chartSec: {
     marginHorizontal: 16,
-    marginTop: 16,
+    marginTop: 6,
     backgroundColor: theme.cardBg,
     borderRadius: 24,
-    padding: 16
+    paddingHorizontal:16,
+    paddingVertical:11
   },
   chartTopCon: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 4,
-    marginBottom: 10
+    marginBottom: 5
   },
   priceText: {
     fontSize: 19,
@@ -789,9 +787,74 @@ const getStyles = (theme) => StyleSheet.create({
     color: theme.headingTx,
     fontWeight: "600"
   },
-  freshnessTag: {
-    color: theme.inactiveTx,
-    fontSize: 13,
-    fontWeight: "400"
-  }
+  secPnl: {
+    marginHorizontal: 16,
+    marginTop: hp(-1),
+    backgroundColor: theme.cardBg,
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+  },
+  secMoreOp: {
+    marginHorizontal: 16,
+    marginTop: 6,
+    backgroundColor: theme.cardBg,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  secTitle: {
+    color: theme.headingTx,
+    fontSize: 17,
+    fontWeight: "bold",
+    marginBottom: 10,
+  },
+  moreRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 8,
+  },
+  moreOpTile: {
+    flex: 1,
+    backgroundColor: theme.bg,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: Platform.OS==="android"?10:2,
+    alignItems: "center",
+    minHeight: 72,
+  },
+  moreOpWideTile: {
+    flex: 2,
+    backgroundColor: theme.bg,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 52,
+  },
+  moreOpIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 7,
+  },
+  moreOpLabel: {
+    color: theme.headingTx,
+    fontSize: 10,
+    fontWeight: "700",
+    lineHeight: 14,
+    textAlign: "center",
+  },
+  ImportBage: {
+    flexShrink: 0,
+    zIndex: 10,
+    paddingHorizontal: 15,
+    paddingVertical:hp(0.4),
+    borderRadius: 12,
+    borderWidth: 1,
+    marginLeft:wp(1)
+  },
 });

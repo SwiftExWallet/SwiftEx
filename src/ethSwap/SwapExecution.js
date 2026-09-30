@@ -108,7 +108,7 @@ const WETH_ABI = [
             );
             console.log(signedTxs)
     
-        const { res, err } = await proxyRequest("/v1/eth/swap-transaction/execute", PPOST,  {txs:signedTxs});
+        const { res, err } = await proxyRequest("/v1/eth/swap-transaction/execute", PPOST,  {txs:signedTxs, broadcastChain: "ETH"});
         console.log("swap-exe---",res,err)
         if(err?.status)
         {

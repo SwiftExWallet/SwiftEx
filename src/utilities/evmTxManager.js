@@ -191,7 +191,11 @@ export const fustionEvmTxManager = async (chainName, fromAddress, amount, toAddr
 
         const { res, err } = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, {
             signedTransactions: [signedResult.signedTx.slice(2)],
-            broadcastChain: chainConfig.subName === "BNB" ? "BSC" : chainConfig.subName
+            broadcastChain: chainConfig.subName === "BNB" ? "BSC"
+                : chainConfig.subName === "MATIC" ? "POL"
+                : chainConfig.subName === "AVAX" ? "AVA"
+                : chainConfig.subName === "BASE" ? "BAS"
+                : chainConfig.subName
         });
 
         if (err?.status) {

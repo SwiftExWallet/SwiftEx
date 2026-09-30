@@ -54,7 +54,7 @@ const ConfirmTransaction = (props) => {
     setLoading(true);
     setDisable(true);
     if (type === "Eth") {
-       const { res, err } = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, {signedTx:rawTransaction});
+       const { res, err } = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, {signedTx:rawTransaction, broadcastChain: "ETH"});
          if(err)
          {
           alert("error",err.message||"Something went wrong...")
@@ -93,7 +93,7 @@ const ConfirmTransaction = (props) => {
         }
       }
     } else if (type === "BSC") {
-      const { res, err } = await proxyRequest("/v1/bsc/transaction/broadcast", PPOST, { signedTx: rawTransaction });
+      const { res, err } = await proxyRequest("/v1/bsc/transaction/broadcast", PPOST, { signedTx: rawTransaction, broadcastChain: "BSC" });
       if (err) {
         setDisable(false);
         setLoading(false);

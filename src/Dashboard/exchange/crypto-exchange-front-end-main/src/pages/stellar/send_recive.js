@@ -16,7 +16,7 @@ import { useSelector } from "react-redux";
 import { Camera, useCameraDevice, useCodeScanner, useCameraPermission } from "react-native-vision-camera";
 import { Exchange_screen_header } from "../../../../../reusables/ExchangeHeader";
 import { alert } from "../../../../../reusables/Toasts";
-import { STELLAR_URL } from "../../../../../constants";
+import { ENVIRONMENT, STELLAR_URL } from "../../../../../constants";
 import { Paste, SaveTransaction } from "../../../../../../utilities/utilities";
 import Snackbar from "react-native-snackbar";
 import ErrorComponet from "../../../../../../utilities/ErrorComponet";
@@ -27,9 +27,10 @@ import CustomInfoProvider from "../../components/CustomInfoProvider";
 import QRScannerComponent from "../../../../../Modals/QRScannerComponent";
 import TokenQrCode from "../../../../../Modals/TokensQrCode";
 import { colors } from "../../../../../../Screens/ThemeColorsConfig";
-StellarSdk.Networks.PUBLIC
+import ShortTermStorage from "../../../../../../utilities/ShortTermStorage";
 
 const send_recive = ({route}) => {
+  ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC
   const { hasPermission, requestPermission } = useCameraPermission()
     const {bala,asset_name,assetIssuer}=route.params;
     console.log("----------------usdtAsse-----------------",bala,asset_name,assetIssuer)
@@ -205,7 +206,7 @@ const send_recive = ({route}) => {
         }
         transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
           fee: await server.fetchBaseFee(),
-          networkPassphrase: StellarSdk.Networks.PUBLIC,
+          networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
         })
           .addOperation(
             StellarSdk.Operation.createAccount({
@@ -221,7 +222,7 @@ const send_recive = ({route}) => {
         if (isXLMNative) {
           transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
             fee: await server.fetchBaseFee(),
-            networkPassphrase: StellarSdk.Networks.PUBLIC,
+            networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
           })
             .addOperation(
               StellarSdk.Operation.payment({
@@ -250,7 +251,7 @@ const send_recive = ({route}) => {
 
           transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
             fee: await server.fetchBaseFee(),
-            networkPassphrase: StellarSdk.Networks.PUBLIC,
+            networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
           })
             .addOperation(
               StellarSdk.Operation.payment({
@@ -277,6 +278,21 @@ const send_recive = ({route}) => {
       // Submit the transaction
       const transactionResult = await server.submitTransaction(transaction);
       console.log('Transaction successful!', transactionResult);
+      await ShortTermStorage.syncTx({
+        txHash: transactionResult.hash,
+        walletAddress: sourcePublicKey,
+        fromAddress: sourcePublicKey,
+        toAddress: destinationPublic,
+        provider: "STELLAR",
+        fromChain: "STR",
+        fromToken: asset_name,
+        toChain: "STR",
+        toToken: asset_name,
+        amountIn: amount?.toString(),
+        amountOut: amount?.toString(),
+        txType: "Token Send",
+        fromTokenMetaData: asset_name
+      });
       Snackbar.show({
         text: "Transaction successful!",
         duration: Snackbar.LENGTH_LONG,

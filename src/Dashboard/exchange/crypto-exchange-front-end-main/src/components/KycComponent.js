@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { proxyRequest, PPOST } from '../api';
 import { 
   ActivityIndicator,
   Alert,
@@ -32,7 +33,6 @@ import AlchemyFiatSellTokens from "../../../../../utilities/AlchemyFiatSellSuppr
 import AlchemyCryptoTokens from "../../../../../utilities/AlchemyCryptoSupprort.json";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import authApi from "../authApi";
-import { REACT_APP_HOST } from "../ExchangeConstants";
 import apiHelper from "../apiHelper";
 import CustomInfoProvider from "./CustomInfoProvider";
 import {
@@ -150,7 +150,7 @@ const KycComponent = ({ route }) => {
       "side": actionType
   }
 
-     const result = await apiHelper.post(REACT_APP_HOST + "/v1/alchemy/fetch-quotes", payload);
+     const result = await proxyRequest('/v1/alchemy/fetch-quotes', PPOST, payload);
      console.log("------result",result)
      const respo = JSON.parse(result.data.data);   
      if (result.success&&respo.data!==null) {
@@ -249,7 +249,7 @@ const KycComponent = ({ route }) => {
         "memo": "test1"
       }
 
-      const result = await apiHelper.post(REACT_APP_HOST + "/v1/alchemy/create-buy-order", payload);
+      const result = await proxyRequest('/v1/alchemy/create-buy-order', PPOST, payload);
       console.log(result,"payload",payload)
       if (result.success&&result.data.success) {
         setbtnLoading(false);
@@ -274,7 +274,7 @@ const KycComponent = ({ route }) => {
         "network": selectedCrypto?.network,
         "country": selectedfiat?.country
       }
-      const result = await apiHelper.post(REACT_APP_HOST + "/v1/alchemy/create-sell-order", payload);
+      const result = await proxyRequest('/v1/alchemy/create-sell-order', PPOST, payload);
       console.log("res--",result.data.success)
       if(result.success&&result.data.success)
       {

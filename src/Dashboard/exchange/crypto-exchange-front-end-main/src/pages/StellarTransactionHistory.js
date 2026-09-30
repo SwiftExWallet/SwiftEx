@@ -544,9 +544,13 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
     }
   };
 
-  const txViewrManager = (txId, txType, received) => {
+  const txViewrManager = (txId, txType, received, fullTx) => {
     if (operation.txType === "nearIntent") {
-      Linking.openURL(`${NEARINTENT.EXPLORER}${txId}`);
+      let explorerUrl = `${NEARINTENT.EXPLORER}${txId}`;
+      if (fullTx?.txType === "nearIntent" && fullTx?.chain === "SRB" && fullTx?.depositMemo) {
+        explorerUrl += `?depositMemo=${fullTx.depositMemo}`;
+      }
+      Linking.openURL(explorerUrl);
       return;
     }
     if (txType === "invoke_host_function" && !received) {
@@ -583,7 +587,8 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
             : txViewrManager(
                 item?.operations?.records[0]?.transaction_hash || item?.operations?.records[0]?.hash,
                 operation.type,
-                isReceived
+                isReceived,
+                item?.operations?.records[0]
               );
         }}
       >

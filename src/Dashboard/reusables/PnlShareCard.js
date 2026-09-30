@@ -1,12 +1,16 @@
 import React, { forwardRef, useImperativeHandle, useRef } from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet, Image, Platform } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
 import Share from 'react-native-share';
 import darkBlue from "../../../assets/Dark-Blue.png";
+import {
+  widthPercentageToDP as wp,
+  heightPercentageToDP as hp,
+} from "react-native-responsive-screen";
 
-const CHART_WIDTH = 350;
+const CHART_WIDTH = 330;
 const CHART_HEIGHT = 140;
 
 function getPath(dataPoints) {
@@ -81,10 +85,10 @@ const PnlShareCard = forwardRef(function PnlShareCard(
         colors={['#0d0b1f', '#171335', '#0d0b1f']}
         start={{ x: 0.3, y: 0 }}
         end={{ x: 0.7, y: 1 }}
-        style={styles.card}
+        style={[Platform.OS==="android"?styles.card:styles.cardISO]}
       >
 
-        <View style={styles.header}>
+        <View style={[Platform.OS==="android"?styles.header:styles.cardHeaderIOS]}>
           <View style={styles.brandRow}>
             <Image
               source={darkBlue}
@@ -100,14 +104,21 @@ const PnlShareCard = forwardRef(function PnlShareCard(
           </View>
         </View>
 
-        <Text style={styles.label}>TOTAL P&L</Text>
-        <Text style={[styles.bigPercent, { color: themeColor }]}>
-          {totalPnlPercent || 0}
-        </Text>
+
         {!hideTotal&&
-        <Text style={[styles.dollarAmount, { color: themeColor }]}>
-          {totalPnlDollar || 0}
-        </Text>}
+          <View>
+            <Text style={[styles.label,{  marginBottom:1,marginTop:5}]}>TOTAL P&L</Text>
+            <Text style={[styles.bigPercent, { color: themeColor }]} numberOfLines={1}>
+              {totalPnlPercent || 0}
+            </Text>
+          </View>
+        }
+          <View>
+            <Text style={[styles.label,{  marginBottom:1,marginTop:5}]}>TOTAL UNREALIZED</Text>
+            <Text style={[styles.dollarAmount, { color: themeColor }]} numberOfLines={1}>
+              {totalPnlDollar || 0}
+            </Text>
+          </View>
 
         <View style={styles.chartWrapper}>
           <Svg width={CHART_WIDTH} height={CHART_HEIGHT + 10}>
@@ -130,16 +141,16 @@ const PnlShareCard = forwardRef(function PnlShareCard(
           </Svg>
         </View>
 
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
+        <View style={[Platform.OS==="android"?styles.statsRow:styles.statsRowIOS]}>
+          <View style={[Platform.OS==="android"?styles.statBox:styles.statBoxIOS]}>
             <Text style={styles.statLabel}>Win rate</Text>
             <Text style={styles.statValue}>{winRate}%</Text>
           </View>
-          <View style={styles.statBox}>
+          <View style={[Platform.OS==="android"?styles.statBox:styles.statBoxIOS]}>
             <Text style={styles.statLabel}>Trades</Text>
             <Text style={styles.statValue}>{trades}</Text>
           </View>
-          <View style={[styles.statBox, { marginRight: 0 }]}>
+          <View style={[[Platform.OS==="android"?styles.statBox:styles.statBoxIOS], { marginRight: 0 }]}>
             <Text style={styles.statLabel}>Best trade</Text>
             <Text style={[styles.statValue, { color: (Number(bestTrade) || 0) >= 0 ? '#34d399' : '#f87171' }]} numberOfLines={1}>
               {bestTrade || 0}
@@ -164,6 +175,13 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     padding: 24,
     alignSelf: 'center'
+  },
+  cardISO: {
+    width: wp(99),
+    borderRadius: 28,
+    alignItems:"center",
+    paddingVertical: 20,
+    alignSelf: "center",
   },
   header: {
     flexDirection: 'row',
@@ -214,18 +232,16 @@ const styles = StyleSheet.create({
     marginBottom: 8
   },
   bigPercent: {
-    fontSize: 64,
+    fontSize: 24,
     fontWeight: '800',
-    lineHeight: 68
   },
   dollarAmount: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginTop: 4,
     marginBottom: 20
   },
   chartWrapper: {
-    marginBottom: 24
+    marginBottom: 24,
   },
   statsRow: {
     flexDirection: 'row',
@@ -263,5 +279,22 @@ const styles = StyleSheet.create({
   footerNote: {
     color: '#6b6b85',
     fontSize: 12
+  },
+  cardHeaderIOS: {
+    width:wp(90),
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 28,
+  },
+  statsRowIOS: {
+    flexDirection: 'row',
+  },
+  statBoxIOS: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 14,
+    padding: 14,
+    marginRight: 8,
+    width:wp(28)
   },
 });

@@ -22,7 +22,7 @@ import { authRequest, GET, getToken, PGET, POST, PPOST, proxyRequest } from '../
 import { useNavigation } from '@react-navigation/native';
 import Icon from '../../../../../icon';
 import { ethers } from 'ethers';
-import { OneTapContractAddress, OneTapUSDCAddress, RPC, STELLAR_URL } from '../../../../constants';
+import { ENVIRONMENT, OneTapContractAddress, OneTapUSDCAddress, RPC, STELLAR_URL } from '../../../../constants';
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { useDispatch, useSelector } from 'react-redux';
 import { RAPID_STELLAR, SET_ASSET_DATA } from '../../../../../components/Redux/actions/type';
@@ -328,7 +328,7 @@ export const CustomQuotes = ({
     try {
         console.log(":++++ Entered into trusting ++++:")
         const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
-        StellarSdk.Networks.PUBLIC
+        ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC
         const account = await server.loadAccount(StellarSdk.Keypair.fromSecret(state.STELLAR_SECRET_KEY).publicKey());
         const transaction = new StellarSdk.TransactionBuilder(account, {
             fee: StellarSdk.BASE_FEE,
@@ -810,10 +810,10 @@ export const CustomQuotes = ({
       if (resultApi.success) {
          const keypair = StellarSdk.Keypair.fromSecret(state.STELLAR_SECRET_KEY);
      const envelope = StellarSdk.xdr.TransactionEnvelope.fromXDR(resultApi.data.wallet.xdr, "base64");
-        const tx = new StellarSdk.Transaction(envelope, StellarSdk.Networks.PUBLIC);
+        const tx = new StellarSdk.Transaction(envelope, ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC);
         tx.sign(keypair);
         const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
-        StellarSdk.Networks.PUBLIC
+        ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC
         const result = await server.submitTransaction(tx);
         if(result?.successful===true)
         {        

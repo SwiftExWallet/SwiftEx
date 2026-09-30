@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { PDELETE, PPOST, proxyRequest } from '../exchange/crypto-exchange-front-end-main/src/api';
 import {
   StyleSheet,
   Text,
@@ -37,7 +38,6 @@ import AccessNativeStorage from "./AccessNativeStorage";
 import apiHelper from "../exchange/crypto-exchange-front-end-main/src/apiHelper";
 import AuthRequest from "../reusables/AuthRequest";
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
-import { REACT_APP_HOST } from "../exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import { colors } from "../../Screens/ThemeColorsConfig";
 
 const WALLET_ICONS = {
@@ -137,15 +137,13 @@ const AllWallets = () => {
         // );
         await AccessNativeStorage.updateActiveWallet(item.walletId)
 
-        // await apiHelper.post(REACT_APP_HOST + '/v1/wallet', {
-        //   "addresses": {
-        //     "eth": item?.address,
-        //     "xlm": item?.stellarPublicKey,
-        //     "bnb": item?.address,
-        //     "multi": item?.address
-        //   },
-        //   "isPrimary": true
-        // });
+        proxyRequest('/v1/wallet', PPOST, {
+          "addresses": {
+            "multi": item?.address,
+            "xlm": item?.stellarPublicKey,
+          },
+          "isPrimary": true
+        });
         alert("success", `Wallet selected: ${item.name}`);
         // setTimeout(() => {
           navigation.navigate("Home");
@@ -204,7 +202,7 @@ const AllWallets = () => {
   const performeDeleteWalletAction=async(removeWalletReq)=>{
     const response=await AccessNativeStorage.delete(removeWalletReq.walletId);
     if(response==="wallet_removed"||response.wallet_removed==="wallet_removed"){
-      apiHelper.delete(REACT_APP_HOST + "/v1/wallet/delete",{
+      proxyRequest('/v1/wallet/delete', PDELETE, {
         "addresses": {
           "eth": removeWalletReq?.address,
           "xlm": removeWalletReq?.stellarPublicKey,

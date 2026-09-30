@@ -1,5 +1,5 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
-import { STELLAR_URL } from '../../../../../constants';
+import { ENVIRONMENT, STELLAR_URL } from '../../../../../constants';
 import { NativeModules } from 'react-native';
 const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
 
@@ -63,7 +63,7 @@ async function AMMSWAPTESTNET(
 
     const tx = new StellarSdk.TransactionBuilder(account, {
       fee: StellarSdk.BASE_FEE,
-      networkPassphrase: StellarSdk.Networks.PUBLIC,
+      networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
     });
   
     if (Array.isArray(trustLineOpt) && trustLineOpt.length > 0) {

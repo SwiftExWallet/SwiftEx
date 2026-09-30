@@ -487,7 +487,7 @@ console.log("resQuotes-",resQuotes)
           <View style={[styles.rowBtnCon, { backgroundColor: theme.cardBg}]}>
             <Text style={[styles.subInputText, { color: theme.inactiveTx }]}>USDC Amount</Text>
             <TouchableOpacity style={styles.maxCon} onPress={()=>{handleInputChange(!walletBalance?"0.00":walletBalance)}}>
-              <Text style={[styles.subInputText, {color:theme.headingTx}]}>MAX</Text>
+              <Text style={[styles.subInputText, {color:"#fff"}]}>MAX</Text>
             </TouchableOpacity>
           </View>
          <View style={[styles.modalOpen, { paddingVertical: hp(0.5),backgroundColor:theme.bg }]}>

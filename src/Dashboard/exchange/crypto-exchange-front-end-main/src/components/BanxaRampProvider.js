@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { proxyRequest, PPOST, PGET } from '../api';
 import {
     ActivityIndicator,
     FlatList,
@@ -23,7 +24,6 @@ import { Exchange_screen_header } from "../../../../reusables/ExchangeHeader";
 import Icon from "../../../../../icon";
 import { useSelector } from "react-redux";
 import { debounce } from "lodash";
-import { REACT_APP_HOST } from "../ExchangeConstants";
 import apiHelper from "../apiHelper";
 import CustomInfoProvider from "./CustomInfoProvider";
 import {
@@ -94,8 +94,8 @@ const BanxaRampProvider = () => {
                 }
 
                 const [buy, sell] = await Promise.all([
-                    apiHelper.get(REACT_APP_HOST + "/v1/banxa/fetch-assets?orderType=buy"),
-                    apiHelper.get(REACT_APP_HOST + "/v1/banxa/fetch-assets?orderType=sell"),
+                    proxyRequest('/v1/on-off-ramp/assets?provider=banxa&side=buy', PGET),
+                    proxyRequest('/v1/on-off-ramp/assets?provider=banxa&side=sell', PGET),
                 ]);
 
                 if (buy.success === true && sell.success === true) {
@@ -276,22 +276,24 @@ const BanxaRampProvider = () => {
 
     const fetchQoutes = async (amount, actionType, cryptoSelection, fiatSelection, blockchainSelection, methodSelection) => {
         const payload = actionType === "BUY" ? {
+            provider: "banxa",
+            side: "buy",
             paymentMethodId: methodSelection?.id || fiatSelection?.supportedPaymentMethods?.[0]?.id,
             crypto: cryptoSelection?.id,
             blockchain: blockchainSelection?.id,
             fiatAmount: amount,
             fiat: fiatSelection?.id,
-            orderType: "buy",
         } : {
+            provider: "banxa",
+            side: "sell",
             paymentMethodId: methodSelection?.id || fiatSelection?.id,
             crypto: cryptoSelection?.id,
             blockchain: blockchainSelection?.id,
             fiat: fiatSelection?.supportedFiats?.[0],
             cryptoAmount: amount,
-            orderType: "sell",
         };
 
-        const result = await apiHelper.post(REACT_APP_HOST + "/v1/banxa/fetch-quotes", payload);
+        const result = await proxyRequest('/v1/on-off-ramp/quote', PPOST, payload);
         if (result.success) {
             setQoutesRes(result.data.data);
             setqoutesLoading(false);
@@ -356,6 +358,8 @@ const BanxaRampProvider = () => {
     const proccedBuy = async () => {
         try {
             const payload = {
+                provider: "banxa",
+                side: "buy",
                 paymentMethodId: selectedPaymentMethod?.id || selectedfiat.supportedPaymentMethods[0].id,
                 crypto: selectedBlockchain?.id,
                 blockchain: selectedCrypto.id,
@@ -363,7 +367,7 @@ const BanxaRampProvider = () => {
                 fiatAmount: amountSend.toString(),
                 walletAddress: selectedCrypto.id === "XLM" ? state && state.STELLAR_PUBLICK_KEY : state?.wallet?.address,
             };
-            const result = await apiHelper.post(REACT_APP_HOST + "/v1/banxa/create-buy-order", payload);
+            const result = await proxyRequest('/v1/on-off-ramp/order', PPOST, payload);
             if (result.success && result.data.success) {
                 setbtnLoading(false);
                 Linking.openURL(result.data.success.data.checkoutUrl);
@@ -381,6 +385,8 @@ const BanxaRampProvider = () => {
     const proccedSell = async () => {
         try {
             const payload = {
+                provider: "banxa",
+                side: "sell",
                 paymentMethodId: selectedPaymentMethod?.id || selectedfiat.id,
                 crypto: selectedBlockchain?.id,
                 blockchain: selectedCrypto.id,
@@ -388,7 +394,7 @@ const BanxaRampProvider = () => {
                 cryptoAmount: amountSend.toString(),
                 walletAddress: selectedCrypto.id === "XLM" ? state && state.STELLAR_PUBLICK_KEY : state?.wallet?.address,
             };
-            const result = await apiHelper.post(REACT_APP_HOST + "/v1/banxa/create-sell-order", payload);
+            const result = await proxyRequest('/v1/on-off-ramp/order', PPOST, payload);
             if (result.success && result.data.success) {
                 setbtnLoading(false);
                 Linking.openURL(result.data.success.data.checkoutUrl);

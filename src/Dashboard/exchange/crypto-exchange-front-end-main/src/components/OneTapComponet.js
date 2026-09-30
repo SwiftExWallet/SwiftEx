@@ -212,7 +212,7 @@ export default function OneTapComponet({ showInfo, showPurchase }) {
         chainId: Number(preInfo.res.chainId),
       };
       const signedTx = await wallet.signTransaction(upgradedTx);
-      const respoExe = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, { signedTx: signedTx });
+      const respoExe = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, { signedTx: signedTx, broadcastChain: "ETH" });
       if (respoExe.err) {
         CustomInfoProvider.show("error", "OneTap Faild to brodcast", respoExe.err.message||"something went wrong.");
       }

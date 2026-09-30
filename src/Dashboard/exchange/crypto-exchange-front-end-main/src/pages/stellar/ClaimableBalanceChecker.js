@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import {Asset, BASE_FEE, Horizon, Networks, Operation, TransactionBuilder} from '@stellar/stellar-sdk';
-import { STELLAR_URL } from "../../../../../constants";
+import { ENVIRONMENT, STELLAR_URL } from "../../../../../constants";
 import LinearGradient from "react-native-linear-gradient";
 import { colors } from "../../../../../../Screens/ThemeColorsConfig";
 import CustomInfoProvider from "../../components/CustomInfoProvider";
@@ -99,7 +99,7 @@ const ClaimableBalanceChecker = ({
       const account = await server.loadAccount(publicKey);
       const txBuilder = new TransactionBuilder(account, {
         fee: BASE_FEE.toString(),
-        networkPassphrase: Networks.PUBLIC,
+        networkPassphrase: ENVIRONMENT==="TESTNET"?Networks.TESTNET:Networks.PUBLIC,
       });
 
       if (balance.asset !== "native" && balance.assetIssuer) {

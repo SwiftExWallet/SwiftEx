@@ -8,6 +8,7 @@ import Web3 from 'web3';
 import { ensureFusionAllowance } from './SwapRango';
 import { fustionEvmTxManager } from './evmTxManager';
 import { getSafeErrorMessage } from './errorSanitizer';
+import { ENVIRONMENT } from '../Dashboard/constants';
 
 export const GetFusionSwapQuote = async (fromBlockchain, fromTokenAddress, toBlockchain, toTokenAddress, amount, walletAddress, fromSymbol, toSymbol) => {
     try {
@@ -77,19 +78,96 @@ export async function PerformeFusionSwap(quoteId, state, fromToken, toToken, amo
             };
         }
 
-        const { primaryType, types, domain, message } = responses.response.typedData;
-        const typedDataJson = JSON.stringify({
-            primaryType,
-            types,
-            domain,
-            message,
-        });
-        const result = await NativeModules.TransactionSigner.signTypedData(
-            fromToken.chain.toLowerCase(),
-            state?.wallet?.address,
-            typedDataJson,
-        );
+        const { primaryType, types, domain, message } =responses.response.typedData;
+        let finalTypes = types;
+        let finalMessage = message;
 
+        if (ENVIRONMENT === "TESTNET") {
+            finalTypes = {
+                ...types,
+                EIP712Domain: types?.EIP712Domain || [
+                    {
+                        name: "name",
+                        type: "string",
+                    },
+                    {
+                        name: "version",
+                        type: "string",
+                    },
+                    {
+                        name: "chainId",
+                        type: "uint256",
+                    },
+                    {
+                        name: "verifyingContract",
+                        type: "address",
+                    },
+                ],
+            };
+
+            if (
+                finalTypes?.Order &&
+                message?.maker &&
+                !finalTypes.Order.some((item) => item.name === "maker")
+            ) {
+                finalTypes = {
+                    ...finalTypes,
+                    Order: [
+                        ...finalTypes.Order,
+                        {
+                            name: "maker",
+                            type: "address",
+                        },
+                    ],
+                };
+            }
+        }
+        const typedDataJson = JSON.stringify({primaryType,types: finalTypes,domain,message: finalMessage});
+        const signingChain =ENVIRONMENT === "TESTNET"? "bsc": fromToken.chain.toLowerCase();
+        const result = await NativeModules.TransactionSigner.signTypedData(signingChain,state?.wallet?.address,typedDataJson);
+        if(ENVIRONMENT === "TESTNET"){
+            const submitResult = await proxyRequest("/v1/swap/1inch/submitFusionPlusOrder", 
+                PPOST, {
+                chain: fromToken.chain==="BNB"?"BSC":fromToken.chain,
+                toChain: toToken.chain==="BNB"?"BSC":toToken.chain,
+                order: message,
+                signature: result.signature,
+                extension: responses.response.extension,
+                quoteId: quoteId,
+                orderHash: responses?.response?.orderHash
+            });
+            if (submitResult.err) {
+                const safeSubmitError = getSafeErrorMessage(submitResult.err.message, "Swap failed");
+                CustomInfoProvider.show("error", "!Opps", safeSubmitError);
+                return {
+                    status: false,
+                    error: safeSubmitError
+                };
+            } else {
+                await ShortTermStorage.syncTx({
+                    quoteId: quoteId,
+                    txHash: responses?.response?.orderHash,
+                    walletAddress: state?.wallet?.address,
+                    fromAddress: state?.wallet?.address,
+                    toAddress: state?.wallet?.address,
+                    provider: "ONEINCH_FUSION_PLUS",
+                    fromChain: fromToken.chain==="BNB"?"BSC":fromToken.chain,
+                    fromToken: fromToken.symbol,
+                    toChain: toToken.chain==="BNB"?"BSC":toToken.chain,
+                    toToken: toToken.symbol,
+                    amountIn: amount,
+                    amountOut: ethers.utils.formatUnits(qouteInfo?.outputAmount||qouteInfo.dstTokenAmount, toToken?.decimals),
+                    txType: "Swap",
+                    fromTokenMetaData:fromToken.address
+                })
+                CustomInfoProvider.show("success", "Hurray", "Swap successful!");
+                return {
+                    status: true,
+                    error: "Swap initiated successfully."
+                };
+            }
+        
+        }else{
         const resuleOfAllowance = await ensureFusionAllowance(fromToken.address, state?.wallet?.address, ethers.utils.parseUnits(amount, fromToken?.decimals).toString(), fromToken.chain, fromToken.chainId);
         if (resuleOfAllowance.status === true) {
             const submitResult = await proxyRequest("/v1/swap/1inch/submitFusionPlusOrder", 
@@ -101,9 +179,6 @@ export async function PerformeFusionSwap(quoteId, state, fromToken, toToken, amo
                 extension: responses.response.extension,
                 quoteId: quoteId,
                 orderHash: responses?.response?.orderHash,
-                ...(resuleOfAllowance.txHash!==null && {
-                        requiresApprovalTransaction: true,
-                    }),
             });
             if (submitResult.err) {
                 const safeSubmitError = getSafeErrorMessage(submitResult.err.message, "Swap failed");
@@ -142,6 +217,7 @@ export async function PerformeFusionSwap(quoteId, state, fromToken, toToken, amo
                 status: false,
                 error: safeAllowanceError
             };
+        }
         }
     } catch (error) {
         return {

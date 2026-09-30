@@ -26,11 +26,11 @@ import {
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
 import BigNumber from 'bignumber.js';
-import { STELLAR_URL } from '../../../../constants';
+import { ENVIRONMENT, STELLAR_URL } from '../../../../constants';
 import CustomInfoProvider from '../components/CustomInfoProvider';
 import { colors } from '../../../../../Screens/ThemeColorsConfig';
 
-const STELLAR_NETWORK = StellarSdk.Networks.PUBLIC;
+const STELLAR_NETWORK = ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC;
 
 const Offers_manages = () => {
   const state = useSelector((state) => state);

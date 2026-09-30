@@ -9,7 +9,7 @@ import Icon from "../icon";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { PORTFOLIO_CONFIG, RAPID_STELLAR, SET_ASSET_DATA, WALLET_ACTIVATION_SHOW } from "../components/Redux/actions/type";
 import { enableBiometrics } from "../biometrics/biometric";
-import { STELLAR_URL } from "./constants";
+import { ENVIRONMENT, STELLAR_URL } from "./constants";
 import LinearGradient from "react-native-linear-gradient";
 import * as StellarSdk from '@stellar/stellar-sdk';
 import Modal from "react-native-modal";
@@ -186,7 +186,7 @@ function InvestmentChart() {
         if (isActive && activeRequestWalletRef.current === requestForWallet) {
           setLoading(false);
           setPortfolioError(true);
-          CustomInfoProvider.show("info", "Portfolio currently unavailable, please try again");
+          CustomInfoProvider.show("info", "Portfolio currently unavailable, please try again.");
         }
       }
     }
@@ -223,7 +223,7 @@ function InvestmentChart() {
   const loadStellarAccount = useCallback(
     async (matchedData) => {
       try {
-        StellarSdk.Networks.PUBLIC;
+        ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC;
         const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
         const account = await server.loadAccount(matchedData.publicKey);
         dispatchStellarData(matchedData, account, true);
@@ -356,7 +356,7 @@ function InvestmentChart() {
         ) : ( */}
           <>
           <FlatList
-              data={(state && state.activeWalletPortFolio && state.activeWalletPortFolio.tokens || state && state.activeWalletPortFolio)?.filter(data => (data.active && data.contractAddress === "Native") || (data.contractAddress !== "Native" && data.active && parseFloat(data.balance) > 0)) ?? tokenInfoList}
+              data={ENVIRONMENT === "TESTNET"?(state && state.activeWalletPortFolio && state.activeWalletPortFolio.tokens || state && state.activeWalletPortFolio)?.filter(data => (data.active && data.contractAddress === "Native") || (data.contractAddress !== "Native" && data.active)):(state && state.activeWalletPortFolio && state.activeWalletPortFolio.tokens || state && state.activeWalletPortFolio)?.filter(data => (data.active && data.contractAddress === "Native") || (data.contractAddress !== "Native" && data.active && parseFloat(data.balance) > 0)) ?? tokenInfoList}
             renderItem={renderTokens}
             keyExtractor={(item, index) => index.toString()}
             initialNumToRender={39}

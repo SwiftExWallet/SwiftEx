@@ -688,7 +688,7 @@ const EthSwap = () => {
 
   const performeUniswap = async (amount, address) => {
     try {
-      const respo = await proxyRequest(`/v1/quoter/swap`, PPOST, {
+      const respo = await proxyRequest(`/v1/swap`, PPOST, {
         tokenIn: {
           address: fromToken.address,
           symbol: fromToken.symbol,
@@ -703,7 +703,7 @@ const EthSwap = () => {
         },
         amount: amount?.toString(),
         recipient: state?.wallet?.address,
-        chainId: fromToken.chain,
+        // chainId: fromToken.chain,
       });
 
       if (respo.err?.status) {
@@ -780,7 +780,11 @@ const EthSwap = () => {
 
       const { res, err } = await proxyRequest('/v1/eth/swap-transaction/execute', PPOST, {
         txs: signedTxs,
-        broadcastChain: fromToken.chain,
+        broadcastChain: fromToken.chain === "BNB" ? "BSC"
+          : fromToken.chain === "MATIC" ? "POL"
+          : fromToken.chain === "AVAX" ? "AVA"
+          : fromToken.chain === "BASE" ? "BAS"
+          : fromToken.chain,
       });
 
       if (err?.status) {

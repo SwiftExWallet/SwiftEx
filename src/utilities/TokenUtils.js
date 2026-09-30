@@ -1,6 +1,6 @@
 import axios from "axios";
 import StellarTokenList from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/stellar/Tokens.json";
-import { ARB, AVAX, BASE, BSC, DYDX, ETH, OPT, POL, PUBLIC_TX_CHEKER, STELLAR_URL, STR } from "../Dashboard/constants";
+import { ARB, AVAX, BASE, BSC, DYDX, ENVIRONMENT, ETH, OPT, POL, PUBLIC_TX_CHEKER, STELLAR_URL, STR } from "../Dashboard/constants";
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { FOLIO_BASE_ROUTE, REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL, REACT_APP_HOST } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import apiHelper from "../../src/Dashboard/exchange/crypto-exchange-front-end-main/src/apiHelper";
@@ -26,7 +26,7 @@ const CACHE_CONFIG = {
   TTL: 2 * 1000,
 };
 
-export const EVM_NETWORK_CONFIG = {
+export const EVM_MAINNET_CONFIG = {
   'eth-mainnet': {
     chain: 'ETH',
     nativeName: 'Ethereum',
@@ -70,7 +70,52 @@ export const EVM_NETWORK_CONFIG = {
     nativeImage: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/optimism/info/logo.png',
   },
 };
+export const EVM_TESTNET_CONFIG = {
+  'eth-sepolia': {
+    chain: 'ETH',
+    nativeName: 'Ethereum',
+    nativeSymbol: 'ETH',
+    nativeImage: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2/logo.png',
+  },
+  'bnb-sepolia': {
+    chain: 'BSC',
+    nativeName: 'Binance Coin',
+    nativeSymbol: 'BNB',
+    nativeImage: 'https://tokens.pancakeswap.finance/images/0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c.png',
+  },
+  'matic-amoy': {
+    chain: 'POL',
+    nativeName: 'Polygon',
+    nativeSymbol: 'MATIC',
+    nativeImage: 'https://assets.coingecko.com/coins/images/32440/large/polygon.png?1698233684',
+  },
+  'arb-sepolia': {
+    chain: 'ARB',
+    nativeName: 'Ethereum',
+    nativeSymbol: 'ETH',
+    nativeImage: 'https://arbitrum.foundation/logo.png',
+  },
+  'base-sepolia': {
+    chain: 'BASE',
+    nativeName: 'Base',
+    nativeSymbol: 'BASE',
+    nativeImage: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/base/info/logo.png',
+  },
+  'avax-fuji': {
+    chain: 'AVAX',
+    nativeName: 'Avalanchec',
+    nativeSymbol: 'AVAX',
+    nativeImage: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/avalanchec/info/logo.png',
+  },
+  'opt-sepolia': {
+    chain: 'OPT',
+    nativeName: 'Optimism',
+    nativeSymbol: 'OPT',
+    nativeImage: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/optimism/info/logo.png',
+  },
+};
 
+export const EVM_NETWORK_CONFIG=ENVIRONMENT==="TESTNET"?EVM_TESTNET_CONFIG:EVM_MAINNET_CONFIG
 const walletCache = new Map();
 
 const priceCache = new Map();
@@ -194,23 +239,22 @@ const getEVMTokens = async (network, walletAddress, onProgress = null, cacheKey 
 
     for (const item of networkData) {
       const isNative = item.tokenAddress === null;
-      const decimals = item.tokenMetadata?.decimals ?? 18;
-      const rawBalance = parseInt(item.tokenBalance, 16);
-      const balance = parseNumber(rawBalance / Math.pow(10, decimals));
-      const price = parseNumber(parseFloat(item.tokenPrices?.[0]?.value || 0), 2);
-      const balanceUSD = parseNumber(balance * price, 2);
+      const decimals = item?.decimals ?? 18;
+      const balance = parseNumber(item.balance);
+      const price = parseNumber(parseFloat(item.priceUsd || 0), 2);
+      const balanceUSD = parseNumber(item.valueUsd);
 
       tokens.push({
         chain: config.chain,
-        name: isNative ? config.nativeName : (item.tokenMetadata?.name || 'Unknown'),
-        symbol: isNative ? config.nativeSymbol : (item.tokenMetadata?.symbol || '???'),
+        name: isNative ? config.nativeName : ENVIRONMENT==="TESTNET"?(item?.name || 'Unknown'):(item?.name || 'Unknown'),
+        symbol: isNative ? config.nativeSymbol : ENVIRONMENT==="TESTNET"?(item?.symbol || '???'):(item?.symbol || '???'),
         balance,
         balanceUSD,
         decimals,
         contractAddress: isNative ? 'Native' : item.tokenAddress,
-        active:isNative&&true,
+        active:ENVIRONMENT==="TESTNET"?true:isNative&&true,
         price,
-        imageUrl: isNative ? config.nativeImage : item.tokenMetadata?.logo || null,
+        imageUrl: isNative ? config.nativeImage : item?.logo || null,
       });
       totalValueUSD += balanceUSD;
     }
@@ -548,7 +592,7 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
         : `${BASEROUTE}${evmAddress}`;
       const portfolioResult = await apiHelper.get(portfolioUrl);
       if (portfolioResult.success) {
-        apiTokens = portfolioResult.data.data.tokens || [];
+        apiTokens = portfolioResult.data.tokens || portfolioResult.data.data.tokens || [];
       }
 
       const progressHandler = (update) => {
@@ -797,7 +841,7 @@ export const CHAINS = {
     chainName: ARB.chainName,
     subName: ARB.subName,
     gasLimit: ARB.gasLimit,
-    supportedTokenList: "https://raw.githubusercontent.com/sachin-swiftex/resources/master/arb_tokens.json",
+    supportedTokenList: ENVIRONMENT==="TESTNET"?"https://raw.githubusercontent.com/sachin-swiftex/resources/refs/heads/devTestNet/arb_tokens.json":"https://raw.githubusercontent.com/sachin-swiftex/resources/master/arb_tokens.json",
     nativeToken: {
       "name": ARB.name,
       "symbol": ARB.symbol,
@@ -829,7 +873,7 @@ export const CHAINS = {
     chainName: POL.chainName,
     subName: POL.subName,
     gasLimit: POL.gasLimit,
-    supportedTokenList: "https://raw.githubusercontent.com/sachin-swiftex/resources/master/poly_tokens.json",
+    supportedTokenList: ENVIRONMENT==="TESTNET"?"https://raw.githubusercontent.com/sachin-swiftex/resources/refs/heads/devTestNet/poly_tokens.json":"https://raw.githubusercontent.com/sachin-swiftex/resources/master/poly_tokens.json",
     nativeToken: {
       "name": POL.name,
       "symbol": POL.symbol,
@@ -861,7 +905,7 @@ export const CHAINS = {
     chainName: OPT.chainName,
     subName: OPT.subName,
     gasLimit: OPT.gasLimit,
-    supportedTokenList: "https://raw.githubusercontent.com/sachin-swiftex/resources/master/op_tokens.json",
+    supportedTokenList: ENVIRONMENT==="TESTNET"?"https://raw.githubusercontent.com/sachin-swiftex/resources/refs/heads/devTestNet/op_tokens.json":"https://raw.githubusercontent.com/sachin-swiftex/resources/master/op_tokens.json",
     nativeToken: {
       "name": OPT.name,
       "symbol": OPT.symbol,
@@ -893,7 +937,7 @@ export const CHAINS = {
     chainName: AVAX.chainName,
     subName: AVAX.subName,
     gasLimit: AVAX.gasLimit,
-    supportedTokenList: "https://raw.githubusercontent.com/sachin-swiftex/resources/master/avax_tokens.json",
+    supportedTokenList: ENVIRONMENT==="TESTNET"?"https://raw.githubusercontent.com/sachin-swiftex/resources/refs/heads/devTestNet/avax_tokens.json":"https://raw.githubusercontent.com/sachin-swiftex/resources/master/avax_tokens.json",
     nativeToken: {
       "name": AVAX.name,
       "symbol": AVAX.symbol,
@@ -925,7 +969,7 @@ export const CHAINS = {
     chainName: BASE.chainName,
     subName: BASE.subName,
     gasLimit: BASE.gasLimit,
-    supportedTokenList: "https://raw.githubusercontent.com/sachin-swiftex/resources/master/base_tokens.json",
+    supportedTokenList: ENVIRONMENT==="TESTNET"?"https://raw.githubusercontent.com/sachin-swiftex/resources/refs/heads/devTestNet/base_tokens.json":"https://raw.githubusercontent.com/sachin-swiftex/resources/master/base_tokens.json",
     nativeToken: {
       "name": BASE.name,
       "symbol": BASE.symbol,
@@ -957,7 +1001,7 @@ export const CHAINS = {
     chainName: ETH.chainName,
     subName: ETH.subName,
     gasLimit: ETH.gasLimit,
-    supportedTokenList: "https://raw.githubusercontent.com/sachin-swiftex/resources/master/eth_tokens.json",
+    supportedTokenList: ENVIRONMENT==="TESTNET"?"https://raw.githubusercontent.com/sachin-swiftex/resources/refs/heads/devTestNet/eth_tokens.json":"https://raw.githubusercontent.com/sachin-swiftex/resources/master/eth_tokens.json",
     nativeToken: {
       "name": ETH.name,
       "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
@@ -989,7 +1033,7 @@ export const CHAINS = {
     chainName: BSC.chainName,
     subName: BSC.subName,
     gasLimit: BSC.gasLimit,
-    supportedTokenList: "https://raw.githubusercontent.com/sachin-swiftex/resources/master/bsc_tokens.json",
+    supportedTokenList: ENVIRONMENT==="TESTNET"?"https://raw.githubusercontent.com/sachin-swiftex/resources/refs/heads/devTestNet/bsc_tokens.json":"https://raw.githubusercontent.com/sachin-swiftex/resources/master/bsc_tokens.json",
     nativeToken: {
       "name": BSC.name,
       "symbol": BSC.symbol,
@@ -1020,7 +1064,7 @@ export const CHAINS = {
     symbol: STR.symbol,
     chainName: STR.chainName,
     subName: STR.subName,
-    supportedTokenList: "https://raw.githubusercontent.com/sachin-swiftex/resources/master/stellar.json",
+    supportedTokenList: ENVIRONMENT==="TESTNET"?"https://raw.githubusercontent.com/sachin-swiftex/resources/refs/heads/devTestNet/stellar.json":"https://raw.githubusercontent.com/sachin-swiftex/resources/master/stellar.json",
     nativeToken: {
       "name": "Stellar",
       "symbol": "XLM",
@@ -1104,7 +1148,7 @@ export const CHAINS = {
     chainName: BSC.chainName,
     subName: BSC.subName,
     gasLimit: BSC.gasLimit,
-    supportedTokenList: "https://raw.githubusercontent.com/sachin-swiftex/resources/master/bsc_tokens.json",
+    supportedTokenList: ENVIRONMENT==="TESTNET"?"https://raw.githubusercontent.com/sachin-swiftex/resources/refs/heads/devTestNet/bsc_tokens.json":"https://raw.githubusercontent.com/sachin-swiftex/resources/master/bsc_tokens.json",
     nativeToken: {
       "name": BSC.name,
       "symbol": BSC.symbol,

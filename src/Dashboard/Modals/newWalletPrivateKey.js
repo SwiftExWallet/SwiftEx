@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
+import { PPOST, proxyRequest } from '../exchange/crypto-exchange-front-end-main/src/api';
 import {
   StyleSheet,
   Text,
@@ -21,7 +22,6 @@ import Icon from "../../icon";
 import { colors } from "../../Screens/ThemeColorsConfig";
 import { checkWalletExistOrNot } from "../Wallets/WalletManagement";
 import apiHelper from "../exchange/crypto-exchange-front-end-main/src/apiHelper";
-import { REACT_APP_HOST } from "../exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import AccessNativeStorage from "../Wallets/AccessNativeStorage";
 import { alert } from "../reusables/Toasts";
 import { useNavigation } from "@react-navigation/native";
@@ -109,7 +109,7 @@ const NewWalletPrivateKey = ({
               setLoading(false);
               return;
             } else if (response.status === "success") {
-              const result = await apiHelper.post(REACT_APP_HOST + '/v1/wallet', {
+              const result = await proxyRequest('/v1/wallet', PPOST, {
                 "addresses": {
                   "eth": Wallet.address,
                   "xlm": Wallet.stellarWallet.publicKey,

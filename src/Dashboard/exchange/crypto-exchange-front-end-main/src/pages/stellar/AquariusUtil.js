@@ -1,5 +1,5 @@
 import * as StellarSdk from '@stellar/stellar-sdk';
-import { AQUARIUS_BASE_API, SRB_MAINNET_ROUTER, SRB_RPC_URL, STELLAR_URL } from '../../../../../constants';
+import { AQUARIUS_BASE_API, ENVIRONMENT, SRB_MAINNET_ROUTER, SRB_RPC_URL, STELLAR_URL } from '../../../../../constants';
 import { NativeModules } from 'react-native';
 
 function assetContractId(asset, passphrase) {
@@ -11,7 +11,7 @@ function toStroops(humanAmount) {
 }
 
 async function fetchRoute({ assetIn, assetOut, amount }) {
-    const networkPassphrase = StellarSdk.Networks.PUBLIC;
+    const networkPassphrase = ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC;
     const amountStr = amount.toString();
     const route = await (
         await fetch(`${AQUARIUS_BASE_API}/find-path/`, {
@@ -115,7 +115,7 @@ async function ExecuteAquariusSwap({
     assetOut,
     amount,
     slippageBps = 100,
-    networkPassphrase = StellarSdk.Networks.PUBLIC,
+    networkPassphrase = ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
     baseFeeStroops = '600000',
 }) {
     if (!assetIn) throw new Error('assetIn is required');

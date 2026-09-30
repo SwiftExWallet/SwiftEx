@@ -134,9 +134,10 @@ console.log("execute---",res,err)
     if (res?.[0]?.receipt?.status === 1) {
         console.log("---inside the condition----")
       const QuotedAmountOutRes = await proxyRequest("/v1/eth/swap-quote", PPOST, {
-        tokenIn: ADDRESSES.WETH,
-        tokenOut: ADDRESSES.USDT,
-        amount: toString(amount)
+        tokenIn: { address: ADDRESSES.WETH.address, symbol: ADDRESSES.WETH.symbol, decimals: ADDRESSES.WETH.decimals, chainId: 1 },
+        tokenOut: { address: ADDRESSES.USDT.address, symbol: ADDRESSES.USDT.symbol, decimals: ADDRESSES.USDT.decimals, chainId: 1 },
+        amount: toString(amount),
+        recipient: address
       });
       console.log("QuotedAmountOutRes--",QuotedAmountOutRes)
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { AppState, Platform, View } from "react-native";
+import GlobalServiceBanner from "../Screens/AppChecks/ServiceStatusBanner";
 import "react-native-gesture-handler";
 import { NavigationContainer, useNavigation } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -78,11 +79,17 @@ const Stack = createNativeStackNavigator();
 
 const AuthStack = () => {
   const [webUri, setWebUri] = useState(null);
+  const [currentRoute, setCurrentRoute] = useState(null);
+  const handleStateChange = () => {
+    const route = navigationRef?.current?.getCurrentRoute();
+    if (route?.name) setCurrentRoute(route.name);
+  };
   return(
     <GestureHandlerRootView style={{flex:1}}>
     <NavigationContainer
     theme={{ colors: { background: "black" } }}
     ref={navigationRef}
+    onStateChange={handleStateChange}
   >
     <Stack.Navigator
       mode="modal"
@@ -523,6 +530,7 @@ const AuthStack = () => {
         </Stack.Screen>
     </Stack.Navigator>
   </NavigationContainer>
+  <GlobalServiceBanner currentRoute={currentRoute} />
       <FloatingScreen
         uri={webUri}
         visible={!!webUri}

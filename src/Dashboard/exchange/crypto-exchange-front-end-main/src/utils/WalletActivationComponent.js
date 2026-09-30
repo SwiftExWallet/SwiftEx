@@ -9,13 +9,14 @@ import {
   Platform,
   BackHandler,
   ActivityIndicator,
-  Image
+  Image,
+  NativeModules
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { RAPID_STELLAR, SET_ASSET_DATA, WALLET_ACTIVATION_SHOW } from '../../../../../components/Redux/actions/type';
 import { REACT_APP_HOST } from '../ExchangeConstants';
 import Snackbar from 'react-native-snackbar';
-import { STELLAR_URL } from '../../../../constants';
+import { ENVIRONMENT, STELLAR_FUNDING_PUBLIC_KEY, STELLAR_URL, STELLAR_USDC_ISSUER } from '../../../../constants';
 import apiHelper from '../apiHelper';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import Icon from '../../../../../icon';
@@ -26,6 +27,7 @@ import {
 } from "react-native-responsive-screen";
 import stellarImg from "../../../../../../assets/Stellar_(XLM).png"
 import { CHAINS } from '../../../../../utilities/TokenUtils';
+import CustomInfoProvider from '../components/CustomInfoProvider';
 
 const { height } = Dimensions.get('window');
 const ACTIVATION_ASSET_SYMBOLS = ["USDC", "USDT"];
@@ -210,92 +212,148 @@ const WalletActivationComponent = ({
 
   if (!showSheet) return null;
 
-
- 
   const active_account = async () => {
-    console.log("<<<<<<<clicked");
-    try {  
-      const resultApi =await apiHelper.patch(REACT_APP_HOST+`/v1/wallet/${state.STELLAR_PUBLICK_KEY}/activate-wallet`);
-      console.log("result---xdr",resultApi)
-      if (resultApi.success) {
-        const keypair = StellarSdk.Keypair.fromSecret(state.STELLAR_SECRET_KEY);
-        const envelope = StellarSdk.xdr.TransactionEnvelope.fromXDR(resultApi.data.wallet.xdr, "base64");
-        const tx = new StellarSdk.Transaction(envelope, StellarSdk.Networks.PUBLIC);
-        tx.sign(keypair);
-        const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
-        const result = await server.submitTransaction(tx);
-        if (result?.successful === true) {
-          server.loadAccount(state.STELLAR_PUBLICK_KEY)
-        .then(account => {
-            console.log('Balances for account:', state.STELLAR_PUBLICK_KEY);
-            account.balances.forEach(balance => {
-              dispatch_({
-                type: SET_ASSET_DATA,
-                payload: account.balances,
-              })
-               dispatch_({
-                type: RAPID_STELLAR,
-                payload: {
-                  ETH_KEY: state.ETH_KEY,
-                  STELLAR_PUBLICK_KEY: state.STELLAR_PUBLICK_KEY,
-                  STELLAR_SECRET_KEY: state.STELLAR_SECRET_KEY,
-                  STELLAR_ADDRESS_STATUS: true
-                },
-              });
-              Snackbar.show({
-                text: 'Wallet Activated',
-                duration: Snackbar.LENGTH_SHORT,
-                backgroundColor:'green',
-            });
-            setWallet_activation(false);
-            onActivate()
-            });
-        })
-        .catch(error => {
-            console.log('Error loading account:', error);
-            setLoading(false)
-            Snackbar.show({
-                text: "USDT failed to be added",
-                duration: Snackbar.LENGTH_SHORT,
-                backgroundColor:'red',
-            });
-            setWallet_activation(false);
-            handleClose()
-        });
-        }
-        else {
-          console.log("Error: Funding account failed.");
-          setWallet_activation(false);
-          handleClose()
-        }
-
-        // setWallet_activation(false);
-        // handleClose()
-      } else {
+    try {
+      const resultApi = await apiHelper.patch(
+        `${REACT_APP_HOST}/v1/wallet/${state.STELLAR_PUBLICK_KEY}/activate-wallet`
+      );
+      console.info("result---xdr", resultApi);
+      if (!resultApi?.success) {
         console.log("Error: Funding account failed.", resultApi);
         setWallet_activation(false);
-        // handleClose()
-        Snackbar.show({
-          text: "Oops! We couldn't claim your XLM.",
-          duration: Snackbar.LENGTH_LONG,
-          backgroundColor: '#4F8EF7',
-        });
-        if (resultApi.status !== 200 && resultApi.status !== 201 && resultApi.success === false) {
+        CustomInfoProvider.show('error', 'Oops! We could not claim your XLM.');
+        if (
+          resultApi?.status !== 200 &&
+          resultApi?.status !== 201 &&
+          resultApi?.success === false
+        ) {
           setVisibleBuyUi(true);
         }
+
+        return;
       }
-  
-    } catch (error) {
-      console.log('Network or fetch error:', error);
+
+      const xdr = resultApi?.data?.wallet?.xdr;
+
+      if (!xdr) {
+        throw new Error("Transaction XDR not found in API response");
+      }
+
+      const networkPassphrase =
+    ENVIRONMENT === "TESTNET"
+      ? StellarSdk.Networks.TESTNET
+      : StellarSdk.Networks.PUBLIC;
+
+  const expectedFundingAccount = STELLAR_FUNDING_PUBLIC_KEY;
+  const expectedUsdcIssuer = STELLAR_USDC_ISSUER;
+
+  const transaction = StellarSdk.TransactionBuilder.fromXDR(
+    xdr,
+    networkPassphrase
+  );
+
+  const walletAddress = state.STELLAR_PUBLICK_KEY;
+
+  if (
+    !(transaction instanceof StellarSdk.Transaction) ||
+    transaction.source !== expectedFundingAccount
+  ) {
+    throw new Error("Unexpected activation funding account");
+  }
+
+  const [createAccount, changeTrust] = transaction.operations;
+
+  if (
+    transaction.operations.length !== 2 ||
+    createAccount?.type !== "createAccount" ||
+    createAccount.destination !== walletAddress ||
+    (createAccount.source ?? transaction.source) !== expectedFundingAccount ||
+    changeTrust?.type !== "changeTrust" ||
+    changeTrust.source !== walletAddress ||
+    changeTrust.line.code !== "USDC" ||
+    changeTrust.line.issuer !== expectedUsdcIssuer
+  ) {
+    throw new Error("Unexpected activation operations");
+  }
+
+  const signedTx = await NativeModules.StellarSigner.signTransaction(xdr);
+
+  if (!signedTx?.signedXDR) {
+    throw new Error("Native signer did not return signedXDR");
+  }
+
+  const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(
+    signedTx.signedXDR,
+    networkPassphrase
+  );
+
+  if (
+    !(signedTransaction instanceof StellarSdk.Transaction) ||
+    !signedTransaction.hash().equals(transaction.hash())
+  ) {
+    throw new Error("Signer changed the activation transaction");
+  }
+
+  // Verify both signatures, rather than checking signature count.
+  const hash = signedTransaction.hash();
+
+  for (const address of [expectedFundingAccount, walletAddress]) {
+    const keypair = StellarSdk.Keypair.fromPublicKey(address);
+    const valid = signedTransaction.signatures.some((signature) =>
+      keypair.verify(hash, signature.signature())
+    );
+
+    if (!valid) {
+      throw new Error(`Missing or invalid activation signature: ${address}`);
+    }
+  }
+
+  const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
+  const result = await server.submitTransaction(signedTransaction);
+      console.info("Activation transaction result:", result);
+      if (!result?.successful) {
+        throw new Error("Funding account failed");
+      }
+      const account = await server.loadAccount(state.STELLAR_PUBLICK_KEY);
+      dispatch_({
+        type: SET_ASSET_DATA,
+        payload: account.balances,
+      });
+      dispatch_({
+        type: RAPID_STELLAR,
+        payload: {
+          ETH_KEY: state.ETH_KEY,
+          STELLAR_PUBLICK_KEY: state.STELLAR_PUBLICK_KEY,
+          STELLAR_ADDRESS_STATUS: true,
+        },
+      });
+      CustomInfoProvider.show("success", "Hurray", "Wallet Activated successfully.");
       setWallet_activation(false);
-      handleClose()
+      onActivate();
+    } catch (error) {
+      console.error(
+        "Wallet activation error:",
+        error?.response?.data || error
+      );
+
+      if (error?.response?.data?.extras?.result_codes) {
+        console.log(
+          "STELLAR RESULT CODES:",
+          error.response.data.extras.result_codes
+        );
+      }
+      setWallet_activation(false);
+      CustomInfoProvider.show('error', error?.response?.data?.extras?.result_codes?.transaction ===
+            "tx_bad_auth"
+            ? "Transaction signature is invalid for the selected Stellar network."
+            : "Wallet activation failed.");
+      handleClose();
     }
   };
 
-
   const ActivationHandle=async()=>{
     setWallet_activation(true)
-    // await active_account()
+    await active_account()
   }
 
   const HandleTokensBuy=()=>{
@@ -333,13 +391,23 @@ const WalletActivationComponent = ({
           </Text>
           
           <View style={styles.userActionBtnCon}>
+            {ENVIRONMENT==="TESTNET"?
+              <TouchableOpacity
+                style={[styles.activateButton, { backgroundColor: Wallet_activation ? "gray" : theme.handleColor }]}
+                onPress={() => {
+                  ActivationHandle()
+                }}
+                disabled={Wallet_activation}
+              >
+                {Wallet_activation ? <ActivityIndicator color={"green"} size={"small"} /> : <Text style={[styles.buttonText,{color:theme.text}]}>Activate Now</Text>}
+              </TouchableOpacity>:
             <TouchableOpacity
               style={[styles.activateButton, { backgroundColor: Wallet_activation ? "gray" : "#5B6FED" }]}
               onPress={() => { HandleTokensBuy() }}
               disabled={Wallet_activation}
             >
               {Wallet_activation ? <ActivityIndicator color={"green"} size={"small"} /> : <Text style={styles.buttonText}>{!visibleBuyUi ? "Claim 5 XLM Now!" : "Buy XLM"}</Text>}
-            </TouchableOpacity>
+            </TouchableOpacity>}
             {portfolioDefault ? (
               <TouchableOpacity
                 style={[styles.activateButton, { backgroundColor: Wallet_activation ? "gray" : theme.handleColor }]}

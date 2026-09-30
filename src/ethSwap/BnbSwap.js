@@ -90,8 +90,12 @@ const getQuote = async (inputAmount) => {
   
   setQuoteLoading(true);
   try {
-    const {res,err} = await proxyRequest("/v1/bsc/swap-quote", PPOST, {tokenIn:fromToken,tokenOut:toToken,amount:inputAmount}
-    );
+    const {res,err} = await proxyRequest("/v1/bsc/swap-quote", PPOST, {
+      tokenIn: { address: fromToken.address, symbol: fromToken.symbol, decimals: fromToken.decimals, chainId: 56 },
+      tokenOut: { address: toToken.address, symbol: toToken.symbol, decimals: toToken.decimals, chainId: 56 },
+      amount: inputAmount,
+      recipient: userAddress
+    });
     console.log(res)
     if (err?.status) {
       setEstimatedUsdt('0');
@@ -117,7 +121,12 @@ const executeSwap = async () => {
   setLoading(true);
   try {
     
-    const {res,err} = await proxyRequest("/v1/bsc/swap-transaction/prepare", PPOST, {address:userAddress,bnbAmount:bnbAmount,tokenIn:fromToken,tokenOut:toToken});
+    const {res,err} = await proxyRequest("/v1/bsc/swap-transaction/prepare", PPOST, {
+      tokenIn: { address: fromToken.address, symbol: fromToken.symbol, decimals: fromToken.decimals, chainId: 56 },
+      tokenOut: { address: toToken.address, symbol: toToken.symbol, decimals: toToken.decimals, chainId: 56 },
+      amount: bnbAmount,
+      recipient: userAddress
+    });
     console.log(res)
     if (err?.status) {
       CustomInfoProvider.show('error', err.message||'Swap failed');
@@ -134,7 +143,7 @@ const executeSwap = async () => {
     }
     
     const signedTxs = await wallet.signTransaction(txObj);
-    const respo = await proxyRequest("/v1/bsc/transaction/broadcast", PPOST, {signedTx:signedTxs});
+    const respo = await proxyRequest("/v1/bsc/transaction/broadcast", PPOST, {signedTx:signedTxs, broadcastChain: "BSC"});
     if (respo?.err?.status) {
       CustomInfoProvider.show('error', respo.err.message||'Swap failed');
     }

@@ -1,4 +1,5 @@
 import { View, StyleSheet, TouchableOpacity, Image, FlatList, Text, TextInput, Keyboard, Platform, NativeModules, ActivityIndicator } from "react-native"
+import { PPOST, proxyRequest } from '../exchange/crypto-exchange-front-end-main/src/api';
 import { useDispatch, useSelector } from "react-redux";
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from "react-native-responsive-screen";
 import { Wallet_screen_header } from "../reusables/ExchangeHeader";
@@ -12,7 +13,6 @@ import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/c
 import { AddToAllWallets, getBalance, setCurrentWallet, setToken, setUser, setWalletType } from "../../components/Redux/actions/auth";
 import AccessNativeStorage from "../Wallets/AccessNativeStorage";
 import apiHelper from "../exchange/crypto-exchange-front-end-main/src/apiHelper";
-import { REACT_APP_HOST } from "../exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { dydxAddressDrive } from "../../dydx/dydxAddressDrive";
 import { alert } from "../reusables/Toasts";
@@ -236,7 +236,7 @@ export const WalletNetworkSelection = (props) => {
                     wallets: wallets,
                 },
             ];
-            const resultApi = await apiHelper.post(REACT_APP_HOST + '/v1/wallet', {
+            const resultApi = await proxyRequest('/v1/wallet', PPOST, {
                 "addresses": {
                     "eth": wallet.address,
                     "xlm": wallet.stellarWallet.publicKey,
@@ -367,7 +367,7 @@ export const WalletNetworkSelection = (props) => {
                     wallets: wallets,
                 },
             ];
-            const resultApi = await apiHelper.post(REACT_APP_HOST + '/v1/wallet', {
+            const resultApi = await proxyRequest('/v1/wallet', PPOST, {
                 "addresses": {
                     "eth": wallet.address,
                     "xlm": wallet.stellarWallet.publicKey,
@@ -537,7 +537,7 @@ export const WalletNetworkSelection = (props) => {
                 dydxWalletConnectSignature: dydxAddress.walletConnectSignature
             })
             if (walletResponse.success) {
-                const resultApi = await apiHelper.post(REACT_APP_HOST + '/v1/wallet', {
+                const resultApi = await proxyRequest('/v1/wallet', PPOST, {
                     "addresses": {
                         "eth": accountFromMnemonic.ethereum.address,
                         "xlm": accountFromMnemonic.stellar.publicKey,
@@ -686,7 +686,7 @@ export const WalletNetworkSelection = (props) => {
                 dydxWalletConnectSignature: dydxAddress.walletConnectSignature
             })
             if (walletResponse.success) {
-                const resultApi = await apiHelper.post(REACT_APP_HOST + '/v1/wallet', {
+                const resultApi = await proxyRequest('/v1/wallet', PPOST, {
                     "addresses": {
                         "eth": accountFromMnemonic.generated.address,
                         "xlm": accountFromMnemonic.original.publicKey,
@@ -783,7 +783,7 @@ export const WalletNetworkSelection = (props) => {
                     wallets: wallets,
                 },
             ];
-            const resultApi = await apiHelper.post(REACT_APP_HOST + '/v1/wallet', {
+            const resultApi = await proxyRequest('/v1/wallet', PPOST, {
                 "addresses": {
                     "eth": wallet.address,
                     "xlm": wallet.stellarWallet.publicKey,

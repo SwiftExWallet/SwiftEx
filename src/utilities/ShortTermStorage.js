@@ -208,7 +208,50 @@ const ShortTermStorage = {
         ? Number(payload.amountIn)
         : await CoinsToUSD(payload.fromChain, payload.fromTokenMetaData, Number(payload.amountIn));
 
-      const response = await proxyRequest('/v1/swapOrders/store', PPOST, {...payload,usdValue: usdValue});
+      const providerEnumMap = {
+        '1inch':           'ONEINCH_FUSION',
+        'ONEINCH':         'ONEINCH_FUSION',
+        '1inch_fusion':    'ONEINCH_FUSION',
+        '1inch_fusion_plus': 'ONEINCH_FUSION_PLUS',
+        'FUSION_PLUS':     'ONEINCH_FUSION_PLUS',
+        'RANGO':           'EVMTX',
+        'EVMTX':           'EVMTX',
+        'DYDX':            'DYDX',
+        'NEARINTENT':      'NEARINTENT',
+      };
+
+      const chainNameMap = {
+        'Ethereum':          'ETH',
+        'BNB Smart Chain':   'BSC',
+        'Polygon':           'POL',
+        'Arbitrum':          'ARB',
+        'Optimism':          'OPT',
+        'Avalanche':         'AVAX',
+        'Base':              'BASE',
+        'ethereum':          'ETH',
+        'bnb smart chain':   'BSC',
+        'polygon':           'POL',
+      };
+
+      const baseNormalizedPayload = {
+        ...payload,
+        usdValue,
+        provider:
+          providerEnumMap[payload.provider] ||
+          providerEnumMap[payload.provider?.toUpperCase()] ||
+          payload.provider,
+        fromChain: chainNameMap[payload.fromChain] || payload.fromChain,
+        toChain: chainNameMap[payload.toChain] || payload.toChain,
+      };
+
+      const keysToRemove = ["fromAddress", "toAddress", "fromTokenMetaData"];
+      const normalizedPayload = Object.fromEntries(
+        Object.entries(baseNormalizedPayload).filter(
+          ([key]) => !keysToRemove.includes(key)
+        )
+      );
+
+      const response = await proxyRequest('/v1/swapOrders/store', PPOST, normalizedPayload);
       if (response.err?.status) {
         return { status: false, error: response.err.message };
       }

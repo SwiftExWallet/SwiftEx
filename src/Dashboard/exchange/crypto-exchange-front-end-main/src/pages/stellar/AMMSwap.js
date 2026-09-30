@@ -17,7 +17,6 @@ import {
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import Ionicons from "react-native-vector-icons/Ionicons";
-import stellarTokens from "./Tokens.json";
 import { debounce } from 'lodash';
 import { useSelector } from 'react-redux';
 import { GetStellarAvilabelBalance, GetStellarUSDCAvilabelBalance } from '../../../../../../utilities/StellarUtils';
@@ -34,6 +33,8 @@ import { colors } from '../../../../../../Screens/ThemeColorsConfig';
 import { GetAquariusSwapQuote, ExecuteAquariusSwap } from '../../../../../../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/stellar/AquariusUtil';
 import { getSafeErrorMessage } from '../../../../../../utilities/errorSanitizer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CHAINS } from '../../../../../../utilities/TokenUtils';
+import ShortTermStorage from '../../../../../../utilities/ShortTermStorage';
 
 const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   const state=useSelector((state)=>state);
@@ -88,6 +89,8 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
   const [isOptionsVisible, setIsOptionsVisible] = useState(false);
   const [isAquaSwapUse, setIsAquaSwapUse] = useState(true);
   const [optionalSlippage, setOptionalSlippage] = useState(slippageScale[2].key);
+  const [tokenList, setTokenList] = useState([]);
+  const [tokensLoading, setTokensLoading] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -561,6 +564,21 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
       });
 
       if (respo.status === true) {
+        await ShortTermStorage.syncTx({
+          txHash: respo.txHash,
+          walletAddress: state?.STELLAR_PUBLICK_KEY,
+          fromAddress: state?.STELLAR_PUBLICK_KEY,
+          toAddress: state?.STELLAR_PUBLICK_KEY,
+          provider: "STELLAR",
+          fromChain: "STR",
+          fromToken: fromToken.code,
+          toChain: "STR",
+          toToken: toToken.code,
+          amountIn: fromAmount?.toString(),
+          amountOut: fromAmount?.toString(),
+          txType: "Swap",
+          fromTokenMetaData: fromToken.code
+        });
         CustomInfoProvider.show("success", "Transaction successful!");
         settokenBurn(false)
         setTimeout(() => {
@@ -577,6 +595,21 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
     const respo=await AMMSWAPTESTNET(fromToken.code,fromToken.issuer,toToken.code,toToken.issuer,state?.STELLAR_PUBLICK_KEY,fromAmount,assetTrustRequired)
     if(respo.status===true)
     {
+      await ShortTermStorage.syncTx({
+        txHash: respo.txHash,
+        walletAddress: state?.STELLAR_PUBLICK_KEY,
+        fromAddress: state?.STELLAR_PUBLICK_KEY,
+        toAddress: state?.STELLAR_PUBLICK_KEY,
+        provider: "STELLAR",
+        fromChain: "STR",
+        fromToken: fromToken.code,
+        toChain: "STR",
+        toToken: toToken.code,
+        amountIn: fromAmount?.toString(),
+        amountOut: fromAmount?.toString(),
+        txType: "Swap",
+        fromTokenMetaData: fromToken.code
+      });
       CustomInfoProvider.show("success","Transaction successful!");
       console.log("--Success--,",respo.tx)
       settokenBurn(false)
@@ -594,31 +627,44 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
 
   const theme = state.THEME.THEME ? colors.dark : colors.light;
 
-  const getFilteredTokens = () => {
-    let list = stellarTokens?.assets || [];
+  
+  useEffect(() => {
+    const loadTokens = async () => {
+      try {
+        setTokensLoading(true);
+        const response = await fetch(CHAINS["STR"].supportedTokenList);
+        if (!response.ok) {
+          throw new Error(`Token list fetch failed: ${response.status}`);
+        }
+        const tokens = await response.json();
+        const list = Array.isArray(tokens)? tokens: tokens?.assets || [];
+        setTokenList(list);
+      } catch (error) {
+        console.error("Token fetch error:", error);
+        setTokenList([]);
+      } finally {
+        setTokensLoading(false);
+      }
+    };
+    loadTokens();
+  }, []);
 
-    if (findToken.trim()) {
-      const query = findToken.toLowerCase();
-
-      list = list.filter((token) => {
-        const code = token.code?.toLowerCase() || '';
-        const issuer = token.issuer?.toLowerCase() || '';
-        const name = token.name?.toLowerCase() || '';
-
-        return code.includes(query) ||
-          issuer.includes(query) ||
-          name.includes(query);
-      });
+  const filteredTokens = React.useMemo(() => {
+    const query = findToken.trim().toLowerCase();
+    let list = tokenList;
+    if (query) {
+      list = list.filter((token) =>
+        token.code?.toLowerCase().includes(query) ||
+        token.issuer?.toLowerCase().includes(query) ||
+        token.name?.toLowerCase().includes(query)
+      );
     }
-
-    return list.slice().sort((a, b) => {
-      const keyA = a.issuer ? `${a.code}:${a.issuer}` : 'native';
-      const keyB = b.issuer ? `${b.code}:${b.issuer}` : 'native';
-      const balA = myAssetBalances.get(keyA) || 0;
-      const balB = myAssetBalances.get(keyB) || 0;
-      return balB - balA;
+    return [...list].sort((a, b) => {
+      const keyA = a.issuer?`${a.code}:${a.issuer}`: "native";
+      const keyB = b.issuer?`${b.code}:${b.issuer}`:"native";
+      return ((myAssetBalances.get(keyB)||0)-(myAssetBalances.get(keyA)||0));
     });
-  };
+  }, [tokenList, findToken, myAssetBalances]);
   
   return (
     <View style={styles.container}>
@@ -811,9 +857,9 @@ const AMMSwap = ({FROM_TOKEN=null,TO_TOKEN=null}) => {
                   />
                 </View>      
             <FlatList
-              data={getFilteredTokens()}
+              data={filteredTokens}
               renderItem={renderTokenItem}
-              keyExtractor={item => item.id}
+              keyExtractor={(item) =>`${item.code}-${item.issuer || "native"}`}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="always"
               ListEmptyComponent={

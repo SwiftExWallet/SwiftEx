@@ -377,8 +377,19 @@ const TransactionCard = ({ item, walletAddress, activeChain, activeFilter, navig
       CustomInfoProvider.show("waiting", "Please Wait", "Checking order status...");
       try {
         const chain = item.fromChain || activeChain;
+        const providerEnumMap = {
+          '1inch': 'ONEINCH_FUSION',
+          'ONEINCH': 'ONEINCH_FUSION',
+          '1inch_fusion': 'ONEINCH_FUSION',
+          '1inch_fusion_plus': 'ONEINCH_FUSION_PLUS',
+          'FUSION_PLUS': 'ONEINCH_FUSION_PLUS',
+          'RANGO': 'EVMTX',
+          'EVMTX': 'EVMTX',
+          'DYDX': 'DYDX',
+        };
+        const swapProvider = providerEnumMap[item.provider?.toUpperCase?.()] || providerEnumMap[item.provider] || 'ONEINCH_FUSION';
         const { res, err } = await proxyRequest(
-          `/v1/swap/1inch/orderStatus?chain=${chain}&orderHash=${item.txHash || item.orderHash}&swapProvider=${item.provider}`,
+          `/v1/swap/1inch/orderStatus?chain=${chain}&orderHash=${item.txHash || item.orderHash}&swapProvider=${swapProvider}`,
           PGET
         );
 

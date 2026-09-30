@@ -35,7 +35,7 @@ import { isFloat } from "validator";
 import { Camera, useCameraDevice, useCameraPermission, useCodeScanner } from "react-native-vision-camera";
 import { REACT_APP_LOCAL_TOKEN } from "../exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import { useToast } from "native-base";
-import { STELLAR_URL } from "../constants";
+import { ENVIRONMENT, STELLAR_URL } from "../constants";
 import { Wallet_screen_header } from "../reusables/ExchangeHeader";
 import ErrorComponet from "../../utilities/ErrorComponet";
 import { GetStellarAvilabelBalance, stellarWalletStatus } from "../../utilities/StellarUtils";
@@ -46,7 +46,8 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import QRScannerComponent from "../Modals/QRScannerComponent";
 import LinearGradient from "react-native-linear-gradient";
-StellarSdk.Networks.PUBLIC
+import ShortTermStorage from "../../utilities/ShortTermStorage";
+
 const SendXLM = (props) => {
     const { hasPermission, requestPermission } = useCameraPermission();
     const toast=useToast();
@@ -196,7 +197,7 @@ const SendXLM = (props) => {
     }
 
     const get_stellar = async (steller_key) => {
-      StellarSdk.Networks.PUBLIC
+      ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC
       const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
         server.loadAccount(steller_key)
             .then(account => {
@@ -257,14 +258,14 @@ const SendXLM = (props) => {
             Keyboard.dismiss();
             try {
               const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
-              StellarSdk.Networks.PUBLIC;
+              ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC;
               const sourceAccount = await server.loadAccount(sourcePublic);
               const isDestinationActive = await stellarWalletStatus(destinationPublic);
               let transaction;
               if (!isDestinationActive) {
                 transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
                   fee: await server.fetchBaseFee(),
-                  networkPassphrase: StellarSdk.Networks.PUBLIC,
+                  networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
                 })
                   .addOperation(
                     StellarSdk.Operation.payment({
@@ -278,7 +279,7 @@ const SendXLM = (props) => {
               } else {
                 transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
                   fee: await server.fetchBaseFee(),
-                  networkPassphrase: StellarSdk.Networks.PUBLIC,
+                  networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
                 })
                   .addOperation(
                     StellarSdk.Operation.createAccount({
@@ -296,6 +297,21 @@ const SendXLM = (props) => {
               transaction.addSignature(res.publicKey, signatureBuffer.toString('base64'));
               const transactionResult = await server.submitTransaction(transaction);
               console.log('Transaction successful!', transactionResult);
+              await ShortTermStorage.syncTx({
+                txHash: transactionResult.hash,
+                walletAddress: res.publicKey,
+                fromAddress: res.publicKey,
+                toAddress: destinationPublic,
+                provider: "STELLAR",
+                fromChain: "STR",
+                fromToken: "XLM",
+                toChain: "STR",
+                toToken: "XLM",
+                amountIn: amount?.toString(),
+                amountOut: amount?.toString(),
+                txType: "Token Send",
+                fromTokenMetaData: "XLM"
+              });
               Showsuccesstoast(toast,"Transaction successful!");
               setdisable(false);
               setPayment_loading(false);

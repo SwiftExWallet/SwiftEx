@@ -25,7 +25,7 @@ import { ShowErrotoast, Showsuccesstoast } from "../../../../reusables/Toasts";
 import Icon from "../../../../../icon";
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useIsFocused } from '@react-navigation/native';
-import { STELLAR_URL } from "../../../../constants";
+import { ENVIRONMENT, STELLAR_URL } from "../../../../constants";
 import { useToast } from "native-base";
 import { Exchange_screen_header } from "../../../../reusables/ExchangeHeader";
 import StellarAccountReserve from "../utils/StellarReserveComponent";
@@ -37,12 +37,12 @@ import AMMSwap from "../pages/stellar/AMMSwap";
 import InstentTradeHistory from "../pages/stellar/InstentTradeHistory";
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
-import stellarTokens from "../pages/stellar/Tokens.json";
 import OneTapComponet from "./OneTapComponet";
 import CustomInfoProvider from "./CustomInfoProvider";
 import CrossChainTx from "./CrossChainTx";
 import { GetStellarTokenList } from "../../../../../utilities/TokenUtils";
 import DragToProcced from "../../src/pages/AnimatedComponent/DragToProcced"
+import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
 
 // Initialize Stellar server
 const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
@@ -277,7 +277,21 @@ export const NewOfferModal = () => {
       const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
       tx.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
       const offerResult = await server.submitTransaction(tx);
-      
+       await ShortTermStorage.syncTx({
+        txHash: offerResult.hash,
+        walletAddress: signedTx.publicKey,
+        fromAddress: signedTx.publicKey,
+        toAddress: signedTx.publicKey,
+        provider: "STELLAR",
+        fromChain: "STR",
+        fromToken: top_value,
+        toChain: "STR",
+        toToken: top_value_0,
+        amountIn: offer_amount?.toString(),
+        amountOut: offer_amount?.toString(),
+        txType: "Sell Offer",
+        fromTokenMetaData: top_value_0
+      });
       console.log('Sell Offer placed:', offerResult.hash);
       Showsuccesstoast(toast, SUCCESS_MESSAGES.SELL_OFFER_CREATED);
       setLoading(false);
@@ -340,7 +354,21 @@ export const NewOfferModal = () => {
         const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
         tx.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
       const offerResult = await server.submitTransaction(tx);
-      
+      await ShortTermStorage.syncTx({
+        txHash: offerResult.hash,
+        walletAddress: signedTx.publicKey,
+        fromAddress: signedTx.publicKey,
+        toAddress: signedTx.publicKey,
+        provider: "STELLAR",
+        fromChain: "STR",
+        fromToken: top_value,
+        toChain: "STR",
+        toToken: top_value_0,
+        amountIn: offer_amount?.toString(),
+        amountOut: offer_amount?.toString(),
+        txType: "Buy Offer",
+        fromTokenMetaData: top_value_0
+      });
       console.log('Buy Offer placed:', offerResult.hash);
       Showsuccesstoast(toast, SUCCESS_MESSAGES.BUY_OFFER_CREATED);
       setLoading(false);
@@ -1961,7 +1989,7 @@ const styles = StyleSheet.create({
 });
 
 export const stellarConfig = {
-  NETWORK: StellarSdk.Networks.PUBLIC,
+  NETWORK: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
   TRANSACTION_TIMEOUT: 30,
   DEFAULT_OFFER_ID: 0,
   ANIMATION_DURATION: 1500,

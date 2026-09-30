@@ -9,13 +9,13 @@ import Icon from "../../../../../../icon";
 import { useDispatch, useSelector } from "react-redux";
 import Snackbar from "react-native-snackbar";
 import { SET_ASSET_DATA } from "../../../../../../components/Redux/actions/type";
-import { STELLAR_URL } from "../../../../../constants";
+import { ENVIRONMENT, STELLAR_URL } from "../../../../../constants";
 import { Exchange_screen_header } from "../../../../../reusables/ExchangeHeader";
 import * as StellarSdk from '@stellar/stellar-sdk';
 import ClaimableBalanceChecker from "./ClaimableBalanceChecker";
 import stellarTokens from "./Tokens.json";
 import { colors } from "../../../../../../Screens/ThemeColorsConfig";
-import { GetStellarTokenList } from "../../../../../../utilities/TokenUtils";
+import { CHAINS, GetStellarTokenList } from "../../../../../../utilities/TokenUtils";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const Assets_manage = ({ route }) => {
@@ -40,15 +40,23 @@ const Assets_manage = ({ route }) => {
             "selling_liabilities": "0.0000000",
         },
     ]);
+    const [TokenList, setTokenList] = useState(stellarTokens.assets);
     const state = useSelector((state) => state);
 
     const get_stellar = async () => {
         try {
+            const response = await fetch(CHAINS["STR"].supportedTokenList);
+            if (!response.ok) {
+                throw new Error(`Token list fetch failed: ${response.status}`);
+            }
+            const tokens = await response.json();
+            const list = tokens?.assets || [];
+            setTokenList(list);
             setLoading_assets_bal(true);
-            StellarSdk.Networks.PUBLIC;
+            ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC;
             const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
             const account = await server.loadAccount(state.STELLAR_PUBLICK_KEY);
-            const tokenList = (supportedAssetsList.length > 0 ? supportedAssetsList : stellarTokens.assets);
+            const tokenList = (supportedAssetsList.length > 0 ? supportedAssetsList : TokenList);
             const updatedAssets = account.balances.map((bal) => {
                 const match = tokenList.find(
                     (res) =>
@@ -78,11 +86,11 @@ const Assets_manage = ({ route }) => {
         setLoading(domainName)
         try {
             const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
-            StellarSdk.Networks.PUBLIC
+            ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC
             const account = await server.loadAccount(state.STELLAR_PUBLICK_KEY);
             const transaction = new StellarSdk.TransactionBuilder(account, {
                 fee: StellarSdk.BASE_FEE,
-                networkPassphrase: StellarSdk.Networks.PUBLIC,
+                networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
             })
                 .addOperation(
                     StellarSdk.Operation.changeTrust({
@@ -119,11 +127,11 @@ const Assets_manage = ({ route }) => {
         setLoading(domainName)
         try {
             const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
-            StellarSdk.Networks.PUBLIC
+            ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC
             const account = await server.loadAccount(state.STELLAR_PUBLICK_KEY);
             const transaction = new StellarSdk.TransactionBuilder(account, {
                 fee: StellarSdk.BASE_FEE,
-                networkPassphrase: StellarSdk.Networks.PUBLIC,
+                networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
             })
                 .addOperation(
                     StellarSdk.Operation.changeTrust({
@@ -262,7 +270,7 @@ const Assets_manage = ({ route }) => {
 
     const theme = state.THEME.THEME ? colors.dark : colors.light;
 
-    const fillteredAssets = (supportedAssetsList.length > 0 ? supportedAssetsList : stellarTokens?.assets)
+    const fillteredAssets = (supportedAssetsList.length > 0 ? supportedAssetsList : TokenList)
         ?.slice(1)
         ?.filter((item) => {
             if (!searchQuery.trim()) return true;
@@ -312,7 +320,7 @@ const Assets_manage = ({ route }) => {
                                 }}>
                                 <View style={{flexDirection: "row",alignItems:"center",justifyContent:"flex-start",width:wp(45)}}>
                                     <View style={styles.assetImgCom}>
-                                        {item.asset_type === "native" ? <Image source={{uri:stellarTokens?.assets[0]?.icon}} width={43} height={43}/> :
+                                        {item.asset_type === "native" ? <Image source={{uri:TokenList[0]?.icon}} width={43} height={43}/> :
                                         item.asset_type === "liquidity_pool_shares" ? <Text style={[styles.assetLatter,{color:theme.headingTx}]}>LP</Text> :
                                         (item.icon == null) ? <Text style={[styles.assetLatter,{color:theme.headingTx}]}>{(item?.asset_code?.[0] ?? item?.asset_type?.[0] ?? "?").toUpperCase()}</Text> : <Image source={{uri:item.icon}} width={43} height={43}/>}
                                     </View>
