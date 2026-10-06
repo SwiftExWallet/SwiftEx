@@ -4,7 +4,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
 import Share from 'react-native-share';
-import darkBlue from "../../../assets/Dark-Blue.png";
+import darkBlue from "../../../assets/darkBlue.png";
 import {
   widthPercentageToDP as wp,
   heightPercentageToDP as hp,

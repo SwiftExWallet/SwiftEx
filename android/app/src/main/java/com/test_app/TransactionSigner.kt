@@ -11,7 +11,7 @@ import org.web3j.utils.Numeric
 
 class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
     private val TAG = "TransactionSigner"
-    private val PREF_NAME = "com_swiftEx_app_secure"
+    private val PREF_NAME = "com_swiftEx_app_secure_v2"
 
     private val prefs by lazy {
         try {

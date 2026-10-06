@@ -12,7 +12,7 @@ import java.security.MessageDigest
 
 class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
     private val TAG = "StellarSigner"
-    private val PREF_NAME = "com_swiftEx_app_secure"
+    private val PREF_NAME = "com_swiftEx_app_secure_v2"
     private val KEY_WALLET = "activeUserWallet"
     private val stellarServer = Server("https://horizon.stellar.org")
 

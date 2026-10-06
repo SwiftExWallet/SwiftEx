@@ -204,7 +204,6 @@ function InvestmentChart() {
         payload: {
           ETH_KEY: matchedData.Ether_address,
           STELLAR_PUBLICK_KEY: matchedData.publicKey,
-          STELLAR_SECRET_KEY: matchedData.secretKey,
           STELLAR_ADDRESS_STATUS: isActive,
         },
       });

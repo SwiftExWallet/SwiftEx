@@ -8,8 +8,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { REACT_APP_LOCAL_TOKEN } from "../../ExchangeConstants";
 import { useEffect, useRef, useState } from "react";
 import Icon from "../../../../../../icon";
-import darkBlue from "../../../../../../../assets/darkBlue.png";
-import Bridge from "../../../../../../../assets/Bridge.png";
 import QRCode from "react-native-qrcode-svg";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { useSelector } from "react-redux";
@@ -17,7 +15,7 @@ import { Camera, useCameraDevice, useCodeScanner, useCameraPermission } from "re
 import { Exchange_screen_header } from "../../../../../reusables/ExchangeHeader";
 import { alert } from "../../../../../reusables/Toasts";
 import { ENVIRONMENT, STELLAR_URL } from "../../../../../constants";
-import { Paste, SaveTransaction } from "../../../../../../utilities/utilities";
+import { Paste } from "../../../../../../utilities/utilities";
 import Snackbar from "react-native-snackbar";
 import ErrorComponet from "../../../../../../utilities/ErrorComponet";
 import { GetStellarAvilabelBalance, GetStellarUSDCAvilabelBalance, stellarWalletStatus } from "../../../../../../utilities/StellarUtils";
@@ -303,19 +301,6 @@ const send_recive = ({route}) => {
       setrecepi_memo('');
       setPayment_loading(false);
       try {
-        const user_current = await state.user;
-        const type = "Send";
-        const chainType = "XLM";
-        const walletType=await state.walletType;
-        const saveTransaction = await SaveTransaction(
-          type,
-          transactionResult.hash,
-          user_current,
-          chainType,
-          walletType,
-          chainType
-        );
-        console.log(saveTransaction);
         navigation.navigate("Transactions",{txType:"STR"});
       } catch (e) {
         console.log(e);

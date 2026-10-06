@@ -4,7 +4,6 @@ import { ARB, AVAX, BASE, BSC, ENVIRONMENT, ETH, OPT, POL, PUBLIC_TX_CHEKER, STE
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { FOLIO_BASE_ROUTE, REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL, REACT_APP_HOST } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import apiHelper from "../../src/Dashboard/exchange/crypto-exchange-front-end-main/src/apiHelper";
-import PancakeList from "../../src/Dashboard/tokens/pancakeSwap/PancakeList.json";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ethers } from "ethers";
 const BASEROUTE = `${REACT_APP_HOST}/v1/portfolio/`;

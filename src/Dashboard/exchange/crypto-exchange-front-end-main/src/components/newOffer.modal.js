@@ -37,11 +37,9 @@ import AMMSwap from "../pages/stellar/AMMSwap";
 import InstentTradeHistory from "../pages/stellar/InstentTradeHistory";
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
-import OneTapComponet from "./OneTapComponet";
 import CustomInfoProvider from "./CustomInfoProvider";
 import CrossChainTx from "./CrossChainTx";
 import { GetStellarTokenList } from "../../../../../utilities/TokenUtils";
-import DragToProcced from "../../src/pages/AnimatedComponent/DragToProcced"
 import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
 
 // Initialize Stellar server
@@ -1212,17 +1210,6 @@ export const NewOfferModal = () => {
                           )}
                         </Text>
                       </TouchableOpacity>
-                      {/* <View style={{marginTop:hp(0.9),marginBottom:hp(2.8)}}>
-                        <DragToProcced
-                          onDragComplete={() => {
-                            setLoading(true)
-                            offer_creation()
-                          }}
-                          disabled={Loading || isBalanceInsufficient || assetInfo}
-                          isProccessing={Loading}
-                          heading={assetInfo ? (ERROR_MESSAGES.INSUFFICIENT_FUNDS) : (show_trust_modal.length > 0 ? ERROR_MESSAGES.MULTIOP_OFFER : ERROR_MESSAGES.CREATE_OFFER)}
-                        />
-                      </View> */}
 
 
                     <Modal

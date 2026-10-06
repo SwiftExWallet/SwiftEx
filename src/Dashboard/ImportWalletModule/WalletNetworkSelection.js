@@ -254,7 +254,9 @@ export const WalletNetworkSelection = (props) => {
                         dispatch(
                             setCurrentWallet(
                                 wallet.address,
-                                accountName
+                                accountName,
+                                "",
+                                "Multi-coin"
                             )
                         )
                         const walletResponse = await AccessNativeStorage.saveWallet({
@@ -371,7 +373,9 @@ export const WalletNetworkSelection = (props) => {
                         dispatch(
                             setCurrentWallet(
                                 wallet.address,
-                                accountName
+                                accountName,
+                                "",
+                                "Multi-coin"
                             )
                         )
                         const walletResponse = await AccessNativeStorage.saveWallet({
@@ -476,11 +480,10 @@ export const WalletNetworkSelection = (props) => {
                 setCurrentWallet(
                     wallet.address,
                     accountName,
-                    "000000000",
-                    "000000000",
-                    (walletType = "Multi-coin")
+                    "",
+                    "Multi-coin"
                 )
-            );
+            )
             dispatch(AddToAllWallets(wallets, accountName));
             dispatch(getBalance(wallet.address));
             dispatch(setWalletType("Multi-coin"));
@@ -548,7 +551,6 @@ export const WalletNetworkSelection = (props) => {
             setLoading(true);
             const user = await AsyncStorage.getItem("user");
             const check = await validateStellarKey(key);
-            console.info("check", check, key)
             if (!check.validateStellarKey) {
                 setLoading(false);
                 return alert(
@@ -609,10 +611,7 @@ export const WalletNetworkSelection = (props) => {
                 setCurrentWallet(
                     wallet.address,
                     accountName,
-                    "000000000",
-                    "000000000",
-                    "000000000",
-                    "000000000",
+                    "",
                     "Multi-coin"
                 )
             );
@@ -668,7 +667,6 @@ export const WalletNetworkSelection = (props) => {
             setLoading(true);
             const user = await AsyncStorage.getItem("user");
             const check = await validateStellarKey(key);
-            console.info("check", check, key)
             if (!check.validateStellarKey) {
                 setLoading(false);
                 return alert(
@@ -745,7 +743,9 @@ export const WalletNetworkSelection = (props) => {
                         dispatch(
                             setCurrentWallet(
                                 wallet.address,
-                                accountName
+                                accountName,
+                                "",
+                                "Multi-coin"
                             )
                         )
                         const walletResponse = await AccessNativeStorage.saveWallet({

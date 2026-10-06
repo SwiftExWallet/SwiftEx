@@ -16,7 +16,6 @@ import Icon from "../icon";
 import { GetPrivateKeyModal } from "./Modals/getPrivateKeyModal";
 import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import { useNavigation } from "@react-navigation/native";
-import BackupWallet from "./exchange/crypto-exchange-front-end-main/src/components/BackupWallet";
 import AuthRequest from "./reusables/AuthRequest";
 import AccessNativeStorage from "./Wallets/AccessNativeStorage";
 import CustomInfoProvider from "./exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
@@ -203,7 +202,6 @@ const MyWallet = (props) => {
         }}
       />
       <AuthRequest visible={showAuthRequest} heading={"Account Access"} subHeading={"Authentication required to view account information."} proccedNextStep={()=>{setshowAuthRequest(false),setVisible(!visible)}}/>
-      <BackupWallet open={backupVisible} close={() => setbackupVisible(false)} />
     </View>
 
   );

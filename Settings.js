@@ -259,6 +259,16 @@ const Settings = (props) => {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.card, { borderBottomColor: theme.inactiveTx }]}
+          onPress={() => {navi.navigate("AppStatus")}}
+        >
+          <View style={styles.iconCon}>
+            <Icon type={"material"} name={"broken-image"} size={31} color={"#4052D6"} />
+          </View>
+          <Text style={[styles.text, { color: theme.headingTx }]}>App Status</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
           style={[styles.card, { borderBottomWidth: 0, borderBottomColor: theme.inactiveTx }]}
           onPress={() => { Clipboard.setString("info@swiftexwallet.com"),alert("success","E-mail successfully copied") }}
         >

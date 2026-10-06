@@ -1,4 +1,4 @@
-import { Paste, SaveTransaction } from "../../utilities/utilities";
+import { Paste } from "../../utilities/utilities";
 import React, { useRef, useEffect, useState } from "react";
 import {
     StyleSheet,
@@ -59,7 +59,6 @@ const SendXLM = (props) => {
     const [balance, setBalance] = useState();
     const [reservedBalance, setreservedBalance] = useState();
     const [steller_key, setsteller_key] = useState();
-    const [steller_key_private, setsteller_key_private] = useState();
     const [disable, setdisable] = useState(false);
     const [ACTIVATION_MODAL, setACTIVATION_MODAL] = useState(false);
     const [ACTIVATION_MODAL_PROD, setACTIVATION_MODAL_PROD] = useState(false);
@@ -177,20 +176,7 @@ const SendXLM = (props) => {
     const getData = async () => {
         try {
           setsteller_key(state.STELLAR_PUBLICK_KEY)
-          setsteller_key_private(state.STELLAR_SECRET_KEY)
-            get_stellar(state.STELLAR_PUBLICK_KEY);
-            // const data = await AsyncStorageLib.getItem('myDataKey');
-            // if (data) {
-            //     const parsedData = JSON.parse(data);
-            //     const matchedData = parsedData.filter(item => item.Ether_address === state.wallet.address);
-            //     const publicKey = matchedData[0].publicKey;
-            //     setsteller_key(publicKey)
-            //     get_stellar(publicKey);
-            //     const secretKey_Key = matchedData[0].secretKey;
-            //     setsteller_key_private(secretKey_Key)
-            // } else {
-            //     console.log('No data found for key steller keys');
-            // }
+          get_stellar(state.STELLAR_PUBLICK_KEY);
         } catch (error) {
             console.error('Error getting data for key steller keys:', error);
         }
@@ -211,11 +197,8 @@ const SendXLM = (props) => {
                           console.log('Error loading account:', error);
                           setLoading(false);
                       });
-                        // console.log(`${balance.asset_code}: ${balance.balance}`);
-                        // setBalance(balance.balance)
                     }
                 });
-                // setLoading(false)
             })
             .catch(error => {
                 console.log('Error loading account:', error);
@@ -233,20 +216,16 @@ const SendXLM = (props) => {
     }
     const ActivateModal = () => {
       setACTIVATION_MODAL_PROD(false);
-      // navigation.goBack()
     };
     const handleUsernameChange = (text) => {
-        // Remove whitespace from the username
         const formattedUsername = text.replace(/\s/g, '');
         setAddress(formattedUsername);
     };
     function validateStellarAddress(address) {
-        // Check if the address is 56 characters long and starts with 'G'
         if (address.length !== 56 || address[0] !== 'G') {
             return false;
         }
         try {
-            // Use StellarSdk to verify if it's a valid Stellar address
             StellarSdk.StrKey.decodeEd25519PublicKey(address);
             return true;
         } catch (e) {
@@ -316,19 +295,6 @@ const SendXLM = (props) => {
               setdisable(false);
               setPayment_loading(false);
               try {
-                const user_current = await state.user;
-                const type = "Send";
-                const chainType = "XLM";
-                const walletType=await state.walletType;
-                const saveTransaction = await SaveTransaction(
-                  type,
-                  transactionResult.hash,
-                  user_current,
-                  chainType,
-                  walletType,
-                  chainType
-                );
-                console.log(saveTransaction);
                 await get_stellar(steller_key);
                 setAmount('')
                 setAddress('')

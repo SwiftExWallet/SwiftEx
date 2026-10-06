@@ -36,7 +36,6 @@ import {
 
 import { useNavigation } from "@react-navigation/native";
 
-import RecieveAddress from "./Modals/ReceiveAddress";
 
 import {
   REACT_APP_LOCAL_TOKEN,
@@ -997,13 +996,6 @@ const Asset_info = ({ route }) => {
   ] = useState(
     new Animated.Value(0),
   );
-
-
-  const [
-    visible,
-    setVisible,
-  ] = useState(false);
-
 
   const [
     qrVisible,
@@ -3307,18 +3299,6 @@ const Asset_info = ({ route }) => {
             />
           </Animated.View>
         </ScrollView>
-
-        {/* ====================================================
-            RECEIVE MODAL
-        ==================================================== */}
-
-        <RecieveAddress
-          modalVisible={visible}
-          setModalVisible={
-            setVisible
-          }
-          iconType={iconType}
-        />
 
         {/* ====================================================
             QR MODAL

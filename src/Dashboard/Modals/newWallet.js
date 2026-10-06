@@ -15,12 +15,10 @@ import {
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
 import { Animated } from "react-native";
-import title_icon from "../../../assets/title_icon.png";
 import { useDispatch, useSelector } from "react-redux";
 import { Generate_Wallet2 } from "../../components/Redux/actions/auth";
 import Modal from "react-native-modal";
 import NewWalletPrivateKey from "./newWalletPrivateKey";
-import ModalHeader from "../reusables/ModalHeader";
 import { alert } from "../reusables/Toasts";
 //import { TouchableOpacity } from "react-native-gesture-handler";
 import { LinearGradient } from "react-native-linear-gradient";
@@ -214,7 +212,6 @@ const NewWalletModal = ({ props,onCrossPress, visible, setVisible, setModalVisib
             </>
 
           </View>
-          {/* <ModalHeader Function={closeModal} name={"Import"} /> */}
           
         </View>
         </Animated.View>

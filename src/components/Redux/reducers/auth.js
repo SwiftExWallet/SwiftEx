@@ -183,7 +183,6 @@ case IMPORTALLWALLETS:
                               ...state,
                               ETH_KEY: action.payload.ETH_KEY,
                               STELLAR_PUBLICK_KEY: action.payload.STELLAR_PUBLICK_KEY,
-                              STELLAR_SECRET_KEY: action.payload.STELLAR_SECRET_KEY,
                               STELLAR_ADDRESS_STATUS:action.payload.STELLAR_ADDRESS_STATUS,
                             }
     case SET_ASSET_DATA:

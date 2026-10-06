@@ -24,7 +24,7 @@ import { useNavigation } from "@react-navigation/native";
 import { SendLoadingComponent } from "../../utilities/loadingComponent";
 import { CommonActions } from "@react-navigation/native";
 import { useToast } from "native-base";
-import { alert, ShowToast } from "../reusables/Toasts";
+import { alert } from "../reusables/Toasts";
 import { getAllBalances } from "../../utilities/web3utilities";
 import { PPOST, proxyRequest } from "../exchange/crypto-exchange-front-end-main/src/api";
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
@@ -40,7 +40,6 @@ const TransactionPinModal = ({
   type,
   rawTransaction,
   walletType,
-  SaveTransaction,
   setLoading,
   setDisable,
   txAmt
@@ -166,7 +165,6 @@ const TransactionPinModal = ({
                   txType: "Native Transfer",
                   fromTokenMetaData:"native"
                 });
-                // ShowToast(toast, "Transaction Successful");
   
                 setLoading(false);
                 setLoader(false);
@@ -208,7 +206,6 @@ const TransactionPinModal = ({
                   console.log("rawTransaction parse failed:", parseErr?.message);
                 }
 
-                // ShowToast(toast, "Transaction Successful");
                 await ShortTermStorage.syncTx({
                   txHash: res?.txHash,
                   walletAddress: state && state.wallet && state.wallet.address,

@@ -14,7 +14,6 @@ import {
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
 import { Animated } from "react-native";
-// import title_icon from "../../assets/title_icon.png";
 import darkBlue from '../../assets/darkBlue.png'
 import ReactNativePinView from "react-native-pin-view";
 import Icon from "react-native-vector-icons/Ionicons";

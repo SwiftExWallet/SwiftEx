@@ -46,8 +46,6 @@ const Offers_manages = () => {
   const [SelectedIndex, setSelectedIndex] = useState(null);
   const [newAmount, setNewAmount] = useState('');
   const [newPrice, setNewPrice] = useState('');
-  const [STELLAR_ACCOUNT_PUBLIC,setSTELLAR_ACCOUNT_PUBLIC]=useState('');
-  const [STELLAR_ACCOUNT_SECRET,setSTELLAR_ACCOUNT_SECRET]=useState('');
   const [loading_del,setloading_del]=useState(false);
   const [loading_edi,setloading_edi]=useState(false);
   const [stellarAvalibleBalance,setstellarAvalibleBalance]=useState('');
@@ -66,8 +64,6 @@ const Offers_manages = () => {
     setSelectedIndex(null)
     setloading_del(false);
     setloading_edi(false);
-    setSTELLAR_ACCOUNT_PUBLIC(state.STELLAR_PUBLICK_KEY);
-    setSTELLAR_ACCOUNT_SECRET(state.STELLAR_SECRET_KEY);
     fetchOffers();
   }, [isFocused]);
 

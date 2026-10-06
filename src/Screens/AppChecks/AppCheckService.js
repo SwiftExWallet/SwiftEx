@@ -15,7 +15,6 @@ export const SERVICE_SCREEN_MAP = {
     assets_manage: "Assets_manage",
     new_offer: "newOffer_modal",
     eth_swap: "EthSwap",
-    bnb_swap: "BnbSwap",
     bridge_assets: "BridgeAssets",
     export_usdc: "ExportUSDC",
     token_send: "TokenSend",

@@ -12,14 +12,13 @@ import {
 } from "react-native-responsive-screen";
 import { useSelector } from "react-redux";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
-import { SaveTransaction } from "../utilities/utilities";
 import { useNavigation } from "@react-navigation/native";
 import "react-native-get-random-values";
 import "@ethersproject/shims";
 import TransactionPinModal from "./Modals/transactionPinModal";
 import { useBiometricsForSendTransaction } from "../biometrics/biometric";
 import { useToast } from "native-base";
-import { alert, ShowToast } from "./reusables/Toasts";
+import { alert } from "./reusables/Toasts";
 import { CommonActions } from "@react-navigation/native";
 import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import { PPOST, proxyRequest } from "./exchange/crypto-exchange-front-end-main/src/api";
@@ -208,7 +207,6 @@ const ConfirmTransaction = (props) => {
         type={props?.route?.params?.info?.type}
         rawTransaction={props?.route?.params?.info?.rawTransaction}
         walletType={walletType}
-        SaveTransaction={SaveTransaction}
         setLoading={setLoading}
         setDisable={setDisable}
         txAmt={props?.route?.params?.info?.amount}

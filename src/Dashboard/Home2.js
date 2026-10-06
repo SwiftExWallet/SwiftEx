@@ -112,15 +112,8 @@ const Home2 = ({ navigation }) => {
           setCurrentWallet(
             JSON.parse(wallet).address,
             user,
-            JSON.parse(wallet).privateKey,
-            JSON.parse(wallet).mnemonic,
-            JSON.parse(wallet).xrp.address
-              ? JSON.parse(wallet).xrp.address
-              : "",
-            JSON.parse(wallet).xrp.privateKey
-              ? JSON.parse(wallet).xrp.privateKey
-              : "",
-            (walletType = "Multi-coin")
+            JSON.parse(wallet).xrp.address || "",
+            "Multi-coin"
           )
         );
       } else {
@@ -128,7 +121,8 @@ const Home2 = ({ navigation }) => {
           setCurrentWallet(
             JSON.parse(wallet).address,
             user,
-            JSON.parse(wallet).privateKey
+            "",
+            walletType
           )
         );
       }
