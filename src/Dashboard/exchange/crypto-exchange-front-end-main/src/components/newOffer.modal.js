@@ -2010,7 +2010,7 @@ export const stellarConfig = {
     BTC: "BTC",
   },
   SUPPORTED_ASSETS: [
-    { code: "XLM", issuer: null, domain: "stellar.org", icon: "https://stellar.myfilebase.com/ipfs/QmSTXU2wn1USnmd5ZypA5zMze259wEPSDP3i8wivyr9qiq" },
+    { code: "XLM", issuer: null, domain: "stellar.org", icon: "https://ultracapital.xyz/static/images/icons/yXLM.png" },
     { code: "USDC", issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", domain: "centre.io", icon: "https://assets-cdn.trustwallet.com/blockchains/arbitrum/assets/0xaf88d065e77c8cC2239327C5EDb3A432268e5831/logo.png" }
   ],
   ISSUERS: {

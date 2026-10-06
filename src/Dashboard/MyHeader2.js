@@ -204,16 +204,11 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
     }
   };
 
-  const PullRefreshPortFollio = async (
-    evmAddress,
-    stellarAddress,
-    dydxAddress,
-  ) => {
+  const PullRefreshPortFollio = async (evmAddress, stellarAddress) => {
     try {
       const walletInfo = await GetWalletTokens(
         evmAddress,
         stellarAddress,
-        dydxAddress,
         null,
         true,
       );
@@ -242,7 +237,6 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
       await PullRefreshPortFollio(
         state?.wallet?.address,
         state.STELLAR_PUBLICK_KEY,
-        state.DYDX_ADDRESS_KEY,
       );
       setPull(false);
     } catch (error) {

@@ -5,7 +5,7 @@ import { CHAINS, isNativeTokenAddress, NativeESCROWAddress } from './TokenUtils'
 import CustomInfoProvider from '../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import ShortTermStorage from './ShortTermStorage';
 import Web3 from 'web3';
-import { ensureFusionAllowance } from './SwapRango';
+import { ensureFusionAllowance } from './FusionAllowance';
 import { fustionEvmTxManager } from './evmTxManager';
 import { getSafeErrorMessage } from './errorSanitizer';
 import { ENVIRONMENT } from '../Dashboard/constants';

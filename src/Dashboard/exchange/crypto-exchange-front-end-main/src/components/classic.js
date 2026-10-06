@@ -21,13 +21,11 @@ import { useNavigation } from '@react-navigation/native';
 import Icon from '../../../../../icon';
 import { getTokenBalancesUsingAddress } from '../utils/getWalletInfo/EtherWalletService';
 import { GetStellarAvilabelBalance, GetStellarUSDCAvilabelBalance, stellarWalletStatus, stellarWalletStatusWithUSDC } from '../../../../../utilities/StellarUtils';
-import { getChainTokenData, swapPepare } from '../../../../../utilities/AllbridgeUtil';
 import { alert } from '../../../../reusables/Toasts';
 import { debounce } from 'lodash';
 import LocalTxManager from '../../../../../utilities/LocalTxManager';
 import CustomInfoProvider from './CustomInfoProvider';
 import WalletActivationComponent from '../utils/WalletActivationComponent';
-import { swap_prepare } from '../../../../../../All_bridge';
 import { CHAINS } from '../../../../../utilities/TokenUtils';
 import { getHighestNativeBalanceToken, getBestAssetForChain, PORTFOLIO_CHAIN_TO_CHAINS_KEY } from '../../../../../utilities/portfolioSelectors';
 import ShortTermStorage from '../../../../../utilities/ShortTermStorage';
@@ -446,7 +444,7 @@ const classic = ({ props }) => {
   const [showWalletActivation,setShowWalletActivation] = useState(false);
   const [walletActivationWarning,setWalletActivationWarning] = useState(false);
   const [recieverAddress, setRecieverAddress] = useState("");
-  const [provider, setProvider] = useState("ALLBRIDGE");
+  const [provider, setProvider] = useState("Near-Intent");
 
   const getFromNetworkTokens = () => {
     return CHAINS[selectedFromNetwork.symbol].bridgeSupportTokens;
@@ -581,18 +579,6 @@ const classic = ({ props }) => {
     setQuotesLoading(true);
     fetchPairQuotes(selectedFromNetwork.chainName, selectedToNetwork.chainName, selectedFromAsset.symbol, selectedToAsset.symbol, cleanValue ,selectedFromAsset.address ,selectedToAsset.address );
   }
-  const fetchAllbridgeQuote = async (sourceChainName, destChainName, sourceTokenSymbol, destTokenSymbol, qouteValue) => {
-    try {
-      const qoutesRep = await getChainTokenData(sourceChainName, destChainName, sourceTokenSymbol, destTokenSymbol, qouteValue);
-      if (qoutesRep.success) {
-        return { success: true, provider: "ALLBRIDGE", data: qoutesRep.info };
-      }
-      return { success: false, provider: "ALLBRIDGE", error: qoutesRep.error };
-    } catch (error) {
-      return { success: false, provider: "ALLBRIDGE", error: error.message };
-    }
-  };
-
   const formatCompletionTime = (seconds) => {
     const secs = Number(seconds || 0);
     if (!secs || secs <= 0) return "~1 Min";
@@ -652,31 +638,11 @@ const classic = ({ props }) => {
   const fetchPairQuotes = useCallback(
     debounce(async (sourceChainName, destChainName, sourceTokenSymbol, destTokenSymbol, qouteValue ,selectedFromAssetAddress ,selectedToAssetAddress) => {
       const [nearIntentResult] = await Promise.allSettled([
-        // fetchAllbridgeQuote(sourceChainName, destChainName, sourceTokenSymbol, destTokenSymbol, qouteValue),
         fetchNearIntentQuote(sourceChainName, destChainName, sourceTokenSymbol, destTokenSymbol, qouteValue ,selectedFromAssetAddress ,selectedToAssetAddress),
       ]);
-
-      // const allbridgeQuote = allbridgeResult.status === "fulfilled" ? allbridgeResult.value : { success: false, error: allbridgeResult.reason?.message };
       const nearIntentQuote = nearIntentResult.status === "fulfilled" ? nearIntentResult.value : { success: false, error: nearIntentResult.reason?.message };
 
-      // if (allbridgeQuote.success && nearIntentQuote.success) {
-      //   // const allbridgeOut = parseFloat(allbridgeQuote.data.minimumAmountOut || 0);
-      //   const allbridgeOut = parseFloat(0);
-      //   const nearIntentOut = parseFloat(nearIntentQuote.data.minimumAmountOut || 0);
-
-      //   if (nearIntentOut > allbridgeOut) {
-      //     setPairQuotes(nearIntentQuote.data);
-      //     setProvider("Near-Intent");
-      //   } else {
-      //     setPairQuotes(allbridgeQuote.data);
-      //     setProvider("ALLBRIDGE");
-      //   }
-      // } else 
-      //   if (allbridgeQuote.success) {
-      //   setPairQuotes(allbridgeQuote.data);
-      //   setProvider("ALLBRIDGE");
-      // } else 
-        if (nearIntentQuote.success) {
+      if (nearIntentQuote.success) {
         setPairQuotes(nearIntentQuote.data);
         setProvider("Near-Intent");
       } else {
@@ -716,10 +682,8 @@ const classic = ({ props }) => {
         } else {
           if (provider === "Near-Intent") {
             await executeNearIntentSwap();
-          } else if (selectedFromNetwork.subName === "STR") {
-            await executeNonEvmSwap();
           } else {
-            await executeSwap();
+            CustomInfoProvider.show("error", "Bridge service is currently unavailable.");
           }
         }
       } else {
@@ -791,124 +755,6 @@ const classic = ({ props }) => {
     }
   }
 
-  const executeNonEvmSwap=async()=>{
-    console.info("executeNonEvmSwap");
-    setSwapLoading(true);
-     try {
-      const stellarWallet = {
-        publicKey: state && state.STELLAR_PUBLICK_KEY
-      };
-      const result = await swapPepare(
-        selectedFromNetwork.chainName,
-        selectedToNetwork.chainName,
-        selectedFromAsset.symbol,
-        selectedToAsset.symbol,
-        fromAmount,
-        selectedToNetwork.subName==="STR"?state.STELLAR_PUBLICK_KEY:state?.wallet?.address,
-        stellarWallet,
-        selectedRelayerFee
-      );
-      console.info("swap-result->", result)
-      if (result.success) {
-        setSwapLoading(false);
-        CustomInfoProvider.show("success","Hurray","Deposit Order Placed Successfully.",[
-          { text: "Okay", onPress: nextStep },
-        ]);
-      } else {
-        setSwapLoading(false);
-        CustomInfoProvider.show("error", result.error||"Bridge Faild.");
-        console.info("Bridge Faild:-", result);
-      }
-    } catch (error) {
-      setSwapLoading(false);
-      console.error("error in Bridge swap execute:", error)
-      CustomInfoProvider.show("error","Bridge Faild.");
-    }
-  }
-
-  const executeSwap = async () => {
-    setSwapLoading(true);
-    try {
-      const resultOfBidirectional = await swap_prepare(
-        state?.wallet?.address,
-        state?.wallet?.address,
-        selectedToNetwork.subName==="STR"?recieverAddress:state?.wallet?.address,
-        fromAmount.toString(),
-        selectedFromAsset.symbol,
-        selectedToAsset.symbol,
-        selectedFromNetwork.chainName,
-        selectedRelayerFee,
-        selectedToNetwork.chainName,
-      )
-      console.info("swap bidirectional response:", resultOfBidirectional);
-      if (resultOfBidirectional?.status_task) {
-        const { res } = resultOfBidirectional;
-        const txHashes = [];
-        if (res.approvalTxHash) {
-          await ShortTermStorage.syncTx({
-            txHash: res.approvalTxHash,
-            walletAddress: state && state.wallet && state.wallet.address,
-            fromAddress: state?.wallet?.address,
-            toAddress: selectedToNetwork.subName==="STR"?recieverAddress:state?.wallet?.address,
-            provider: "EVMTX",
-            fromChain: selectedFromNetwork.chainName,
-            fromToken: selectedFromAsset.symbol,
-            toChain: selectedToNetwork.chainName,
-            toToken: selectedToAsset.symbol,
-            amountIn: fromAmount.toString(),
-            amountOut: fromAmount.toString(),
-            txType:"Token Approval",
-            fromTokenMetaData:selectedFromAsset.address
-          })
-          txHashes.push({
-            chain: selectedFromNetwork.chainName,
-            hash: res.approvalTxHash,
-            type: "Approval"
-          });
-        }
-        await ShortTermStorage.syncTx({
-          txHash: res.transferTxHash,
-          walletAddress: state && state.wallet && state.wallet.address,
-          fromAddress: state?.wallet?.address,
-          toAddress: selectedToNetwork.subName==="STR"?recieverAddress:state?.wallet?.address,
-          provider: "ALLBRIDGE",
-          fromChain:  selectedFromNetwork.chainName,
-          fromToken: selectedFromAsset.symbol,
-          toChain: selectedToNetwork.chainName,
-          toToken: selectedToAsset.symbol,
-          amountIn: fromAmount.toString(),
-          amountOut: fromAmount.toString(),
-          txType:"Bridge",
-          fromTokenMetaData:selectedFromAsset.address
-        })
-        await LocalTxManager.saveTx(state && state.wallet && state.wallet.address, {
-          chain: selectedFromNetwork.chainName,
-          hash: res.transferTxHash,
-          status: "pending",
-          statusColor: "#eec14fff",
-          timestamp: Date.now(),
-          symbol: selectedFromAsset.symbol,
-          amount: fromAmount.toString(),
-        });
-        txHashes.push({
-          chain: selectedFromNetwork.chainName,
-          hash: res.transferTxHash,
-          type: "Transfer"
-        });
-        CustomInfoProvider.show("success","Hurray","Deposit Order Placed Successfully.", [
-          { text: "Okay", onPress: nextStep },
-        ]);
-      } else {
-        setSwapLoading(false);
-        console.error("Transaction failed:", resultOfBidirectional?.res);
-        CustomInfoProvider.show("error", resultOfBidirectional?.res||"Bridge Faild.");
-      }
-    } catch (error) {
-      setSwapLoading(false);
-      console.error("Transaction error:", error);
-      CustomInfoProvider.show("error", "Bridge Faild.");
-    }
-  }
   const fromAmt = Number(fromAmount || 0);
   const tokenBal = Number(fromBalance?.tokenBalance || 0);
   const walletBal = Number(fromBalance?.walletBalance || 0);

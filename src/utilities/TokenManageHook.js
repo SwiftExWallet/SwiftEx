@@ -39,7 +39,7 @@ export const useAssetManager = (walletAddress) => {
                 return apiToken;
             });
             const apiIds = new Set(apiTokens.map(getAssetId));
-            const KNOWN_CHAINS = ['ETH','BSC','BNB','POL','ARB','BASE','AVAX','OPT','Stellar','STR','DYDX'];
+            const KNOWN_CHAINS = ['ETH','BSC','BNB','POL','ARB','BASE','AVAX','OPT','Stellar','STR',];
             const customTokens = savedTokens
                 .filter(t => !apiIds.has(getAssetId(t)))
                 .map(t => {

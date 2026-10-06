@@ -12,13 +12,10 @@ import { Exchange_screen_header } from '../../../../reusables/ExchangeHeader';
 import { useCallback, useEffect, useState } from 'react';
 import { GetStellarAvilabelBalance, GetStellarUSDCAvilabelBalance, stellarWalletStatus } from '../../../../../utilities/StellarUtils';
 import { alert } from '../../../../reusables/Toasts';
-import { getChainTokenData, swapPepare } from '../../../../../utilities/AllbridgeUtil';
 import { Keypair } from '@stellar/stellar-sdk';
 import Snackbar from 'react-native-snackbar';
 import { debounce } from 'lodash';
-import AllbridgeTxTrack from './AllbridgeTxTrack';
 import CustomInfoProvider from './CustomInfoProvider';
-import { convertMultiple } from '../utils/UsdPriceHandler';
 import { colors } from '../../../../../Screens/ThemeColorsConfig';
 import { CHAINS } from '../../../../../utilities/TokenUtils'
 import { ethers } from 'ethers';
@@ -44,8 +41,6 @@ const ExportUSDC = () => {
   const [btnLoading,setbtnLoading]=useState(false);
   const [XLMAvlBal,setXLMAvlBal]=useState("0");
   const [payFeeType,setPayFeeType]=useState("native");
-  const [showTx,setshowTx]=useState(false);
-  const [showTxHash,setshowTxHash]=useState([]);
   const [viewInUSD, setViewInUSD] = useState(false);
   const [recieverAddress, setRecieverAddress] = useState("");
   const manageFeeViewer = () => setViewInUSD(prev => !prev);
@@ -60,11 +55,9 @@ const ExportUSDC = () => {
     chain: "STR",
     decimal:7
   });
-  const [provider, setProvider] = useState("ALLBRIDGE");
+  const [provider, setProvider] = useState("Near-Intent");
 
   useEffect(() => {
-    setshowTx(false);
-    setshowTxHash([]);
     setstellarWalletActivated(false);
     setbasicProccesing(true);
     fetchStellarWalletdetails();
@@ -178,41 +171,6 @@ const ExportUSDC = () => {
     return `${mins} Min`;
   };
 
-  const fetchAllbridgeQuote = async (sourceChain, destChain, sourceToken, destToken, value) => {
-    try {
-      const qoutesRep = await getChainTokenData(sourceChain, destChain, sourceToken, destToken, value);
-      if (!qoutesRep.success) {
-        return { success: false, provider: "ALLBRIDGE", error: qoutesRep.error };
-      }
-
-      const respo = await convertMultiple([
-        {
-          token: qoutesRep.info.fee.native.symbol === "Native" ? "XLM" : qoutesRep.info.fee.native.symbol,
-          amount: qoutesRep.info.fee.native.amount,
-        },
-        {
-          token: qoutesRep.info.fee.stablecoin.symbol,
-          amount: qoutesRep.info.fee.stablecoin.amount,
-        },
-      ]);
-      const mergedQuotes = { ...qoutesRep.info };
-      for (const item of respo) {
-        if (item.success) {
-          const nativeToken = qoutesRep.info.fee.native.symbol === "Native" ? "XLM" : qoutesRep.info.fee.native.symbol;
-          const stableToken = qoutesRep.info.fee.stablecoin.symbol;
-          if (item.token === nativeToken) {
-            mergedQuotes.fee.native = { ...mergedQuotes.fee.native, ...item };
-          } else if (item.token === stableToken) {
-            mergedQuotes.fee.stablecoin = { ...mergedQuotes.fee.stablecoin, ...item };
-          }
-        }
-      }
-      return { success: true, provider: "ALLBRIDGE", data: mergedQuotes };
-    } catch (error) {
-      return { success: false, provider: "ALLBRIDGE", error: error.message };
-    }
-  };
-
   const fetchNearIntentQuote = async (sourceChain, destChain, sourceToken, destToken, value, sourceTokenAddress, destTokenAddress) => {
     try {
       configure();
@@ -264,29 +222,11 @@ const ExportUSDC = () => {
   const fetchBestQuote = useCallback(
     debounce(async (sourceChain, destChain, sourceToken, destToken, value, sourceTokenAddress, destTokenAddress) => {
       const [nearIntentResult] = await Promise.allSettled([
-        // fetchAllbridgeQuote(sourceChain, destChain, sourceToken, destToken, value),
         fetchNearIntentQuote(sourceChain, destChain, sourceToken, destToken, value, sourceTokenAddress, destTokenAddress),
       ]);
-
-      // const allbridgeQuote = allbridgeResult.status === "fulfilled" ? allbridgeResult.value : { success: false, error: allbridgeResult.reason?.message };
       const nearIntentQuote = nearIntentResult.status === "fulfilled" ? nearIntentResult.value : { success: false, error: nearIntentResult.reason?.message };
 
-      // if (allbridgeQuote.success && nearIntentQuote.success) {
-      //   const allbridgeOut = parseFloat(allbridgeQuote.data.minimumAmountOut || 0);
-      //   const nearIntentOut = parseFloat(nearIntentQuote.data.minimumAmountOut || 0);
-
-      //   if (nearIntentOut > allbridgeOut) {
-      //     setresQuotes(nearIntentQuote.data);
-      //     setProvider("Near-Intent");
-      //   } else {
-      //     setresQuotes(allbridgeQuote.data);
-      //     setProvider("ALLBRIDGE");
-      //   }
-      // } else if (allbridgeQuote.success) {
-      //   setresQuotes(allbridgeQuote.data);
-      //   setProvider("ALLBRIDGE");
-      // } else
-        if (nearIntentQuote.success) {
+      if (nearIntentQuote.success) {
         setresQuotes(nearIntentQuote.data);
         setProvider("Near-Intent");
       } else {
@@ -359,47 +299,12 @@ const ExportUSDC = () => {
             return;
           }
       }
-      const stellarWallet = {
-        publicKey: state && state.STELLAR_PUBLICK_KEY,
-        secretKey: state && state.STELLAR_SECRET_KEY
-      };
-      if (!validateETHAddress(recieverAddress)) {
-        setbtnLoading(false);
-        CustomInfoProvider.show("error", "Please provide the valid receiver address.");
-        return 0;
-      }
-      const result = await swapPepare(
-        selectedNetworkDetils.chainName,
-        selectedReciveNetworkDetils.chainName,
-        selectedAssetDetils.symbol,
-        selectedReciveAssetDetils.symbol,
-        amount,
-        recieverAddress,
-        stellarWallet,
-        payFeeType,
-        state?.wallet?.address?.toLowerCase() !== recieverAddress?.toLowerCase(),
-        state?.wallet?.address?.toLowerCase() !== recieverAddress?.toLowerCase()? state?.wallet?.address: false
-      );
-      console.log("swap-result----", result)
-      if (result.success) {
-        setshowTxHash([{ chain: "SRB", hash: showTxHash }]);
-        // setshowTx(true);
-        CustomInfoProvider.show("success","Hurray","Withdrawal Order Placed Successfully.");
-        navigation.navigate("StellarTransactions")
-        console.log("USDC Exported:-", result);
-        setbtnLoading(false);
-      } else {
-        setshowTx(false);
-        CustomInfoProvider.show("error","!Oops","Failed to Place Withdrawal Order.");
-        console.log("USDC Exported Faild:-", result);
-        setbtnLoading(false);
-      }
-    } catch (error) {
-      setshowTx(false);
       setbtnLoading(false);
-      console.log("error in allbridge swap execute:", error)
+      CustomInfoProvider.show("error", "Bridge service is currently unavailable.");
+    } catch (error) {
+      setbtnLoading(false);
+      console.log("error in bridge execute:", error)
       CustomInfoProvider.show("error","!Oops","Failed to Place Withdrawal Order.");
-      console.log("USDC Exported Faild:-", result);
     }
   }
 console.log("resQuotes-",resQuotes)
@@ -578,7 +483,7 @@ console.log("resQuotes-",resQuotes)
           <View style={[styles.quoteDetailsContainer]}>
             <View style={styles.quoteRow}>
               <Text style={[styles.quoteLabel,{color:theme.inactiveTx}]}>Provider</Text>
-              <Text style={[styles.quoteValue,{color:theme.headingTx}]}>{provider === "Near-Intent" ? "Near-Intent" : "Allbridge"}</Text>
+              <Text style={[styles.quoteValue,{color:theme.headingTx}]}>Near-Intent</Text>
             </View>
 
             <View style={styles.quoteRow}>
@@ -689,9 +594,6 @@ console.log("resQuotes-",resQuotes)
           </TouchableOpacity>
         </Modal>
         </ScrollView>
-      <View style={styles.allBridgeTxCon}>
-        <AllbridgeTxTrack txs={showTxHash} isDarkMode={state?.THEME?.THEME} showTx={showTx} closeTx={()=>{setshowTx(false)}} />
-      </View>
     </View>
   );
 };
@@ -913,7 +815,7 @@ const styles = StyleSheet.create({
    justifyContent:"center",
    marginTop:8
   },
-  allBridgeTxCon:{
+  bridgeTxCon:{
     zIndex:20,
     position:"absolute",
     width:"100%",

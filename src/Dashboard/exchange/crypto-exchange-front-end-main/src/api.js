@@ -222,29 +222,44 @@ export const createGuestUser=async(referralCode)=>{
 }
 }
 
-
-// Authorized Requests
-export const proxyRequest = async (url, request, body = {}) => {
+export const proxyRequest = async (
+  url,
+  request,
+  body = {},
+  walletAddress
+) => {
   try {
     const deviceToken = await getToken();
-    let walletAddress = '';
-    try {
-      const parsedData = await AsyncStorageLib.getItem('wallet');
-      if (parsedData) {
-        const proccessed = parsedData ? JSON.parse(parsedData) : [];
-        walletAddress = proccessed?.address
+
+    let resolvedWalletAddress = walletAddress || '';
+
+    if (!resolvedWalletAddress) {
+      try {
+        const parsedData = await AsyncStorageLib.getItem('wallet');
+
+        if (parsedData) {
+          const processed = JSON.parse(parsedData);
+          resolvedWalletAddress = processed?.address || '';
+        }
+      } catch (error) {
+        console.error('Wallet read error:', error);
       }
-    } catch (_) {}
+    }
+
+    const shouldSendWalletAddress =
+      url !== '/v1/wallet' && resolvedWalletAddress;
 
     const opts = {
       url,
-      body: body,
+      body,
       headers: {
         authorization: `Bearer ${deviceToken}`,
-        "x-auth-device-token": deviceToken,
-        ...(walletAddress ? { "x-wallet-address": walletAddress } : {}),
+        'x-auth-device-token': deviceToken,
+        ...(shouldSendWalletAddress
+          ? { 'x-wallet-address': resolvedWalletAddress }
+          : {}),
       },
-    }
+    };
 
     const res = await request(opts)
     return { res }

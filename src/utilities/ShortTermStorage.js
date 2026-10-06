@@ -214,9 +214,7 @@ const ShortTermStorage = {
         '1inch_fusion':    'ONEINCH_FUSION',
         '1inch_fusion_plus': 'ONEINCH_FUSION_PLUS',
         'FUSION_PLUS':     'ONEINCH_FUSION_PLUS',
-        'RANGO':           'EVMTX',
         'EVMTX':           'EVMTX',
-        'DYDX':            'DYDX',
         'NEARINTENT':      'NEARINTENT',
       };
 

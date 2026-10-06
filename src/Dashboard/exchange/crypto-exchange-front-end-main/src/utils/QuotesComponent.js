@@ -402,7 +402,7 @@ export const QuoteModalBottomSheet = ({
                               sourceToken={"USDT"}
                               destinationToken={"USDC"}
                               hideQuote={false}
-                              typeProvider={"Allbridge"}
+                              typeProvider={"Bridge"}
                             />
               <QuotesResComponent 
                 quoteInfo={usdtRes}

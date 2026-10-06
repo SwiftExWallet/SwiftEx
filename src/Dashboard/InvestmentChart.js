@@ -79,10 +79,9 @@ function InvestmentChart() {
           const preser_backup = await AsyncStorage.getItem('wallet_backup');
           matchedData = parsedData.find((item) => item.Ether_address === preser_backup);
         }
-        const dydxKeyToUse = matchedData?.dydxAddress || state.DYDX_ADDRESS_KEY;
 
         if (wallet && wallet.address && state && state.STELLAR_PUBLICK_KEY) {
-          const walletInfo = await GetWalletTokens(wallet?.address, state.STELLAR_PUBLICK_KEY, dydxKeyToUse);
+          const walletInfo = await GetWalletTokens(wallet?.address, state.STELLAR_PUBLICK_KEY);
           if (isMounted && Array.isArray(walletInfo?.tokens)) {
             const userCustomTokens = await getCustomTokens();
             const margeArray = [...walletInfo.tokens, avilableSoonAsset, ...(userCustomTokens.status ? userCustomTokens.data : [])];
@@ -153,14 +152,13 @@ function InvestmentChart() {
           }
 
           const stellarKeyToUse = matchedData ? matchedData.publicKey : freshState.STELLAR_PUBLICK_KEY;
-          const dydxKeyToUse = matchedData?.dydxAddress || freshState.DYDX_ADDRESS_KEY;
 
         if (!stellarKeyToUse) {
           if (isActive) setLoading(false);
           return;
         }
 
-        const walletInfo = await GetWalletTokens(wallet.address, stellarKeyToUse, dydxKeyToUse, null, pull);
+        const walletInfo = await GetWalletTokens(wallet.address, stellarKeyToUse, null, pull);
 
           if (!isActive || activeRequestWalletRef.current !== requestForWallet) return;
 
@@ -208,8 +206,6 @@ function InvestmentChart() {
           STELLAR_PUBLICK_KEY: matchedData.publicKey,
           STELLAR_SECRET_KEY: matchedData.secretKey,
           STELLAR_ADDRESS_STATUS: isActive,
-          DYDX_PUBLIC_KEY: matchedData.dydxPublicKey,
-          DYDX_ADDRESS_KEY: matchedData.dydxAddress,
         },
       });
       dispatch({

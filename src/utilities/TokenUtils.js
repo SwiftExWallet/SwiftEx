@@ -1,6 +1,6 @@
 import axios from "axios";
 import StellarTokenList from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/stellar/Tokens.json";
-import { ARB, AVAX, BASE, BSC, DYDX, ENVIRONMENT, ETH, OPT, POL, PUBLIC_TX_CHEKER, STELLAR_URL, STR } from "../Dashboard/constants";
+import { ARB, AVAX, BASE, BSC, ENVIRONMENT, ETH, OPT, POL, PUBLIC_TX_CHEKER, STELLAR_URL, STR } from "../Dashboard/constants";
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { FOLIO_BASE_ROUTE, REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL, REACT_APP_HOST } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import apiHelper from "../../src/Dashboard/exchange/crypto-exchange-front-end-main/src/apiHelper";
@@ -14,8 +14,7 @@ const CONFIG = {
   TIMEOUT: 10000,
   APIS: {
     COINGECKO: REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL,
-    STELLAR_HORIZON: STELLAR_URL.URL,
-    DYDX_INDEXER: DYDX.RPC
+    STELLAR_HORIZON: STELLAR_URL.URL_INDEXER
   },
   TOKEN_LISTS: {
     XLM: StellarTokenList
@@ -133,8 +132,8 @@ const setCachedPrice = (key, data) => {
 };
 
 const pendingRequests = new Map();
-const getCacheKey = (evmAddress, stellarAddress, dydxAddress) => {
-  return `${evmAddress || 'null'}_${stellarAddress || 'null'}_${dydxAddress || 'null'}`;
+const getCacheKey = (evmAddress, stellarAddress) => {
+  return `${evmAddress || ''}_${stellarAddress || ''}`;
 };
 
 const getFromCache = (cacheKey) => {
@@ -156,11 +155,6 @@ const isValidAddress = (address) => {
   if (/^0x[a-fA-F0-9]{40}$/.test(address)) return true;
   if (/^G[A-Z2-7]{55}$/.test(address)) return true;
   return false;
-};
-
-const isValidDydxAddress = (address) => {
-  if (typeof address !== 'string' || !address) return false;
-  return /^dydx1[0-9a-z]{38,58}$/.test(address);
 };
 
 const parseNumber = (value, decimals = 6) => {
@@ -457,89 +451,13 @@ const getStellarTokenPrices = async (balances) => {
     return {};
   }
 };
-
-const getDydxBalance = async (walletAddress, onProgress = null, cacheKey = null) => {
-  try {
-    const res = await axios.get(
-      `${CONFIG.APIS.DYDX_INDEXER}/v4/addresses/${walletAddress}/subaccountNumber/0`,
-      { timeout: CONFIG.TIMEOUT }
-    );
-    const subaccount = res?.data?.subaccount || {};
-    const equity = parseNumber(subaccount.equity || 0);
-    const quoteBalance = parseNumber(subaccount.quoteBalance || 0);
-    const tokens = [];
-
-    const mainBalanceToken = {
-      chain: DYDX.symbol,
-      name: DYDX.symbol,
-      symbol: DYDX.symbol,
-      balance: equity,
-      balanceUSD: equity,
-      decimals: 6,
-      contractAddress: 'Native',
-      price: 1,
-      imageUrl: DYDX.imageUrl,
-      active:true
-    };
-
-    const usdcToken = {
-      chain: DYDX.symbol,
-      name: 'USD Coin',
-      symbol: 'USDC',
-      balance: quoteBalance,
-      balanceUSD: quoteBalance,
-      decimals: 6,
-      contractAddress: 'USDC',
-      price: 1,
-      imageUrl: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png",
-      active:true
-    };
-    tokens.push(mainBalanceToken);
-    tokens.push(usdcToken);
-    const totalValueUSD = equity;
-    if (onProgress) {
-      onProgress({
-        chain: 'DYDX',
-        tokens,
-        totalValueUSD,
-        isPartial: false
-      });
-    }
-
-    return {
-      tokens,
-      totalValueUSD
-    };
-
-  } catch (error) {
-
-    console.error("dYdX fetch failed:", error);
-
-    const tokens = [
-      {
-        chain: DYDX.symbol,
-        name: DYDX.symbol,
-        symbol: 'USD',
-        balance: 0,
-        balanceUSD: 0,
-        decimals: 6,
-        contractAddress: 'Native',
-        price: 1,
-        imageUrl: DYDX.imageUrl
-      }
-    ];
-
-    return { tokens, totalValueUSD: 0 };
-  }
-};
-
-export async function GetWalletTokens(evmAddress = null, stellarAddress = null, dydxAddress = null, onProgress = null, forceRefresh = false) {
+export async function GetWalletTokens(evmAddress = null, stellarAddress = null, onProgress = null, forceRefresh = false) {
   console.log("GetWalletTokens", evmAddress, stellarAddress);
   if (!evmAddress && !stellarAddress) {
     throw new Error('At least one wallet address is required');
   }
 
-  const cacheKey = getCacheKey(evmAddress, stellarAddress, dydxAddress);
+  const cacheKey = getCacheKey(evmAddress, stellarAddress);
   const cachedData = getFromCache(cacheKey);
   if (cachedData) {
     console.debug('returning cached data (under 1 minute old)');
@@ -622,22 +540,6 @@ export async function GetWalletTokens(evmAddress = null, stellarAddress = null, 
         }, cacheKey)
       );
     }
-
-    // if (dydxAddress) {
-    //   if (!isValidDydxAddress(dydxAddress)) {
-    //     console.warn('Invalid dYdX address format, skipping dYdX fetch:', dydxAddress);
-    //   } else {
-    //     fetchPromises.push(
-    //       getDydxBalance(dydxAddress, (update) => {
-    //         notifyProgress({
-    //           ...update,
-    //           allTokens: [...allTokens, ...update.tokens],
-    //           totalValueUSD: totalValueUSD + update.totalValueUSD
-    //         });
-    //       }, cacheKey)
-    //     );
-    //   }
-    // }
 
     const results = await Promise.allSettled(fetchPromises);
     results.forEach(result => {
@@ -815,18 +717,6 @@ export const TemporaryTokens=[
         "symbol": "BASE",
         "navigationPath":"Send"
     },
-    // {
-    //     "balance":0.0,
-    //     "balanceUSD": 0.00,
-    //     "chain": DYDX.symbol,
-    //     "contractAddress": "Native",
-    //     "decimals": 6,
-    //     "imageUrl": DYDX.imageUrl,
-    //     "name": DYDX.symbol,
-    //     "price":0,
-    //     "symbol": DYDX.symbol,
-    //     "navigationPath":"Send"
-    // },
 ];
 
 export const CHAINS = {
@@ -1085,58 +975,6 @@ export const CHAINS = {
     eipId:STR.eipId,
     backupRPCUrls:STR.backupRPCS
   },
-  DYDX: {
-    rpcUrl: DYDX.RPC,
-    chainId: DYDX.chainId,
-    nativeChainKey: DYDX.nativeChainKey,
-    minGasGwei: DYDX.minGasGwei,
-    imageUrl: DYDX.imageUrl,
-    name: DYDX.name,
-    symbol: DYDX.symbol,
-    chainName: DYDX.chainName,
-    subName: DYDX.subName,
-    supportedTokenList: [
-      {
-        name: DYDX.symbol,
-        asset: DYDX.symbol,
-        symbol: DYDX.symbol,
-        address: "Native",
-        chainId: DYDX.symbol,
-        type: "NATIVE",
-        decimals: 18,
-        logoURI: DYDX.imageUrl
-      },
-      {
-        name: 'USD Coin',
-        asset: DYDX.symbol,
-        symbol: 'USDC',
-        address: 'USDC',
-        chainId: DYDX.symbol,
-        type: "",
-        decimals: 6,
-        logoURI: "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png"
-      }
-    ],
-    nativeToken: {
-      "name": DYDX.symbol,
-      "symbol": DYDX.symbol,
-      "address": "",
-      "type": DYDX.symbol,
-      "decimals": 18,
-      "logoURI": DYDX.imageUrl
-    },
-    bridgeSupportTokens: DYDX.bridgeSupportTokens,
-    sendEnable: false,
-    receiveEnable: false,
-    bridgeEnable: false,
-    swapEnable: false,
-    importForSetupApp:false,
-    importForSetupedApp:false,
-    supportedForInterSwap:DYDX.supportedForInterSwap,
-    chainNameInThirdParty:DYDX.chainNameInThirdParty,
-    eipId:DYDX.eipId,
-    backupRPCUrls:DYDX.backupRPCS
-  },
   BSC: {
     rpcUrl: BSC.RPC,
     chainId: BSC.chainId,
@@ -1181,7 +1019,6 @@ export const CHAINTOCHARTID = {
   "ETH": "ETH",
   "BNB": "BNB",
   "STR": "XLM",
-  "DYDX": "DYDX",
   "XLM":"XLM"
 };
 export const isNativeTokenAddress="0x0000000000000000000000000000000000000000";
@@ -1220,8 +1057,7 @@ export const UI_CHAIN_NAME = {
   BAS: "ETH",
   ETH: "ETH",
   BSC: "BNB",
-  SRB: "SRB",
-  DYDX: "DYDX"
+  SRB: "SRB"
 };
 
 export async function CoinsToUSD(chainName, tokenAddress, amount) {

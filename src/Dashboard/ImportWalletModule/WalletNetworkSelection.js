@@ -14,7 +14,6 @@ import { AddToAllWallets, getBalance, setCurrentWallet, setToken, setUser, setWa
 import AccessNativeStorage from "../Wallets/AccessNativeStorage";
 import apiHelper from "../exchange/crypto-exchange-front-end-main/src/apiHelper";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
-import { dydxAddressDrive } from "../../dydx/dydxAddressDrive";
 import { alert } from "../reusables/Toasts";
 import { checkWalletExistOrNot } from "../Wallets/WalletManagement";
 import * as StellarSdk from '@stellar/stellar-sdk';
@@ -191,7 +190,6 @@ export const WalletNetworkSelection = (props) => {
                 );
             }
             const accountFromMnemonic = await NativeModules.EthereumWallet.importEthPrivateKey(key);
-            const dydxAddress = await dydxAddressDrive(accountFromMnemonic.original.privateKey)
             const wallet = {
                 address: accountFromMnemonic.original.address,
                 xrp: {
@@ -200,10 +198,6 @@ export const WalletNetworkSelection = (props) => {
                 stellarWallet: {
                     publicKey: accountFromMnemonic.generated.publicKey,
                 },
-                dydx: {
-                    dydxAddress: dydxAddress.dydxAddress,
-                    dydxPublicKey: dydxAddress.publicKey,
-                }
             };
 
             let wallets = [];
@@ -227,10 +221,6 @@ export const WalletNetworkSelection = (props) => {
                     },
                     stellarWallet: {
                         publicKey: wallet.stellarWallet.publicKey
-                    },
-                    dydx: {
-                        dydxAddress: wallet.dydx.dydxAddress,
-                        dydxPublicKey: wallet.dydx.dydxPublicKey,
                     },
                     walletType: "Multi-coin",
                     wallets: wallets,
@@ -275,11 +265,6 @@ export const WalletNetworkSelection = (props) => {
                             stellarPrivateKey: accountFromMnemonic.generated.secretKey,
                             mnemonic: "",
                             walletType: "Multi-coin",
-                            dydxAddress: dydxAddress.dydxAddress,
-                            dydxPublicKey: dydxAddress.publicKey,
-                            dydxMnemonic: dydxAddress.mnemonic,
-                            dydxPrivateKey: dydxAddress.privateKey,
-                            dydxWalletConnectSignature: dydxAddress.walletConnectSignature,
                         })
                         if (walletResponse.success) {
                             setTimeout(() => {
@@ -322,7 +307,6 @@ export const WalletNetworkSelection = (props) => {
                 );
             }
             const accountFromMnemonic = Platform.OS === "android" ? await EthereumWallet.recoverMultiChainWallet(key) : await EthereumWallet.recoverWallet(key, "");
-            const dydxAddress = await dydxAddressDrive(accountFromMnemonic.ethereum.privateKey)
             const wallet = {
                 address: accountFromMnemonic.ethereum.address,
                 xrp: {
@@ -331,10 +315,6 @@ export const WalletNetworkSelection = (props) => {
                 stellarWallet: {
                     publicKey: accountFromMnemonic.stellar.publicKey,
                 },
-                dydx: {
-                    dydxAddress: dydxAddress.dydxAddress,
-                    dydxPublicKey: dydxAddress.publicKey,
-                }
             };
 
             let wallets = [];
@@ -358,10 +338,6 @@ export const WalletNetworkSelection = (props) => {
                     },
                     stellarWallet: {
                         publicKey: wallet.stellarWallet.publicKey
-                    },
-                    dydx: {
-                        dydxAddress: wallet.dydx.dydxAddress,
-                        dydxPublicKey: wallet.dydx.dydxPublicKey,
                     },
                     walletType: "Multi-coin",
                     wallets: wallets,
@@ -406,11 +382,6 @@ export const WalletNetworkSelection = (props) => {
                             stellarPrivateKey: accountFromMnemonic.stellar.secretKey,
                             mnemonic: key,
                             walletType: "Multi-coin",
-                            dydxAddress: dydxAddress.dydxAddress,
-                            dydxPublicKey: dydxAddress.publicKey,
-                            dydxMnemonic: dydxAddress.mnemonic,
-                            dydxPrivateKey: dydxAddress.privateKey,
-                            dydxWalletConnectSignature: dydxAddress.walletConnectSignature,
                         })
                         if (walletResponse.success) {
                             setTimeout(() => {
@@ -453,7 +424,6 @@ export const WalletNetworkSelection = (props) => {
                 );
             }
             const accountFromMnemonic = Platform.OS === "android" ? await EthereumWallet.recoverMultiChainWallet(key) : await EthereumWallet.recoverWallet(key, "");
-            const dydxAddress = await dydxAddressDrive(accountFromMnemonic.ethereum.privateKey)
             const wallet = {
                 address: accountFromMnemonic.ethereum.address,
                 xrp: {
@@ -473,10 +443,6 @@ export const WalletNetworkSelection = (props) => {
                     publicKey: wallet.stellarWallet.publicKey,
                 },
                 walletType: "Multi-coin",
-                dydx: {
-                    dydxAddress: dydxAddress.dydxAddress,
-                    dydxPublicKey: dydxAddress.publicKey,
-                },
                 wallets: [],
             };
             let wallets = [];
@@ -490,10 +456,6 @@ export const WalletNetworkSelection = (props) => {
                     },
                     stellarWallet: {
                         publicKey: wallet.stellarWallet.publicKey,
-                    },
-                    dydx: {
-                        dydxAddress: dydxAddress.dydxAddress,
-                        dydxPublicKey: dydxAddress.publicKey,
                     },
                     walletType: "Multi-coin",
                 },
@@ -530,11 +492,6 @@ export const WalletNetworkSelection = (props) => {
                 stellarPrivateKey: accountFromMnemonic.stellar.secretKey,
                 mnemonic: key,
                 walletType: "Multi-coin",
-                dydxAddress: dydxAddress.dydxAddress,
-                dydxPublicKey: dydxAddress.publicKey,
-                dydxMnemonic: dydxAddress.mnemonic,
-                dydxPrivateKey: dydxAddress.privateKey,
-                dydxWalletConnectSignature: dydxAddress.walletConnectSignature
             })
             if (walletResponse.success) {
                 const resultApi = await proxyRequest('/v1/wallet', PPOST, {
@@ -600,7 +557,6 @@ export const WalletNetworkSelection = (props) => {
                 );
             }
             const accountFromMnemonic = await NativeModules.EthereumWallet.importStellarPrivateKey(key);
-            const dydxAddress = await dydxAddressDrive(accountFromMnemonic.generated.privateKey)
             const wallet = {
                 address: accountFromMnemonic.generated.address,
                 xrp: {
@@ -620,10 +576,6 @@ export const WalletNetworkSelection = (props) => {
                     publicKey: wallet.stellarWallet.publicKey,
                 },
                 walletType: "Multi-coin",
-                dydx: {
-                    dydxAddress: dydxAddress.dydxAddress,
-                    dydxPublicKey: dydxAddress.publicKey,
-                },
                 wallets: [],
             };
             let wallets = [];
@@ -637,10 +589,6 @@ export const WalletNetworkSelection = (props) => {
                     },
                     stellarWallet: {
                         publicKey: wallet.stellarWallet.publicKey,
-                    },
-                    dydx: {
-                        dydxAddress: dydxAddress.dydxAddress,
-                        dydxPublicKey: dydxAddress.publicKey,
                     },
                     walletType: "Multi-coin",
                 },
@@ -679,11 +627,6 @@ export const WalletNetworkSelection = (props) => {
                 stellarPrivateKey: accountFromMnemonic.original.secretKey,
                 mnemonic: "",
                 walletType: "Multi-coin",
-                dydxAddress: dydxAddress.dydxAddress,
-                dydxPublicKey: dydxAddress.publicKey,
-                dydxMnemonic: dydxAddress.mnemonic,
-                dydxPrivateKey: dydxAddress.privateKey,
-                dydxWalletConnectSignature: dydxAddress.walletConnectSignature
             })
             if (walletResponse.success) {
                 const resultApi = await proxyRequest('/v1/wallet', PPOST, {
@@ -738,7 +681,6 @@ export const WalletNetworkSelection = (props) => {
                 setLoading(false);
                 alert('error', "Account Not import yet.");
             }
-            const dydxAddress = await dydxAddressDrive(accountFromMnemonic.generated.privateKey)
             const wallet = {
                 address: accountFromMnemonic.generated.address,
                 xrp: {
@@ -747,10 +689,6 @@ export const WalletNetworkSelection = (props) => {
                 stellarWallet: {
                     publicKey: accountFromMnemonic.original.publicKey,
                 },
-                dydx: {
-                    dydxAddress: dydxAddress.dydxAddress,
-                    dydxPublicKey: dydxAddress.publicKey,
-                }
             };
 
             let wallets = [];
@@ -774,10 +712,6 @@ export const WalletNetworkSelection = (props) => {
                     },
                     stellarWallet: {
                         publicKey: wallet.stellarWallet.publicKey
-                    },
-                    dydx: {
-                        dydxAddress: wallet.dydx.dydxAddress,
-                        dydxPublicKey: wallet.dydx.dydxPublicKey,
                     },
                     walletType: "Multi-coin",
                     wallets: wallets,
@@ -822,11 +756,6 @@ export const WalletNetworkSelection = (props) => {
                             stellarPrivateKey: accountFromMnemonic.original.secretKey,
                             mnemonic: "",
                             walletType: "Multi-coin",
-                            dydxAddress: dydxAddress.dydxAddress,
-                            dydxPublicKey: dydxAddress.publicKey,
-                            dydxMnemonic: dydxAddress.mnemonic,
-                            dydxPrivateKey: dydxAddress.privateKey,
-                            dydxWalletConnectSignature: dydxAddress.walletConnectSignature,
                         })
                         if (walletResponse.success) {
                             setTimeout(() => {

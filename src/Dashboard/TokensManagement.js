@@ -14,8 +14,8 @@ import Icon from "../icon";
 export const GetCryptoList = async (chainId, state) => {
     try {
         const getListPath = await CHAINS[chainId].supportedTokenList;
-        const response = chainId === CHAINS["DYDX"].symbol ? getListPath : await fetch(getListPath);
-        const cryptoList = chainId === CHAINS["DYDX"].symbol ? response : await response.json();
+        const response = await fetch(getListPath);
+        const cryptoList = await response.json();
         const activeWalletTokens = (state.activeWalletPortFolio || state.activeWalletPortFolio.tokens)
             .filter(addr => addr.active)
             .map(addr => addr.contractAddress?.toLowerCase());
@@ -59,8 +59,8 @@ export const GetCryptoList = async (chainId, state) => {
     export const GetCryptoListWtihFilter = async (chainId, state) => {
         try {
             const getListPath = await CHAINS[chainId].supportedTokenList;
-            const response = chainId === CHAINS["DYDX"].symbol ? getListPath : await fetch(getListPath);
-            const cryptoList = chainId === CHAINS["DYDX"].symbol ? response : await response.json();
+            const response = await fetch(getListPath);
+            const cryptoList = await response.json();
             const activeWalletTokens = (state.activeWalletPortFolio || state.activeWalletPortFolio.tokens)
             const tokenList = cryptoList.tokens || cryptoList.assets || cryptoList;
             const processedTokens = tokenList.map(token => {

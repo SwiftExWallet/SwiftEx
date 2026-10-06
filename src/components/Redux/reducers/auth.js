@@ -185,8 +185,6 @@ case IMPORTALLWALLETS:
                               STELLAR_PUBLICK_KEY: action.payload.STELLAR_PUBLICK_KEY,
                               STELLAR_SECRET_KEY: action.payload.STELLAR_SECRET_KEY,
                               STELLAR_ADDRESS_STATUS:action.payload.STELLAR_ADDRESS_STATUS,
-                              DYDX_ADDRESS_KEY:action.payload.DYDX_ADDRESS_KEY,
-                              DYDX_PUBLIC_KEY:action.payload.DYDX_PUBLIC_KEY
                             }
     case SET_ASSET_DATA:
                             return {

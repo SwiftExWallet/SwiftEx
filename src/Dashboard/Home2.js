@@ -85,7 +85,6 @@ const Home2 = ({ navigation }) => {
       const walletInfo = await GetWalletTokens(
         currentState?.wallet?.address,
         currentState?.STELLAR_PUBLICK_KEY,
-        currentState?.DYDX_ADDRESS_KEY,
       );
       if (Array.isArray(walletInfo?.tokens) && walletInfo.tokens.length > 0) {
         await mergeWithApiTokens(walletInfo.tokens);

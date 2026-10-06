@@ -25,7 +25,6 @@ import apiHelper from "../exchange/crypto-exchange-front-end-main/src/apiHelper"
 import AccessNativeStorage from "../Wallets/AccessNativeStorage";
 import { alert } from "../reusables/Toasts";
 import { useNavigation } from "@react-navigation/native";
-import { dydxAddressDrive } from "../../dydx/dydxAddressDrive";
 
 const NewWalletPrivateKey = ({
   props,
@@ -63,7 +62,6 @@ const NewWalletPrivateKey = ({
   const handleWallet = async () => {
     try {
       setLoading(true);
-      const dydxAddress=await dydxAddressDrive(Wallet.privateKey);
       const user = await AsyncStorageLib.getItem("user");
       let wallets = [];
       const data = await AsyncStorageLib.getItem(
@@ -89,10 +87,6 @@ const NewWalletPrivateKey = ({
           },
           stellarWallet: {
             publicKey: Wallet.stellarWallet.publicKey,
-          },
-          dydx: {
-            dydxAddress: dydxAddress.dydxAddress,
-            dydxPublicKey: dydxAddress.publicKey,
           },
           wallets: wallets,
         },
@@ -133,11 +127,6 @@ const NewWalletPrivateKey = ({
                 stellarPrivateKey: Wallet.stellarWallet.secretKey,
                 mnemonic: Wallet.mnemonic,
                 walletType: "Multi-coin",
-                dydxAddress: dydxAddress.dydxAddress,
-                dydxPublicKey: dydxAddress.publicKey,
-                dydxMnemonic: dydxAddress.mnemonic,
-                dydxPrivateKey: dydxAddress.privateKey,
-                dydxWalletConnectSignature: dydxAddress.walletConnectSignature,
               })
               dispatch(
                 setCurrentWallet(

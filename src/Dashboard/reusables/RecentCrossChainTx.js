@@ -12,8 +12,6 @@ import LocalTxManager from '../../utilities/LocalTxManager';
 import { useNavigation } from '@react-navigation/native';
 import Icon from '../../icon';
 import { colors } from '../../Screens/ThemeColorsConfig';
-import { AllbridgeCoreSdk, nodeRpcUrlsDefault } from "@allbridge/bridge-core-sdk";
-import AllbridgeTxTrack from '../exchange/crypto-exchange-front-end-main/src/components/AllbridgeTxTrack';
 import { RPC } from '../constants';
 import Web3 from 'web3';
 
@@ -23,8 +21,6 @@ const RecentCrossChainTx = ({ activeWalletPublicKey, theme }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const activeTheme = theme ? colors.dark : colors.light;
-  const [showTxHash, setshowTxHash] = useState([]);
-  const [showTx, setshowTx] = useState(false);
 
   const loadTransactions = useCallback(async () => {
     try {
@@ -84,31 +80,11 @@ const RecentCrossChainTx = ({ activeWalletPublicKey, theme }) => {
         }
       }
       else {
-        const sdk = new AllbridgeCoreSdk(nodeRpcUrlsDefault);
-        const matchedTx = await sdk.getTransferStatus(chainSymbol, txHash);
-
-        if (matchedTx.isSuspended) {
-          updatedStatus = {
-            ...updatedStatus,
-            status: "failed",
-            statusColor: "#de2727ff"
-          };
-        } else if (matchedTx.receive?.txId) {
-          const confirmed =
-            matchedTx.receive.confirmations >=
-            (matchedTx.receive.confirmationsNeeded || 0);
-
-          updatedStatus = {
-            ...updatedStatus,
-            status: confirmed ? "completed" : "pending",
-            statusColor: confirmed ? "#09b317ff" : "#eec14fff"
-          };
-        } else if (matchedTx.send?.txId) {
-          updatedStatus = {
-            ...updatedStatus,
-            status: "processing",
-            statusColor: "#eec14fff"
-          };
+        const receipt = await getTxReceiptByChain(chainSymbol, txHash);
+        if (receipt?.status === true || receipt?.status === 1) {
+          updatedStatus = { ...updatedStatus, status: "completed", statusColor: "#09b317ff" };
+        } else if (receipt?.status === false || receipt?.status === 0) {
+          updatedStatus = { ...updatedStatus, status: "failed", statusColor: "#de2727ff" };
         }
       }
 
@@ -155,8 +131,7 @@ const RecentCrossChainTx = ({ activeWalletPublicKey, theme }) => {
 
   const txViewManager = (status, chain, hash) => {
     if (status === "processing" || status === "completed") {
-      setshowTxHash([{chain:chain,hash:hash}])
-      setshowTx(true);
+      navigation.navigate("TxDetail", { transactionPath: chain === "ETH" ? "https://etherscan.io/tx/" + hash : "https://bscscan.com/tx/" + hash });
     } else {
       if(chain === "SRB"){
         navigation.navigate("TxDetail", { transactionPath: "https://stellar.expert/explorer/public/tx/" + hash})
@@ -239,7 +214,6 @@ const RecentCrossChainTx = ({ activeWalletPublicKey, theme }) => {
         showsVerticalScrollIndicator={false}
         style={{marginBottom:30}}
       />
-      <AllbridgeTxTrack txs={showTxHash} isDarkMode={theme} showTx={showTx} closeTx={() => setshowTx(false)} />
     </View>
   );
 };

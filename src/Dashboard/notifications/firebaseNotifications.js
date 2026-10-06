@@ -26,13 +26,12 @@ const refreshPortfolioOnNotification = async (source) => {
     const state = store.getState();
     const evmAddress = state?.wallet?.address;
     const stellarAddress = state?.STELLAR_PUBLICK_KEY;
-    const dydxAddress = state?.DYDX_ADDRESS_KEY;
 
     if (!evmAddress && !stellarAddress) {
       return;
     }
 
-    const walletInfo = await GetWalletTokens(evmAddress, stellarAddress, dydxAddress);
+    const walletInfo = await GetWalletTokens(evmAddress, stellarAddress);
     const apiTokens = walletInfo?.tokens || [];
     if (!Array.isArray(apiTokens) || apiTokens.length === 0) {
       return;

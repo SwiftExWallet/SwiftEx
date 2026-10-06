@@ -736,10 +736,7 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
       try {
         const raw = request.params[1];
         const d = typeof raw === "string" ? JSON.parse(raw) : raw;
-        if (JSON.stringify(d).toLowerCase().includes("dydx")) {
-          label = "Derive dYdX Wallet";
-          extra = "dYdX Chain address derivation via EIP-712";
-        } else if (d?.domain?.name) {
+        if (d?.domain?.name) {
           extra = `Domain: ${d.domain.name}`;
         }
       } catch (_) { }

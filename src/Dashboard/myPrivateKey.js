@@ -26,7 +26,6 @@ const MyPrivateKey = () => {
   const navi = useNavigation()
   const state = useSelector((state) => state)
   const [walletInfo, setWalletInfo] = useState([])
-  const [dydxWalletInfo, setdydxWalletInfo] = useState([])
   const [renderClickCount, setRenderClickCount] = useState(0);
   const [stellarClickCount, setStellarClickCount] = useState(0);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -61,12 +60,6 @@ const MyPrivateKey = () => {
             mnemonicInWords: walletData.mnemonic
           };
           setWalletInfo(refineMnemonic);
-          const refineDydxMnemonic = {
-            ...walletData,
-            mnemonic: walletData.dydxMnemonic.match(/\b(\w+)'?(\w+)?\b/g),
-            mnemonicInWords: walletData.dydxMnemonic
-          };
-          setdydxWalletInfo(refineDydxMnemonic)
         }
       } catch (error) {
         console.log("=error=", error)

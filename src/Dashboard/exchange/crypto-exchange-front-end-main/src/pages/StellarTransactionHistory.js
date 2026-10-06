@@ -14,10 +14,8 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { NEARINTENT, STELLAR_URL } from "../../../../constants";
 import { useNavigation } from "@react-navigation/native";
 import { authRequest, POST } from "../api";
-import AllbridgeTxTrack from "../components/AllbridgeTxTrack";
 import LocalTxManager from "../../../../../utilities/LocalTxManager";
 import { useSelector } from "react-redux";
-import { AllbridgeCoreSdk, nodeRpcUrlsDefault } from "@allbridge/bridge-core-sdk";
 import CustomInfoProvider from "../components/CustomInfoProvider";
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
 import { configure, GetNearIntentStatus } from "../../../../../nearIntent/nearIntentUtil";
@@ -41,7 +39,7 @@ const getThemeColors = (isDarkMode) => ({
   error: "#F44336",
   sent: "#FF5722",
   received: "#4CAF50",
-  // semantic tint pairs: {bg, fg} for icon containers / status text, per category
+
   tint: {
     success: { bg: isDarkMode ? "#123321" : "#E4F3E9", fg: isDarkMode ? "#7ED9A0" : "#1D5F33" },
     warning: { bg: isDarkMode ? "#3A2E10" : "#FBF0DD", fg: isDarkMode ? "#F2C579" : "#8A5A0B" },
@@ -77,25 +75,12 @@ const chainMap = {
   7: "Stellar",
 };
 
-// Known NEAR-Intents (1Click) deposit addresses on Stellar. Jab bhi user
-// koi plain `payment` in me se kisi address ko bhejta hai, ye actually
-// NEAR Intents ke through ek withdrawal/cross-chain-swap hoti hai — NEAR
-// Intents Stellar par koi Soroban contract-call nahi karta, sirf plain
-// payment + memo hota hai (isliye ye purely address-based detection hai,
-// function-name se decode nahi ho sakta jaisa Aquarius/Allbridge ke liye
-// karte hain).
-// TODO: Ye list backend/config se dynamically aani chahiye (NEAR Intents
-// Explorer API se verify karke — jaisa humne discuss kiya tha), kyunki
-// deposit addresses NEAR Intents side se rotate/change ho sakte hain.
-// Abhi ke liye ek known address hardcode kiya hai.
 const NEAR_INTENT_DEPOSIT_ADDRESSES = new Set([
   "GDJ4JZXZELZD737NVFORH4PSSQDWFDZTKW3AIDKHYQG23ZXBPDGGQBJK",
 ]);
 
 const isNearIntentWithdrawal = (operation) =>
   operation.type === "payment" && NEAR_INTENT_DEPOSIT_ADDRESSES.has(operation.to);
-
-// Icon per destination chain, falls back to a generic link icon for unknown IDs.
 const chainIconMap = {
   Ethereum: "ethereum",
   BNB: "currency-bnb",
@@ -122,10 +107,6 @@ const decodeDestinationChain = (params = []) => {
   }
 };
 
-// Decodes the Soroban contract method name out of the operation's `parameters`
-// array. Horizon's own `function` field is just the op-kind constant
-// (HostFunctionTypeHostFunctionTypeInvokeContract) — never the method name —
-// so the method itself has to be read from the first `Sym`-typed parameter.
 const getContractFunctionName = (params = []) => {
   try {
     const symParam = params.find((p) => p.type === "Sym");
@@ -139,24 +120,9 @@ const getContractFunctionName = (params = []) => {
   }
 };
 
-// Function names that are uniquely used by Aquarius's router/pool contracts.
-// Used purely for a friendly "via Aquarius" label — does not affect
-// bridge/swap/transfer classification.
-// NOTE (fix): "deposit"/"withdraw"/"claim" ko yahan pehle include kiya
-// gaya tha, lekin ye generic bridge function-names hain — Allbridge (aur
-// baaki bridges) bhi bilkul yehi naam use karte hain (isi file me upar
-// `UNAMBIGUOUS_BRIDGE_FUNCTIONS = ['deposit', 'withdraw', 'claim_balance']`
-// isko already confirm karta hai). Sirf "swap_chained" hi genuinely,
-// verifiably Aquarius-specific hai (multi-hop router pattern, jo humne
-// actual on-chain trace se confirm kiya tha). Baaki naam yahan rakhna
-// false-positive "via Aquarius" label deta hai kisi bhi generic
-// deposit/withdraw-based bridge tx par (jaisa is bug me hua).
 const AQUARIUS_FUNCTIONS = ["swap_chained"];
 
 const getContractProvider = (fnName = "", subtype = null) => {
-  // Sirf genuine SWAP operations par hi provider-label dikhao — bridge
-  // operations (jinke function names generic hote hain, alag protocols
-  // shared karte hain) par kabhi nahi.
   if (subtype && subtype !== "swap") return null;
   const name = (fnName || "").toLowerCase();
   if (AQUARIUS_FUNCTIONS.includes(name)) return "Aquarius";
@@ -165,13 +131,6 @@ const getContractProvider = (fnName = "", subtype = null) => {
 
 const UNAMBIGUOUS_BRIDGE_FUNCTIONS = ["deposit", "withdraw", "claim_balance"];
 
-// Classifies an invoke_host_function call into one of three user-facing
-// buckets so the UI never has to guess from the generic op type alone.
-// `swap_chained` (and similarly-named functions) is shared by Allbridge's
-// real cross-chain bridge AND its same-chain multi-hop DEX swap — the
-// function name alone can't tell them apart. The destination-chain
-// parameter is the actual signal: present = genuinely crossing chains,
-// absent = the swap starts and ends on Stellar.
 const getInvokeHostFunctionSubtype = (fnName = "", assetBalanceChanges = [], hasDestinationChain = false) => {
   const name = (fnName || "").toLowerCase();
 
@@ -186,8 +145,6 @@ const getInvokeHostFunctionSubtype = (fnName = "", assetBalanceChanges = [], has
     return "transfer";
   }
 
-  // Unknown contract call — fall back on whether a destination chain was
-  // actually decoded rather than assuming bridge by default.
   return hasDestinationChain ? "bridge" : "transfer";
 };
 
@@ -328,15 +285,6 @@ const getCardTint = (operation, item, isReceived) => {
 
 const BRIDGE_STEPS = ["sent", "bridging", "received"];
 
-// NOTE (fix): pehle "completed"/"success"/"claimable"/true sab 2 return
-// karte the — jo labels array (Sent/Bridging/Received) ke LAST index (2)
-// ke barabar hai. Render logic me `i === stepIndex` ko "abhi in-progress"
-// (orange ring) treat kiya jaata hai, `i < stepIndex` ko hi green-check
-// milta hai. Isliye jab transaction genuinely poori complete ho jaati thi,
-// "Received" step (index 2) hamesha orange/in-progress hi dikhta rehta
-// tha, kabhi green-check nahi hota — off-by-one bug. Fix: fully-complete
-// states ab 3 return karte hain (last-index se ek aage), taaki `i < 3`
-// teeno steps (0,1,2) ke liye true ho aur sab green-check ho jayein.
 const getBridgeStepIndex = (status) => {
   if (status === true) return 3;
   if (status === false) return 0;
@@ -447,8 +395,6 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
   const multiTxType = [...new Set(operations.map((op) => getTransactionType(op, userPublicKey, isReceived)))].join(" & ");
   const transactionType = multiTxType;
 
-  const [showTx, setshowTx] = useState(false);
-  const [showTxHash, setshowTxHash] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const iconName = getTransactionIcon(operation);
@@ -480,15 +426,7 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
   const isBridgeInvoke = operation.type === "invoke_host_function" && (operation.contractSubtype || "bridge") === "bridge";
   const isSwapInvoke = operation.type === "invoke_host_function" && operation.contractSubtype === "swap";
   const isBridgeLike = isWalletTx && operation.txType !== "nearIntent";
-  // Plain `payment` op jo NEAR-Intents ke known deposit-address par jaa
-  // raha hai — Horizon ke liye ye ek simple payment hai, lekin actually
-  // ek cross-chain withdrawal hai (NEAR Intents Stellar par koi contract-
-  // call nahi karta). UI me ise bridge-card jaisa hi treat karte hain.
   const isNearIntentPayment = isNearIntentWithdrawal(operation);
-  // Dual-leg amount display applies to path payments, on-chain swaps,
-  // Allbridge-style bridge calls, aur NEAR-Intent withdrawals — anywhere
-  // a "from" and "to" leg both exist (ya conceptually exist, jaisa
-  // NEAR-Intent ke case me — receive-leg dusre chain par hoti hai).
   const isDualAmount = isPathPayment || isSwapInvoke || isBridgeInvoke || isNearIntentPayment;
 
   let assetFrom = "";
@@ -514,17 +452,8 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
     const outLeg = transfers.find((t) => t.from === userPublicKey);
     const inLeg = transfers.find((t) => t.to === userPublicKey);
     amountFrom = outLeg?.amount || amountText;
-    // Only show a "+" leg when a genuinely distinct incoming transfer exists
-    // in this same operation. Bridging out to another chain often has only
-    // the outgoing leg recorded here — the receive happens on the other
-    // chain later — so defaulting amountTo to amountFrom would show a
-    // misleading identical -X / +X pair.
     amountTo = inLeg && inLeg !== outLeg ? inLeg.amount : null;
   } else if (isNearIntentPayment) {
-    // Plain payment — Horizon ke paas destination-chain wali "+" leg ka
-    // koi data hi nahi hai (wo off-chain, NEAR solvers ke through hoti
-    // hai). Sirf outgoing leg pakki hai; incoming amount NEAR Intents
-    // Explorer API se hi milega (yahan available nahi, isliye null).
     amountFrom = operation.amount || amountText;
     amountTo = null;
   }
@@ -553,15 +482,7 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
       Linking.openURL(explorerUrl);
       return;
     }
-    if (txType === "invoke_host_function" && !received) {
-      setshowTxHash([{ chain: "SRB", hash: txId }]);
-      setshowTx(true);
-    } else if (txType === "wallet_tx") {
-      setshowTxHash([{ chain: operation.chain, hash: operation.hash }]);
-      setshowTx(true);
-    } else {
-      Linking.openURL(`${STELLAR_URL.EXPERT_URL}/tx/${txId}`);
-    }
+    Linking.openURL(`${STELLAR_URL.EXPERT_URL}/tx/${txId}`);
   };
 
   const statusLabel = () => {
@@ -695,9 +616,6 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
         </View>
       </TouchableOpacity>
 
-      <View style={styles.allBridgeTxCon}>
-        <AllbridgeTxTrack txs={showTxHash} isDarkMode={true} showTx={showTx} closeTx={() => setshowTx(false)} />
-      </View>
     </>
   );
 };
@@ -723,18 +641,6 @@ const processStellarTx = async (tx, publicKey) => {
     firstOp.contractSubtype = getInvokeHostFunctionSubtype(fnName, firstOp.asset_balance_changes, !!decodedChain);
 
     if (firstOp.contractSubtype === "swap") {
-      // Resolve the actual from/to asset codes for this swap leg pair —
-      // these fields don't exist on the raw Horizon record, so without
-      // this every swap card silently fell back to "XLM -> XLM".
-      //
-      // NOTE (fix): Horizon's asset_balance_changes entries use the field
-      // name `asset_code` (matching every other place in this file, e.g.
-      // path-payment handling below) — this previously read `.code`,
-      // which doesn't exist on the object, so it was always undefined and
-      // silently fell through to the "Unknown" fallback for every
-      // non-native leg. That's why any swap involving a non-XLM asset on
-      // both legs (the vast majority of Aquarius multi-hop swaps) rendered
-      // as "Unknown -> Unknown" regardless of what was actually swapped.
       const legs = firstOp.asset_balance_changes || [];
       const outLeg = legs.find((l) => l.from === publicKey);
       const inLeg = legs.find((l) => l.to === publicKey && l !== outLeg);
@@ -794,51 +700,7 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
     allTransactionsRef.current = allTransactions;
   }, [allTransactions]);
 
-  const refreshSingleTx = async (chainSymbol, txHash) => {
-    try {
-      const sdk = new AllbridgeCoreSdk(nodeRpcUrlsDefault);
-      const matchedTx = await sdk.getTransferStatus(chainSymbol, txHash);
-
-      let updatedStatus = { chain: chainSymbol, hash: txHash, status: "pending", statusColor: "#eec14fff" };
-
-      if (matchedTx.isSuspended) {
-        updatedStatus = { chain: chainSymbol, hash: txHash, status: "failed", statusColor: "#de2727ff" };
-      } else if (matchedTx.receive?.txId) {
-        const confirmed = matchedTx.receive.confirmations >= (matchedTx.receive.confirmationsNeeded || 0);
-        updatedStatus = {
-          chain: chainSymbol,
-          hash: txHash,
-          status: confirmed ? "completed" : "pending",
-          statusColor: confirmed ? "#09b317ff" : "#eec14fff",
-        };
-      } else if (matchedTx.send?.txId) {
-        updatedStatus = { chain: chainSymbol, hash: txHash, status: "processing", statusColor: "#eec14fff" };
-      }
-
-      await LocalTxManager.updateTxStatus(state?.wallet?.address, updatedStatus);
-
-      const updateTransactions = (txList) =>
-        txList.map((tx) => {
-          if (tx.id === `wallet_tx_${txHash}` && tx.operations.records[0].chain === chainSymbol) {
-            return {
-              ...tx,
-              success: updatedStatus.status,
-              operations: {
-                records: [{ ...tx.operations.records[0], status: updatedStatus.status, statusColor: updatedStatus.statusColor }],
-              },
-            };
-          }
-          return tx;
-        });
-      setAllTransactions((prev) => updateTransactions(prev));
-      setDisplayedTransactions((prev) => updateTransactions(prev));
-
-      return { status: updatedStatus.status, statusColor: updatedStatus.statusColor };
-    } catch (err) {
-      console.error("error in refreshing tx:", err);
-      return { status: "pending", statusColor: "#eec14fff" };
-    }
-  };
+  const refreshSingleTx = async () => ({ status: "pending", statusColor: "#eec14fff" });
 
   const refreshNearIntentTx = async (chainSymbol, depositAddress, depositMemo) => {
     try {
@@ -1331,7 +1193,6 @@ const styles = StyleSheet.create({
   emptyContainer: { alignItems: "center", justifyContent: "center", padding: 20 },
   emptyText: { fontSize: 18, fontWeight: "bold", marginTop: 16 },
   emptySubText: { fontSize: 14, textAlign: "center", marginTop: 8, marginHorizontal: 20 },
-  allBridgeTxCon: { zIndex: 20, position: "absolute", width: "100%", maxHeight: "50%", bottom: 25 },
   tryAgainBtn: { backgroundColor: "#4052D6", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 },
   footerLoader: { paddingVertical: 20, alignItems: "center" },
   loadingText: { marginTop: 8, fontSize: 14 },

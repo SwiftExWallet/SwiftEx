@@ -31,7 +31,6 @@ import apiHelper from "./exchange/crypto-exchange-front-end-main/src/apiHelper";
 import * as StellarSdk from '@stellar/stellar-sdk';
 import AccessNativeStorage from "./Wallets/AccessNativeStorage";
 import crashlytics from '@react-native-firebase/crashlytics';
-import { dydxAddressDrive } from "../dydx/dydxAddressDrive";
 import ReferralBottomSheet from "./reusables/ReferralBottomSheet";
 import { clearReferralCode, getSavedReferralCode, initReferral, subscribeReferral } from "../utilities/referralUtil";
 import { CHOTTU_URL } from "./constants";
@@ -155,7 +154,6 @@ const Welcome = (props) => {
 
   const dispatChingData=async(wallet)=>{
     try {
-      const dydxAddress=await dydxAddressDrive(wallet.privateKey)
             const accounts = {
               address: wallet.address,
               name: "Main",
@@ -165,10 +163,6 @@ const Welcome = (props) => {
               },
               stellarWallet: {
                 publicKey: wallet.stellarWallet.publicKey,
-              },
-              dydx: {
-                dydxAddress: dydxAddress.dydxAddress,
-                dydxPublicKey: dydxAddress.publicKey,
               },
               wallets: [],
             };
@@ -183,10 +177,6 @@ const Welcome = (props) => {
                 },
                 stellarWallet: {
                   publicKey: wallet.stellarWallet.publicKey
-                },
-                dydx: {
-                  dydxAddress: dydxAddress.dydxAddress,
-                  dydxPublicKey: dydxAddress.publicKey,
                 },
                 walletType: "Multi-coin",
               },
@@ -236,11 +226,6 @@ const Welcome = (props) => {
               stellarPrivateKey: wallet.stellarWallet.secretKey,
               mnemonic: wallet.mnemonic,
               walletType: wallet.walletType,
-              dydxAddress: dydxAddress.dydxAddress,
-              dydxPublicKey: dydxAddress.publicKey,
-              dydxMnemonic: dydxAddress.mnemonic,
-              dydxPrivateKey: dydxAddress.privateKey,
-              dydxWalletConnectSignature: dydxAddress.walletConnectSignature
             })
             if (walletResponse.success) {
             setLoading(false);

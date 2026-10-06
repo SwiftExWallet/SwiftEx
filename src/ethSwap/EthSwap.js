@@ -31,10 +31,11 @@ import { ChainSupportedToken } from "../Dashboard/exchange/crypto-exchange-front
 import Modal from "react-native-modal";
 import CustomInfoProvider from '../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import ToggleSwitch from 'toggle-switch-react-native';
-import { ensureFusionAllowance, performeRangoSwap, swapBestRoute, swapConfirmRoute, swapPrepareTx, swapTxSign } from '../utilities/SwapRango';
+import { ensureFusionAllowance } from '../utilities/FusionAllowance';
 import { GetStellarUSDCAvilabelBalance } from '../utilities/StellarUtils';
 import { GetFusionSwapQuote, PerformeFusionPlusNativeSwap, PerformeFusionSwap } from '../utilities/SwapFusion';
 import { getSafeErrorMessage } from '../utilities/errorSanitizer';
+import { ENVIRONMENT } from '../Dashboard/constants';
 
 const NATIVE_GAS_RESERVE = {
   ETH: 0.003,
@@ -318,7 +319,7 @@ const EthSwap = () => {
   const [goWithGas, setgoWithGas] = useState(false);
   const [visibleConfirmation, setVisibleConfirmation] = useState(false);
   const [providerQuoteInfo, setProviderQuoteInfo] = useState(null);
-  const [rangoQuoteInfo, setrangoQuoteInfo] = useState(null);
+  const [fusionQuoteInfo, setFusionQuoteInfo] = useState(null);
   const abortControllerRef = useRef(null);
 
   const switchTokens = async () => {
@@ -478,7 +479,7 @@ const EthSwap = () => {
           setbtnMessage('No route found');
         }
       } else {
-        const getRangoSwaps = await GetFusionSwapQuote(
+        const fusionQuote = await GetFusionSwapQuote(
           fromToken.chain === 'BNB' ? 'BSC' : fromToken.chain,
           fromToken.address,
           toToken.chain === 'BNB' ? 'BSC' : toToken.chain,
@@ -489,20 +490,9 @@ const EthSwap = () => {
           toToken.symbol || toToken.code
         );
 
-        if (getRangoSwaps.status) {
-          setQuoteInfo(getRangoSwaps.response);
-          setrangoQuoteInfo(getRangoSwaps.response.response);
-
-          if (
-            getRangoSwaps.suggestSlippage.length > 0 &&
-            parseFloat(showRecommendedSlippage).toFixed(1) <
-            parseFloat(getRangoSwaps.suggestSlippage[0].slippage).toFixed(1)
-          ) {
-            setWarningInfo({
-              message: `We recommend you to increase slippage to at least ${getRangoSwaps.suggestSlippage[0].slippage} for this route.`,
-              value: getRangoSwaps.suggestSlippage[0].slippage,
-            });
-          }
+        if (fusionQuote.status) {
+          setQuoteInfo(fusionQuote.response);
+          setFusionQuoteInfo(fusionQuote.response.response);
 
           const amountNum = parseFloat(amount);
           const balanceNum = parseFloat(fromTokenBalance);
@@ -518,7 +508,7 @@ const EthSwap = () => {
           CustomInfoProvider.show(
             'error',
             '!Opps',
-            getSafeErrorMessage(getRangoSwaps.error, 'Unable to get route')
+            getSafeErrorMessage(fusionQuote.error, 'Unable to get route')
           );
           setbtnDisable(true);
           setbtnMessage('No route found');
@@ -1076,15 +1066,15 @@ const EthSwap = () => {
           setSwapExecuting(false);
         }
       } else {
-        const rangoSwapResult = await PerformeFusionSwap(
-          rangoQuoteInfo.quoteId,
+        const fusionSwapResult = await PerformeFusionSwap(
+          fusionQuoteInfo.quoteId,
           state,
           fromToken,
           toToken,
           amount,
-          rangoQuoteInfo
+          fusionQuoteInfo
         );
-        if (rangoSwapResult.status === true) {
+        if (fusionSwapResult.status === true) {
           setSwapExecuting(false);
           navigation.navigate('Transactions');
         } else {

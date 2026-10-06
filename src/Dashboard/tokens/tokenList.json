@@ -2208,37 +2208,6 @@
   },
   {
     "chainId": 1,
-    "address": "0x92D6C1e31e14520e676a687F0a93788B716BEff5",
-    "name": "dYdX",
-    "symbol": "DYDX",
-    "decimals": 18,
-    "logoURI": "https://assets.coingecko.com/coins/images/17500/thumb/hjnIm9bV.jpg?1628009360",
-    "extensions": {
-      "bridgeInfo": {
-        "130": {
-          "tokenAddress": "0x601b11907EAa8d3785C0b10b41C3a7315faeB82c"
-        },
-        "137": {
-          "tokenAddress": "0x4C3bF0a3DE9524aF68327d1D2558a3B70d17D42a"
-        },
-        "42161": {
-          "tokenAddress": "0x51863cB90Ce5d6dA9663106F292fA27c8CC90c5a"
-        }
-      }
-    },
-    "usdtRoute": {
-      "multiHop": {
-        "available": true,
-        "amountOut": "0.214348",
-        "price": "0.02143480",
-        "route": "DYDX → WETH → USDT",
-        "feeTiers": "10000,500",
-        "routeDisplay": "1% → 0.05%"
-      }
-    }
-  },
-  {
-    "chainId": 1,
     "address": "0xec53bF9167f50cDEB3Ae105f56099aaaB9061F83",
     "name": "EigenLayer",
     "symbol": "EIGEN",

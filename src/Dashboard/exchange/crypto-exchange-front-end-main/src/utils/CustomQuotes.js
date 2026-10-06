@@ -35,7 +35,6 @@ import { onSwapETHtoUSDC } from './OneTapPayExecution';
 import { alert } from '../../../../reusables/Toasts';
 import apiHelper from '../apiHelper';
 import * as StellarSdk from '@stellar/stellar-sdk';
-import { swap_prepare } from '../../../../../../All_bridge';
 import { getTokenBalancesUsingAddress, getWalletBalance } from './getWalletInfo/EtherWalletService';
 import CustomInfoProvider from '../components/CustomInfoProvider';
 import { convertMultiple } from './UsdPriceHandler';
@@ -720,31 +719,10 @@ export const CustomQuotes = ({
    const sendEthToContract = async (amount) => {
      try {
        handleStepUpdate("USDT→USDC", "pending")
-       const ressult_swap = await swap_prepare(state.wallet.privateKey, state.wallet.address, state.STELLAR_PUBLICK_KEY, amount, "USDT", "USDC", "ETH",feePayType)
-       console.log("last ui res ---->", ressult_swap)
-       if (ressult_swap.status_task) {
-         setisDone(false)
-         handleStepUpdate("USDT→USDC", "done")
-         setTimeout(() => {
-           handleStepUpdate("USDC→Wallet", "done")
-         }, 2000);
-       }
-       if (!ressult_swap.status_task) {
-        CustomInfoProvider.show(
-           "Info",
-           ressult_swap?.res||"Swap Faild",
-           [
-             {
-               text: "Okay",
-               onPress: () => { onClose() }
-             }
-           ],
-           { cancelable: false }
-         );
-         setisDone(false)
-         handleStepUpdate("USDT→USDC", "error")
-         handleStepUpdate("USDC→Wallet", "error")
-       }
+       CustomInfoProvider.show("Info", "Bridge service is currently unavailable.", [{ text: "Okay", onPress: () => { onClose() } }], { cancelable: false });
+       setisDone(false)
+       handleStepUpdate("USDT→USDC", "error")
+       handleStepUpdate("USDC→Wallet", "error")
      } catch (error) {
         console.log("Transaction Failed", error);
         setisDone(false)
@@ -1077,7 +1055,7 @@ export const CustomQuotes = ({
                 sourceToken={"USDT"}
                 destinationToken={"USDC"}
                 hideQuote={false}
-                typeProvider={"Allbridge"}
+                typeProvider={"Bridge"}
                 feetype={feePayType}
               />
               </View>
