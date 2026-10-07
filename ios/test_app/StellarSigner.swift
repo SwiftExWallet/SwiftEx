@@ -1,11 +1,47 @@
 import Foundation
 import stellarsdk
+import LocalAuthentication
 
 @objc(StellarSigner)
 class StellarSigner: NSObject {
   
   let sdk = StellarSDK(withHorizonUrl: "https://horizon.stellar.org")
   let serviceName = "com.appSwiftEx.appStorage"
+
+  private func authenticateForSigning(_ completion: @escaping (Result<Void, Error>) -> Void) {
+    let context = LAContext()
+    let reason = "Authenticate to sign transaction"
+    var error: NSError?
+
+    guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+      completion(.failure(error ?? NSError(domain: "AUTH", code: -1, userInfo: [NSLocalizedDescriptionKey: "Device authentication is not available"])))
+      return
+    }
+
+    context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
+      if success {
+        completion(.success(()))
+      } else {
+        completion(.failure(authError ?? NSError(domain: "AUTH", code: -2, userInfo: [NSLocalizedDescriptionKey: "Authentication failed"])))
+      }
+    }
+  }
+
+  private func signerAuthCode(_ error: Error) -> String {
+    let nsError = error as NSError
+    if nsError.domain == LAError.errorDomain {
+      switch LAError.Code(rawValue: nsError.code) {
+      case .userCancel, .systemCancel, .appCancel, .userFallback:
+        return "AUTH_CANCELLED"
+      default:
+        return "AUTH_FAILED"
+      }
+    }
+    if nsError.domain == "AUTH", nsError.code == -1 {
+      return "AUTH_UNAVAILABLE"
+    }
+    return "AUTH_FAILED"
+  }
   
   private func getPrivateKey(chain: String) throws -> String? {
     guard let walletJson = retrieveFromKeychain(key: "activeUserWallet", service: serviceName) else {
@@ -99,6 +135,25 @@ class StellarSigner: NSObject {
   
   @objc
   func signTransaction(
+    _ transactionXDR: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    authenticateForSigning { authResult in
+      do {
+        try authResult.get()
+        self.signTransactionAfterAuthentication(
+          transactionXDR,
+          resolver: resolve,
+          rejecter: reject
+        )
+      } catch {
+        reject(self.signerAuthCode(error), error.localizedDescription, error)
+      }
+    }
+  }
+
+  private func signTransactionAfterAuthentication(
     _ transactionXDR: String,
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock

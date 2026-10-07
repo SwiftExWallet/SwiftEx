@@ -2,6 +2,7 @@ import Foundation
 import React
 import WalletCore
 import Security
+import LocalAuthentication
 
 @objc(TransactionSigner)
 class TransactionSigner: NSObject {
@@ -10,9 +11,53 @@ class TransactionSigner: NSObject {
     static func requiresMainQueueSetup() -> Bool {
         return false
     }
+
+  private func authenticateForSigning(_ completion: @escaping (Result<Void, Error>) -> Void) {
+      let context = LAContext()
+      let reason = "Authenticate to sign transaction"
+      var error: NSError?
+
+      guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+          completion(.failure(error ?? SignerError.authenticationUnavailable))
+          return
+      }
+
+      context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
+          if success {
+              completion(.success(()))
+          } else {
+              completion(.failure(authError ?? SignerError.authenticationFailed))
+          }
+      }
+  }
     
   @objc
   func signTransaction(
+      _ chainName: String,
+      walletAddress: String,
+      rawUnsignedTx: String,
+      chainId: Int,
+      resolver resolve: @escaping RCTPromiseResolveBlock,
+      rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+      authenticateForSigning { authResult in
+          do {
+              try authResult.get()
+              self.signTransactionAfterAuthentication(
+                  chainName,
+                  walletAddress: walletAddress,
+                  rawUnsignedTx: rawUnsignedTx,
+                  chainId: chainId,
+                  resolver: resolve,
+                  rejecter: reject
+              )
+          } catch {
+              reject(self.signerAuthCode(error), error.localizedDescription, error)
+          }
+      }
+  }
+
+  private func signTransactionAfterAuthentication(
       _ chainName: String,
       walletAddress: String,
       rawUnsignedTx: String,
@@ -91,6 +136,29 @@ func signPersonalMessage(
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
 ) {
+    authenticateForSigning { authResult in
+        do {
+            try authResult.get()
+            self.signPersonalMessageAfterAuthentication(
+                chainName,
+                walletAddress: walletAddress,
+                messageHex: messageHex,
+                resolver: resolve,
+                rejecter: reject
+            )
+        } catch {
+            reject(self.signerAuthCode(error), error.localizedDescription, error)
+        }
+    }
+}
+
+private func signPersonalMessageAfterAuthentication(
+    _ chainName: String,
+    walletAddress: String,
+    messageHex: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+) {
     do {
         guard let privateKeyHex = try getPrivateKey(for: walletAddress, chain: chainName)
         else { throw SignerError.privateKeyNotFound }
@@ -130,6 +198,29 @@ func signPersonalMessage(
 
 @objc
 func signTypedData(
+    _ chainName: String,
+    walletAddress: String,
+    typedDataJson: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+) {
+    authenticateForSigning { authResult in
+        do {
+            try authResult.get()
+            self.signTypedDataAfterAuthentication(
+                chainName,
+                walletAddress: walletAddress,
+                typedDataJson: typedDataJson,
+                resolver: resolve,
+                rejecter: reject
+            )
+        } catch {
+            reject(self.signerAuthCode(error), error.localizedDescription, error)
+        }
+    }
+}
+
+private func signTypedDataAfterAuthentication(
     _ chainName: String,
     walletAddress: String,
     typedDataJson: String,
@@ -178,8 +269,24 @@ func signTypedData(
 }
 
   
-  private func dataFromHex(_ hex: String) -> Data {
-      return Data(hexString: hex.replacingOccurrences(of: "0x", with: ""))!
+      private func dataFromHex(_ hex: String) -> Data {
+          return Data(hexString: hex.replacingOccurrences(of: "0x", with: ""))!
+      }
+
+  private func signerAuthCode(_ error: Error) -> String {
+      let nsError = error as NSError
+      if nsError.domain == LAError.errorDomain {
+          switch LAError.Code(rawValue: nsError.code) {
+          case .userCancel, .systemCancel, .appCancel, .userFallback:
+              return "AUTH_CANCELLED"
+          default:
+              return "AUTH_FAILED"
+          }
+      }
+      if case SignerError.authenticationUnavailable = error {
+          return "AUTH_UNAVAILABLE"
+      }
+      return "AUTH_FAILED"
   }
     
   private func getPrivateKey(for address: String, chain: String) throws -> String? {
@@ -240,6 +347,8 @@ enum SignerError: Error, LocalizedError {
     case unsupportedChain(String)
     case signingFailed
     case invalidTransactionData
+    case authenticationUnavailable
+    case authenticationFailed
     
     var errorDescription: String? {
         switch self {
@@ -255,6 +364,10 @@ enum SignerError: Error, LocalizedError {
             return "Transaction signing failed"
         case .invalidTransactionData:
             return "Invalid transaction data format"
+        case .authenticationUnavailable:
+            return "Device authentication is not available"
+        case .authenticationFailed:
+            return "Authentication failed"
         }
     }
   
@@ -294,4 +407,3 @@ extension String {
         hasPrefix("0x") ? String(dropFirst(2)) : self
     }
 }
-

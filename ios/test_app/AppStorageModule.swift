@@ -2,6 +2,7 @@ import Foundation
 import React
 import Security
 import LocalAuthentication
+import UIKit
 
 @objc(StorageModule)
 class StorageModule: NSObject {
@@ -10,6 +11,162 @@ class StorageModule: NSObject {
     private let migrationKey  = "swiftex_h4_migrated_v1"
 
     @objc static func requiresMainQueueSetup() -> Bool { return false }
+
+    private func publicWallet(_ w: [String: Any]) -> [String: Any] {
+        return [
+            "address":          w["address"]          ?? NSNull(),
+            "stellarPublicKey": w["stellarPublicKey"] ?? NSNull(),
+            "name":             w["name"]             ?? NSNull(),
+            "walletId":         w["walletId"]         ?? NSNull(),
+            "walletType":       w["walletType"]       ?? NSNull(),
+            "dydxAddress":      w["dydxAddress"]      ?? NSNull(),
+        ]
+    }
+
+    private func formatBackupText(_ w: [String: Any]) -> String {
+        var sections: [String] = []
+        if let mnemonic = w["mnemonic"] as? String, !mnemonic.isEmpty {
+            sections.append("Mnemonic Phrase\n\(mnemonic)")
+        }
+        if let privatekey = w["privatekey"] as? String, !privatekey.isEmpty {
+            sections.append("Private Key\n\(privatekey)")
+        }
+        if let stellarPrivateKey = w["stellarPrivateKey"] as? String, !stellarPrivateKey.isEmpty {
+            sections.append("Stellar Private Key\n\(stellarPrivateKey)")
+        }
+        return sections.joined(separator: "\n\n")
+    }
+
+    private func topViewController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+        let root = scenes
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }?
+            .rootViewController
+
+        var top = root
+        while let presented = top?.presentedViewController {
+            top = presented
+        }
+        return top
+    }
+
+    private func copySecretToClipboard(_ secret: String) {
+        UIPasteboard.general.string = secret
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+            if UIPasteboard.general.string == secret {
+                UIPasteboard.general.string = ""
+            }
+        }
+    }
+
+    private func authenticateForSecretView(_ completion: @escaping (Result<Void, Error>) -> Void) {
+        let context = LAContext()
+        let reason = "Authenticate to view secret backup"
+        var error: NSError?
+
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            completion(.failure(error ?? SecureStorageError.authenticationUnavailable))
+            return
+        }
+
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
+            if success {
+                completion(.success(()))
+            } else {
+                completion(.failure(authError ?? SecureStorageError.authenticationFailed))
+            }
+        }
+    }
+
+    private func storageAuthCode(_ error: Error) -> String {
+        let nsError = error as NSError
+        if nsError.domain == LAError.errorDomain {
+            switch LAError.Code(rawValue: nsError.code) {
+            case .userCancel, .systemCancel, .appCancel, .userFallback:
+                return "AUTH_CANCELLED"
+            default:
+                return "AUTH_FAILED"
+            }
+        }
+        if case SecureStorageError.authenticationUnavailable = error {
+            return "AUTH_UNAVAILABLE"
+        }
+        return "AUTH_FAILED"
+    }
+
+    private func makeBackupViewController(_ backupText: String) -> UIViewController {
+        let controller = UIViewController()
+        controller.modalPresentationStyle = .fullScreen
+        controller.view.backgroundColor = .systemBackground
+
+        let root = UIStackView()
+        root.axis = .vertical
+        root.spacing = 16
+        root.translatesAutoresizingMaskIntoConstraints = false
+        controller.view.addSubview(root)
+
+        let header = UIStackView()
+        header.axis = .horizontal
+        header.alignment = .center
+        header.spacing = 12
+
+        let title = UILabel()
+        title.text = "Secure Wallet Backup"
+        title.font = .boldSystemFont(ofSize: 22)
+        title.textColor = .label
+
+        let closeButton = UIButton(type: .system)
+        closeButton.setTitle("Close", for: .normal)
+        closeButton.addAction(UIAction { [weak controller] _ in
+            controller?.dismiss(animated: true)
+        }, for: .touchUpInside)
+
+        header.addArrangedSubview(title)
+        header.addArrangedSubview(UIView())
+        header.addArrangedSubview(closeButton)
+        root.addArrangedSubview(header)
+
+        let warning = UILabel()
+        warning.text = "Keep these recovery details private. Anyone with access can control your wallet."
+        warning.font = .systemFont(ofSize: 14)
+        warning.textColor = .secondaryLabel
+        warning.numberOfLines = 0
+        root.addArrangedSubview(warning)
+
+        let textView = UITextView()
+        textView.text = backupText
+        textView.font = .monospacedSystemFont(ofSize: 15, weight: .regular)
+        textView.textColor = .label
+        textView.backgroundColor = .secondarySystemBackground
+        textView.layer.cornerRadius = 12
+        textView.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
+        textView.isEditable = false
+        textView.isSelectable = true
+        root.addArrangedSubview(textView)
+
+        let copyButton = UIButton(type: .system)
+        copyButton.setTitle("Copy All", for: .normal)
+        copyButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
+        copyButton.backgroundColor = .systemBlue
+        copyButton.tintColor = .white
+        copyButton.layer.cornerRadius = 12
+        copyButton.heightAnchor.constraint(equalToConstant: 52).isActive = true
+        copyButton.addAction(UIAction { [weak self] _ in
+            self?.copySecretToClipboard(backupText)
+        }, for: .touchUpInside)
+        root.addArrangedSubview(copyButton)
+
+        NSLayoutConstraint.activate([
+            root.topAnchor.constraint(equalTo: controller.view.safeAreaLayoutGuide.topAnchor, constant: 20),
+            root.leadingAnchor.constraint(equalTo: controller.view.leadingAnchor, constant: 20),
+            root.trailingAnchor.constraint(equalTo: controller.view.trailingAnchor, constant: -20),
+            root.bottomAnchor.constraint(equalTo: controller.view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+        ])
+
+        return controller
+    }
 
     @objc
     func isMigrated(_ resolve: @escaping RCTPromiseResolveBlock,
@@ -263,8 +420,55 @@ class StorageModule: NSObject {
                       let d = s.data(using: .utf8),
                       let w = try JSONSerialization.jsonObject(with: d) as? [String: Any]
                 else { return DispatchQueue.main.async { resolve(["success": false, "wallet": NSNull()]) } }
-                DispatchQueue.main.async { resolve(["success": true, "wallet": w]) }
+                DispatchQueue.main.async { resolve(["success": true, "wallet": self.publicWallet(w)]) }
             } catch { DispatchQueue.main.async { reject("GET_WALLET_ERROR", error.localizedDescription, error) } }
+        }
+    }
+
+    @objc
+    func openWalletBackupScreen(_ resolve: @escaping RCTPromiseResolveBlock,
+                                rejecter reject: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                guard let s = try self.getFromKeychain(key: "activeUserWallet"),
+                      let d = s.data(using: .utf8),
+                      let w = try JSONSerialization.jsonObject(with: d) as? [String: Any]
+                else {
+                    return DispatchQueue.main.async {
+                        reject("GET_WALLET_ERROR", "No active wallet found", nil)
+                    }
+                }
+
+                let backupText = self.formatBackupText(w)
+                guard !backupText.isEmpty else {
+                    return DispatchQueue.main.async {
+                        reject("GET_WALLET_ERROR", "No backup data found", nil)
+                    }
+                }
+
+                self.authenticateForSecretView { authResult in
+                    DispatchQueue.main.async {
+                        do {
+                            try authResult.get()
+                        } catch {
+                            reject(self.storageAuthCode(error), error.localizedDescription, error)
+                            return
+                        }
+
+                        guard let presenter = self.topViewController() else {
+                            reject("VIEW_CONTROLLER_UNAVAILABLE", "No active view controller", nil)
+                            return
+                        }
+
+                        presenter.present(self.makeBackupViewController(backupText), animated: true)
+                        resolve(["success": true])
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    reject("OPEN_BACKUP_ERROR", error.localizedDescription, error)
+                }
+            }
         }
     }
 
@@ -342,6 +546,8 @@ enum SecureStorageError: Error, LocalizedError {
     case decodingError
     case accessControlError
     case keychainError(status: OSStatus)
+    case authenticationUnavailable
+    case authenticationFailed
 
     var errorDescription: String? {
         switch self {
@@ -349,6 +555,8 @@ enum SecureStorageError: Error, LocalizedError {
         case .decodingError:       return "Failed to decode data"
         case .accessControlError:  return "Failed to create access control"
         case .keychainError(let s): return "Keychain error: \(s)"
+        case .authenticationUnavailable: return "Device authentication is not available"
+        case .authenticationFailed: return "Authentication failed"
         }
     }
 }

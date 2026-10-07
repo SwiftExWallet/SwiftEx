@@ -1,206 +1,117 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  NativeModules,
   StyleSheet,
   Text,
-  View,
-  FlatList,
-  Pressable,
-  NativeModules,
-  ScrollView,
   TouchableOpacity,
+  View,
 } from "react-native";
 import {
   widthPercentageToDP as wp,
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
-import { Animated } from "react-native";
 import { useSelector } from "react-redux";
-import { alert } from "./reusables/Toasts";
-import Clipboard from "@react-native-clipboard/clipboard";
-import Icon from "../icon";
-import { Button } from "native-base";
-import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import { useNavigation } from "@react-navigation/native";
+import Icon from "../icon";
 import { colors } from "../Screens/ThemeColorsConfig";
+import { Wallet_screen_header } from "./reusables/ExchangeHeader";
+import { alert } from "./reusables/Toasts";
+
 const MyPrivateKey = () => {
-  const navi = useNavigation()
-  const state = useSelector((state) => state)
-  const [walletInfo, setWalletInfo] = useState([])
-  const [renderClickCount, setRenderClickCount] = useState(0);
-  const [stellarClickCount, setStellarClickCount] = useState(0);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const navigation = useNavigation();
+  const state = useSelector((reduxState) => reduxState);
   const theme = state.THEME.THEME ? colors.dark : colors.light;
-  const copyToClipboard = (string) => {
-    Clipboard.setString(string);
-    alert("success", "Copied");
-    setTimeout(() => {
-      Clipboard.setString('');
-    }, 30000); 
-  };
+  const styles = useMemo(() => getStyles(theme), [theme]);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 1000,
-    }).start();
-
-    const getWallet = async () => {
-      try {
-        const walletInfo = await NativeModules.StorageModule.getWalletInfo();
-        if (walletInfo?.success) {
-          let walletData;
-          if (typeof walletInfo.wallet === "string") {
-            walletData = JSON.parse(walletInfo.wallet);
-          } else {
-            walletData = walletInfo.wallet;
-          }
-          const refineMnemonic = {
-            ...walletData,
-            mnemonic: walletData.mnemonic.match(/\b(\w+)'?(\w+)?\b/g),
-            mnemonicInWords: walletData.mnemonic
-          };
-          setWalletInfo(refineMnemonic);
-        }
-      } catch (error) {
-        console.log("=error=", error)
+  const openNativeBackup = async () => {
+    try {
+      setLoading(true);
+      const response = await NativeModules.StorageModule.openWalletBackupScreen();
+      if (response?.success) {
+        alert("success", "Secret backup opened");
       }
+    } catch (error) {
+      console.log("openWalletBackupScreen error", error);
+      alert("error", "Unable to open secret backup");
+    } finally {
+      setLoading(false);
     }
-    getWallet()
-  }, []);
-
-  const RenderItem = ({ item, index }) => {
-    const handleRenderItemPress = () => {
-      const newCount = renderClickCount + 1;
-      if (newCount === 5) {
-        copyToClipboard(walletInfo?.mnemonicInWords);
-        setRenderClickCount(0);
-      } else {
-        setRenderClickCount(newCount);
-      }
-    };
-    return (
-      <TouchableOpacity style={[style.pressable, { backgroundColor: theme.cardBg }]} onPress={handleRenderItemPress}>
-        <Text style={[style.pressText, { color: theme.headingTx }]}>{index + 1}</Text>
-        <Text style={[style.itemText, { color: theme.headingTx }]}>{item}</Text>
-      </TouchableOpacity>
-    );
   };
 
   return (
-    <View style={{ backgroundColor: theme.bg,height:"100%" }}>
-      <Wallet_screen_header title="Secret Key" onLeftIconPress={() => navi.goBack()} />
-    <ScrollView>
-        <View style={style.Body}>
-          <Text style={[style.backupText, { color: theme.headingTx }]}>Backup Mnemonic Phrase</Text>
-          <Text style={[style.welcomeText1, { color: theme.headingTx }]}>
-            Please select the Mnemonic in order to ensure the backup is
-            correct.
-          </Text>
-        </View>
-        <View style={{ marginTop: hp(3), backgroundColor: theme.bg }}>
-          {walletInfo?.mnemonic?.length > 0 ?
-            <FlatList
-              data={walletInfo?.mnemonic}
-              renderItem={RenderItem}
-              numColumns={3}
-              contentContainerStyle={{
-                alignSelf: "center",
-              }}
-            />
-            : <Text style={[style.welcomeText1, { color: theme.headingTx }]}>{walletInfo?.privatekey}</Text>
-          }
-        </View>
-
-        <Text style={{ color: theme.headingTx, marginLeft: wp(4.7),marginTop:hp(1) }}>
-          Stellar Private Key
+    <View style={styles.container}>
+      <Wallet_screen_header title="Secret Key" onLeftIconPress={() => navigation.goBack()} />
+      <View style={styles.body}>
+        <Icon
+          name="shield-key-outline"
+          type="materialCommunity"
+          size={72}
+          color={colors.dark.buttonColor}
+        />
+        <Text style={styles.title}>Secure Wallet Backup</Text>
+        <Text style={styles.description}>
+          View your recovery details in the device-protected native screen.
         </Text>
-        <TouchableOpacity style={{ marginLeft: wp(1), flexDirection: "row", justifyContent: "space-around", alignItems: 'center', marginTop: 10 }} onPress={() => {
-          const newCount = stellarClickCount + 1;
-          if (newCount === 5) {
-            copyToClipboard(walletInfo?.stellarPrivateKey);
-            setStellarClickCount(0);
-          } else {
-            setStellarClickCount(newCount);
-          }
-        }}>
-          <Text style={{ color: theme.headingTx, width: wp(90) }}>
-            {walletInfo?.stellarPrivateKey}
-          </Text>
+        <TouchableOpacity
+          style={[styles.button, loading && styles.disabledButton]}
+          disabled={loading}
+          onPress={openNativeBackup}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Open Secure Backup</Text>
+          )}
         </TouchableOpacity>
-        <View style={style.dotView}>
-          <Icon name="dot-single" type={"entypo"} size={20} color={theme.headingTx} />
-          <Text style={{ color: theme.headingTx }}>
-            Keep your mnemonic in a safe place, isolated from any network.
-          </Text>
-        </View>
-        <View style={style.dotView1}>
-          <Icon name="dot-single" type={"entypo"} size={20} color={theme.headingTx} />
-          <Text style={[{ color: theme.headingTx }]}>
-            Do not share it through email, photos, social media, apps, etc.
-          </Text>
-        </View>
-
-    </ScrollView>
+      </View>
     </View>
   );
 };
 
 export default MyPrivateKey;
 
-const style = StyleSheet.create({
-  Body: {
-    width: wp(100),
+const getStyles = (theme) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: theme.bg,
+  },
+  body: {
+    flex: 1,
     alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: wp(8),
+    paddingBottom: hp(10),
+  },
+  title: {
+    color: theme.headingTx,
+    fontSize: 20,
+    fontWeight: "600",
+    marginTop: hp(3),
     textAlign: "center",
   },
-  welcomeText1: {
-    marginLeft: wp(4.7),
-    marginLeft: wp(4),
-    width: wp(90),
+  description: {
+    color: theme.inactiveTx,
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: hp(1.5),
+    textAlign: "center",
   },
-  welcomeText2: {
-    fontSize: 20,
-    fontWeight: "200",
-  },
-  pressable: {
-    borderColor: "#D7D7D7",
-    borderWidth: 0.5,
-    width: wp(30),
-    justifyContent: "center",
-    paddingVertical: hp(2),
-    paddingHorizontal: 3,
-    position: "relative",
-  },
-  pressText: {
-    alignSelf: "flex-end",
-    paddingRight: 5,
-    top: 0,
-    position: "absolute",
-  },
-  itemText: {
-    textAlign: "left",
-    marginVertical: 6,
-    marginHorizontal: wp(1.5),
-  },
-  backupText: {
-    fontWeight: "bold",
-    fontSize: 17,
-    marginLeft: 20,
-    marginTop: hp(1),
-    marginBottom: hp(2),
-  },
-  dotView: {
-    flexDirection: "row",
+  button: {
     alignItems: "center",
-    width: wp(90),
-    marginLeft: 18,
-    marginTop: hp(2),
+    backgroundColor: colors.dark.buttonColor,
+    borderRadius: 16,
+    marginTop: hp(4),
+    paddingVertical: hp(1.8),
+    width: wp(82),
   },
-  dotView1: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: wp(90),
-    marginLeft: 18,
-    marginTop: hp(2),
+  disabledButton: {
+    opacity: 0.7,
+  },
+  buttonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

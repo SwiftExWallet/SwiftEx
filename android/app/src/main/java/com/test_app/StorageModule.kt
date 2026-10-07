@@ -1,10 +1,27 @@
 package org.app.swiftEx.wallet
+import android.app.Dialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import com.facebook.react.bridge.*
 import android.content.Context
+import android.graphics.Color
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Log
+import android.view.Gravity
+import android.view.ViewGroup
+import android.view.Window
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import androidx.security.crypto.MasterKeys
@@ -94,6 +111,172 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     private val prefs get() = securePrefs
 
     override fun getName() = "StorageModule"
+
+    private fun publicWalletMap(w: JSONObject): WritableMap {
+        return Arguments.createMap().apply {
+            putString("address",          w.optString("address"))
+            putString("stellarPublicKey", w.optString("stellarPublicKey"))
+            putString("name",             w.optString("name"))
+            putString("walletId",         w.optString("walletId"))
+            putString("walletType",       w.optString("walletType"))
+            putString("dydxAddress",      w.optString("dydxAddress"))
+        }
+    }
+
+    private fun formatBackupText(w: JSONObject): String {
+        val mnemonic = w.optString("mnemonic")
+        val privateKey = w.optString("privatekey")
+        val stellarPrivateKey = w.optString("stellarPrivateKey")
+
+        val sections = mutableListOf<String>()
+        if (mnemonic.isNotBlank()) sections.add("Mnemonic Phrase\n$mnemonic")
+        if (privateKey.isNotBlank()) sections.add("Private Key\n$privateKey")
+        if (stellarPrivateKey.isNotBlank()) sections.add("Stellar Private Key\n$stellarPrivateKey")
+        return sections.joinToString("\n\n")
+    }
+
+    private fun copySecretToClipboard(secret: String) {
+        val clipboard = reactApplicationContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("SwiftEx wallet backup", secret))
+        Handler(Looper.getMainLooper()).postDelayed({
+            clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+        }, 30000)
+    }
+
+    private fun dp(value: Int): Int {
+        return (value * reactApplicationContext.resources.displayMetrics.density).toInt()
+    }
+
+    private fun authenticateForSecretView(promise: Promise, onAuthenticated: () -> Unit) {
+        val activity = reactApplicationContext.currentActivity as? FragmentActivity
+            ?: return promise.reject("ACTIVITY_UNAVAILABLE", "No active activity")
+
+        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        val canAuthenticate = BiometricManager.from(activity).canAuthenticate(authenticators)
+        if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
+            return promise.reject("AUTH_UNAVAILABLE", "Device authentication is not available")
+        }
+
+        val prompt = BiometricPrompt(
+            activity,
+            ContextCompat.getMainExecutor(activity),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    onAuthenticated()
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    val code = if (
+                        errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
+                        errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
+                        errorCode == BiometricPrompt.ERROR_CANCELED
+                    ) "AUTH_CANCELLED" else "AUTH_FAILED"
+                    promise.reject(code, errString.toString())
+                }
+
+                override fun onAuthenticationFailed() {
+                    Log.w(TAG, "Biometric authentication attempt failed")
+                }
+            }
+        )
+
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Authenticate to view secret backup")
+            .setSubtitle("Confirm it is you before this wallet shows recovery details.")
+            .setAllowedAuthenticators(authenticators)
+            .build()
+
+        activity.runOnUiThread {
+            prompt.authenticate(promptInfo)
+        }
+    }
+
+    private fun showBackupScreen(backupText: String) {
+        val activity = reactApplicationContext.currentActivity
+            ?: throw IllegalStateException("No active activity")
+
+        activity.runOnUiThread {
+            val dialog = Dialog(activity)
+            dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+            val root = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(Color.WHITE)
+                setPadding(dp(20), dp(20), dp(20), dp(20))
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+
+            val header = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+
+            val title = TextView(activity).apply {
+                text = "Secure Wallet Backup"
+                textSize = 20f
+                setTextColor(Color.rgb(20, 24, 32))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val close = Button(activity).apply {
+                text = "Close"
+                setOnClickListener { dialog.dismiss() }
+            }
+
+            header.addView(title)
+            header.addView(close)
+            root.addView(header)
+
+            val warning = TextView(activity).apply {
+                text = "Keep these recovery details private. Anyone with access can control your wallet."
+                textSize = 14f
+                setTextColor(Color.rgb(91, 98, 112))
+                setPadding(0, dp(18), 0, dp(16))
+            }
+            root.addView(warning)
+
+            val scroll = ScrollView(activity).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                )
+            }
+
+            val secretText = TextView(activity).apply {
+                text = backupText
+                textSize = 16f
+                setTextColor(Color.rgb(20, 24, 32))
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+                setTextIsSelectable(true)
+                setBackgroundColor(Color.rgb(245, 247, 250))
+            }
+            scroll.addView(secretText)
+            root.addView(scroll)
+
+            val copy = Button(activity).apply {
+                text = "Copy All"
+                setOnClickListener { copySecretToClipboard(backupText) }
+            }
+            root.addView(copy)
+
+            dialog.setContentView(root)
+            dialog.window?.setLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            dialog.show()
+            dialog.window?.setLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+    }
 
     @ReactMethod
     fun migrateToSecureStorage(promise: Promise) {
@@ -244,10 +427,33 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
             if (s.isNullOrEmpty()) return promise.resolve(Arguments.createMap().apply {
                 putBoolean("success", false); putNull("wallet")
             })
+            val w = JSONObject(s)
             promise.resolve(Arguments.createMap().apply {
-                putBoolean("success", true); putString("wallet", s)
+                putBoolean("success", true); putMap("wallet", publicWalletMap(w))
             })
         } catch (e: Exception) { promise.reject("GET_WALLET_ERROR", e.message) }
+    }
+
+    @ReactMethod
+    fun openWalletBackupScreen(promise: Promise) {
+        try {
+            val s = prefs.all["activeUserWallet"]?.toString()
+            if (s.isNullOrEmpty()) return promise.reject("GET_WALLET_ERROR", "No active wallet found")
+            val w = JSONObject(s)
+            val backupText = formatBackupText(w)
+            if (backupText.isBlank()) return promise.reject("GET_WALLET_ERROR", "No backup data found")
+
+            authenticateForSecretView(promise) {
+                try {
+                    showBackupScreen(backupText)
+                    promise.resolve(Arguments.createMap().apply { putBoolean("success", true) })
+                } catch (e: Exception) {
+                    promise.reject("OPEN_BACKUP_ERROR", e.message)
+                }
+            }
+        } catch (e: Exception) {
+            promise.reject("OPEN_BACKUP_ERROR", e.message)
+        }
     }
 
     @ReactMethod

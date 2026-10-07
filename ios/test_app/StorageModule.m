@@ -29,6 +29,9 @@ RCT_EXTERN_METHOD(updateActiveWallet:(NSString *)id
 RCT_EXTERN_METHOD(getWalletInfo:(RCTPromiseResolveBlock)resolver
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(openWalletBackupScreen:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(
                   renameWallet:(NSString *)id
                   name:(NSString *)name
