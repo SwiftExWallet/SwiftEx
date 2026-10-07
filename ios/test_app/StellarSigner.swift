@@ -6,7 +6,7 @@ import LocalAuthentication
 class StellarSigner: NSObject {
   
   let sdk = StellarSDK(withHorizonUrl: "https://horizon.stellar.org")
-  let serviceName = "com.appSwiftEx.appStorage"
+  let serviceName = "com.appSwiftEx.appStorage.v2"
 
   private func authenticateForSigning(_ completion: @escaping (Result<Void, Error>) -> Void) {
     let context = LAContext()

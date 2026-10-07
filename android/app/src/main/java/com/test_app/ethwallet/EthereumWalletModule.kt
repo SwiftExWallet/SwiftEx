@@ -1,11 +1,5 @@
 package org.app.swiftEx.wallet.ethwallet
-import android.content.Context
-import android.os.Build
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
-import androidx.security.crypto.MasterKeys
+import org.app.swiftEx.wallet.SecureWalletStore
 import org.web3j.crypto.Credentials;
 import org.web3j.crypto.Bip32ECKeyPair;
 import org.web3j.utils.Numeric;
@@ -21,78 +15,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class EthereumWalletModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
-    private val PREF_NAME = "com_swiftEx_app_secure"
-    private val PREF_NAME_V2 = "com_swiftEx_app_secure_v2"
-
-    private val legacyKey: MasterKey by lazy {
-        try {
-            val alias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-            MasterKey.Builder(reactApplicationContext, alias)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-        } catch (e: Exception) {
-            MasterKey.Builder(reactApplicationContext)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-        }
-    }
-
-    private val secureKey: MasterKey by lazy {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            try {
-                val spec = KeyGenParameterSpec.Builder(
-                    "_swiftex_master_key_v2_",
-                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-                )
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setKeySize(256)
-                    .setUserAuthenticationRequired(true)
-                    .setUserAuthenticationParameters(
-                        0,
-                        KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL
-                    )
-                    .setInvalidatedByBiometricEnrollment(true)
-                    .build()
-
-                MasterKey.Builder(reactApplicationContext, "_swiftex_master_key_v2_")
-                    .setKeyGenParameterSpec(spec)
-                    .build()
-            } catch (_: Exception) {
-                legacyKey
-            }
-        } else {
-            legacyKey
-        }
-    }
-
-    private val legacyPrefs by lazy {
-        try {
-            EncryptedSharedPreferences.create(
-                reactApplicationContext,
-                PREF_NAME,
-                legacyKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (_: Exception) {
-            reactApplicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        }
-    }
-
-    private val prefs by lazy {
-        try {
-            EncryptedSharedPreferences.create(
-                reactApplicationContext,
-                PREF_NAME_V2,
-                secureKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (_: Exception) {
-            legacyPrefs
-        }
-    }
+    private val prefs by lazy { SecureWalletStore.open(reactApplicationContext) }
 
     override fun getName(): String {
         return "EthereumWallet"

@@ -1,14 +1,11 @@
 package org.app.swiftEx.wallet
 
 import com.facebook.react.bridge.*
-import android.content.Context
 import android.util.Log
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
 import org.json.JSONObject
 import org.stellar.sdk.*
 import java.security.MessageDigest
@@ -16,25 +13,11 @@ import java.security.MessageDigest
 
 class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
     private val TAG = "StellarSigner"
-    private val PREF_NAME = "com_swiftEx_app_secure_v2"
+    private val PREF_NAME = SecureWalletStore.PREF_NAME
     private val KEY_WALLET = "activeUserWallet"
     private val stellarServer = Server("https://horizon.stellar.org")
 
-    private val prefs by lazy {
-        try {
-            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-            EncryptedSharedPreferences.create(
-                PREF_NAME,
-                masterKeyAlias,
-                reactApplicationContext,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to init EncryptedSharedPreferences", e)
-            reactApplicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        }
-    }
+    private val prefs by lazy { SecureWalletStore.open(reactApplicationContext) }
 
     override fun getName() = "StellarSigner"
 

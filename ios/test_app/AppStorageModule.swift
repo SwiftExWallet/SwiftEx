@@ -9,6 +9,7 @@ class StorageModule: NSObject {
     private let serviceName   = "com.appSwiftEx.appStorage"
     private let serviceNameV2 = "com.appSwiftEx.appStorage.v2"
     private let migrationKey  = "swiftex_h4_migrated_v1"
+    private let backupViewedAtKey = "lastWalletBackupViewedAt"
 
     @objc static func requiresMainQueueSetup() -> Bool { return false }
 
@@ -50,15 +51,6 @@ class StorageModule: NSObject {
             top = presented
         }
         return top
-    }
-
-    private func copySecretToClipboard(_ secret: String) {
-        UIPasteboard.general.string = secret
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
-            if UIPasteboard.general.string == secret {
-                UIPasteboard.general.string = ""
-            }
-        }
     }
 
     private func authenticateForSecretView(_ completion: @escaping (Result<Void, Error>) -> Void) {
@@ -143,20 +135,8 @@ class StorageModule: NSObject {
         textView.layer.cornerRadius = 12
         textView.textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
         textView.isEditable = false
-        textView.isSelectable = true
+        textView.isSelectable = false
         root.addArrangedSubview(textView)
-
-        let copyButton = UIButton(type: .system)
-        copyButton.setTitle("Copy All", for: .normal)
-        copyButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
-        copyButton.backgroundColor = .systemBlue
-        copyButton.tintColor = .white
-        copyButton.layer.cornerRadius = 12
-        copyButton.heightAnchor.constraint(equalToConstant: 52).isActive = true
-        copyButton.addAction(UIAction { [weak self] _ in
-            self?.copySecretToClipboard(backupText)
-        }, for: .touchUpInside)
-        root.addArrangedSubview(copyButton)
 
         NSLayoutConstraint.activate([
             root.topAnchor.constraint(equalTo: controller.view.safeAreaLayoutGuide.topAnchor, constant: 20),
@@ -428,8 +408,10 @@ class StorageModule: NSObject {
     @objc
     func openWalletBackupScreen(_ resolve: @escaping RCTPromiseResolveBlock,
                                 rejecter reject: @escaping RCTPromiseRejectBlock) {
+        self.authenticateForSecretView { authResult in
         DispatchQueue.global(qos: .userInitiated).async {
             do {
+                try authResult.get()
                 guard let s = try self.getFromKeychain(key: "activeUserWallet"),
                       let d = s.data(using: .utf8),
                       let w = try JSONSerialization.jsonObject(with: d) as? [String: Any]
@@ -445,28 +427,23 @@ class StorageModule: NSObject {
                         reject("GET_WALLET_ERROR", "No backup data found", nil)
                     }
                 }
+                try self.saveToKeychainSecure(
+                    key: self.backupViewedAtKey,
+                    value: String(Int(Date().timeIntervalSince1970 * 1000))
+                )
 
-                self.authenticateForSecretView { authResult in
                     DispatchQueue.main.async {
-                        do {
-                            try authResult.get()
-                        } catch {
-                            reject(self.storageAuthCode(error), error.localizedDescription, error)
-                            return
-                        }
-
                         guard let presenter = self.topViewController() else {
                             reject("VIEW_CONTROLLER_UNAVAILABLE", "No active view controller", nil)
                             return
                         }
-
                         presenter.present(self.makeBackupViewController(backupText), animated: true)
                         resolve(["success": true])
-                    }
                 }
             } catch {
                 DispatchQueue.main.async {
-                    reject("OPEN_BACKUP_ERROR", error.localizedDescription, error)
+                    reject(self.storageAuthCode(error), error.localizedDescription, error)
+                }
                 }
             }
         }

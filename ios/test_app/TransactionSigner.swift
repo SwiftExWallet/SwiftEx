@@ -290,7 +290,7 @@ private func signTypedDataAfterAuthentication(
   }
     
   private func getPrivateKey(for address: String, chain: String) throws -> String? {
-      let serviceName = "com.appSwiftEx.appStorage"
+      let serviceName = "com.appSwiftEx.appStorage.v2"
       guard let walletJson = self.retrieveFromKeychain(
           key: "activeUserWallet",
           service: serviceName
