@@ -20,9 +20,6 @@ import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import Modal from "react-native-modal";
 import Icon from "../../icon";
 import { colors } from "../../Screens/ThemeColorsConfig";
-import { checkWalletExistOrNot } from "../Wallets/WalletManagement";
-import apiHelper from "../exchange/crypto-exchange-front-end-main/src/apiHelper";
-import AccessNativeStorage from "../Wallets/AccessNativeStorage";
 import { alert } from "../reusables/Toasts";
 import { useNavigation } from "@react-navigation/native";
 
@@ -45,9 +42,7 @@ const NewWalletPrivateKey = ({
     const initWalletLoad=async()=>{
       try {
        setTimeout(async()=>{
-         const parsedWallets = await AccessNativeStorage.getAllWallets();
-        let wallet = Wallet;
-        wallet.accountName = `Main-Wallet ${parsedWallets.length+1}.${Math.floor(Math.random() * 10)}`;
+        Wallet.accountName = Wallet.name;
         await handleWallet();
        },0)
       } catch (error) {
@@ -119,15 +114,6 @@ const NewWalletPrivateKey = ({
                 console.log('Error:', result.error, 'Status:', result.status);
               }
               AsyncStorageLib.setItem("currentWallet", Wallet?.accountName)
-              await AccessNativeStorage.saveWallet({
-                name: Wallet.accountName,
-                address: Wallet.address,
-                privatekey: Wallet.privateKey,
-                stellarPublicKey: Wallet.stellarWallet.publicKey,
-                stellarPrivateKey: Wallet.stellarWallet.secretKey,
-                mnemonic: Wallet.mnemonic,
-                walletType: "Multi-coin",
-              })
               dispatch(
                 setCurrentWallet(
                   Wallet?.address,

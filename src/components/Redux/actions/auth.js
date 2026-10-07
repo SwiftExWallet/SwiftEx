@@ -92,9 +92,9 @@ export const Collapse = () => (dispatch) => {
   });
 };
 
-export const Generate_Wallet2  = () => (dispatch) => {
+export const Generate_Wallet2  = (name) => (dispatch) => {
  
-  return AuthService.Generate_Wallet2().then((response) => {
+  return AuthService.Generate_Wallet2(name).then((response) => {
     
     if (response.status === "success") {
       

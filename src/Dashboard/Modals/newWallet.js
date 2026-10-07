@@ -26,6 +26,7 @@ import darkBlue from "../../../assets/darkBlue.png";
 import Icon from "../../icon";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { colors } from "../../Screens/ThemeColorsConfig";
+import AccessNativeStorage from "../Wallets/AccessNativeStorage";
 
 const NewWalletModal = ({ props,onCrossPress, visible, setVisible, setModalVisible }) => {
   const state=useSelector((state)=>state);
@@ -162,8 +163,11 @@ const NewWalletModal = ({ props,onCrossPress, visible, setVisible, setModalVisib
               onPress={async() => {
                 await AsyncStorageLib.setItem('wallet_backup',await state.wallet.address);
                 setLoading(true);
-                setTimeout(() => {
-                  dispatch(Generate_Wallet2()).then((response) => {
+                setTimeout(async () => {
+                  const parsedWallets = await AccessNativeStorage.getAllWallets();
+                  const walletCount = Array.isArray(parsedWallets) ? parsedWallets.length : 0;
+                  const walletName = `Main-Wallet ${walletCount + 1}.${Math.floor(Math.random() * 10)}`;
+                  dispatch(Generate_Wallet2(walletName)).then((response) => {
                     if (response) {
                       if (response.status === "success") {
                         setLoading(false);

@@ -181,21 +181,19 @@ const getEthBalance = async (address) => {
 };
 
 
-const Generate_Wallet2 = async () => {
-  const result = await EthereumWallet.createWallet();
+const Generate_Wallet2 = async (name) => {
+  const result = await EthereumWallet.createWallet(name || "Main");
   const Wallet = {
-    address: result.ethereum.address,
-    privateKey: result.ethereum.privateKey,
-    mnemonic: result.mnemonic,
+    walletId: result.walletId,
+    name: result.name,
+    address: result.address,
     xrp:{
-      address: "000000000",
-      privateKey: "000000000",
+      address: result.xrp?.address || "000000000",
     },
     stellarWallet: {
-        publicKey: result.stellar.publicKey,
-        secretKey: result.stellar.secretKey
+        publicKey: result.stellarPublicKey || result.stellarWallet?.publicKey,
     },
-    walletType: "Multi-coin",
+    walletType: result.walletType || "Multi-coin",
   };
   if (Wallet) {
     return {

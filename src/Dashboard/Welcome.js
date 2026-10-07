@@ -29,7 +29,6 @@ import { alert } from "./reusables/Toasts";
 import { useNavigation } from "@react-navigation/native";
 import apiHelper from "./exchange/crypto-exchange-front-end-main/src/apiHelper";
 import * as StellarSdk from '@stellar/stellar-sdk';
-import AccessNativeStorage from "./Wallets/AccessNativeStorage";
 import crashlytics from '@react-native-firebase/crashlytics';
 import ReferralBottomSheet from "./reusables/ReferralBottomSheet";
 import { clearReferralCode, getSavedReferralCode, initReferral, subscribeReferral } from "../utilities/referralUtil";
@@ -110,7 +109,7 @@ const Welcome = (props) => {
   const defaultWalletGenration=async()=>{
     try {
       setLoading(true);
-      const response=await dispatch(Generate_Wallet2())
+      const response=await dispatch(Generate_Wallet2("Main"))
         if (response) {
           console.log("respoms:",response)
           const result = await proxyRequest('/v1/wallet', PPOST, {
@@ -205,8 +204,7 @@ const Welcome = (props) => {
                 wallet.address,
                 "Main",
                 "",
-                "",
-                (walletType = "Multi-coin")
+                "Multi-coin"
               )
             );
             dispatch(
@@ -218,23 +216,9 @@ const Welcome = (props) => {
             dispatch(getBalance(wallet.address));
             dispatch(setWalletType("Multi-coin"));
             genrateStellarKeypair(wallet.address,wallet.stellarWallet.publicKey)
-            const walletResponse = await AccessNativeStorage.saveWallet({
-              name: "Main",
-              address: wallet.address,
-              privatekey: wallet.privateKey,
-              stellarPublicKey: wallet.stellarWallet.publicKey,
-              stellarPrivateKey: wallet.stellarWallet.secretKey,
-              mnemonic: wallet.mnemonic,
-              walletType: wallet.walletType,
-            })
-            if (walletResponse.success) {
             setLoading(false);
             navigation.navigate("HomeScreen");
             alert("success", "Wallet Genration Compleated!");
-            } else {
-            alert("error", "Wallet generation failed.");
-            setLoading(false);
-            }
     } catch (error) {
       alert("error","Wallet generation failed.");
       console.log("---Error-getting-from-dispatChingData--",error)

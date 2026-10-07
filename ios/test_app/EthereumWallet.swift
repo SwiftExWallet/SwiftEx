@@ -81,6 +81,7 @@ enum WalletError: Error, LocalizedError {
 
 @objc(EthereumWallet)
 class EthereumWallet: NSObject {
+    private let serviceNameV2 = "com.appSwiftEx.appStorage.v2"
     
     @objc
     static func requiresMainQueueSetup() -> Bool {
@@ -88,15 +89,17 @@ class EthereumWallet: NSObject {
     }
     
     @objc
-    func createWallet(_ resolve: @escaping RCTPromiseResolveBlock,
+    func createWallet(_ name: String,
+                     resolver resolve: @escaping RCTPromiseResolveBlock,
                      rejecter reject: @escaping RCTPromiseRejectBlock) {
         
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let result = try self.generateWallet()
+                let wallet = try self.generateWallet(name: name)
+                try self.saveWalletAndActivate(wallet)
 
                 DispatchQueue.main.async {
-                    resolve(result)
+                    resolve(self.publicWalletResponse(wallet))
                 }
 
             } catch {
@@ -110,18 +113,21 @@ class EthereumWallet: NSObject {
     @objc
     func recoverWallet(_ mnemonic: String,
                       passphrase: String = "",
+                      name: String,
                       resolver resolve: @escaping RCTPromiseResolveBlock,
                       rejecter reject: @escaping RCTPromiseRejectBlock) {
         
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let result = try self.restoreWallet(
+                let wallet = try self.restoreWallet(
                     mnemonic: mnemonic,
-                    passphrase: passphrase
+                    passphrase: passphrase,
+                    name: name
                 )
+                try self.saveWalletAndActivate(wallet)
                 
                 DispatchQueue.main.async {
-                    resolve(result)
+                    resolve(self.publicWalletResponse(wallet))
                 }
 
             } catch {
@@ -147,12 +153,14 @@ class EthereumWallet: NSObject {
     }
     
     @objc func importEthPrivateKey(_ privateKey: String,
+                         name: String,
                          resolver resolve: @escaping RCTPromiseResolveBlock,
                          rejecter reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let result = try self.importEthereumPrivateKey(privateKey)
-                DispatchQueue.main.async { resolve(result) }
+                let wallet = try self.importEthereumPrivateKey(privateKey, name: name)
+                try self.saveWalletAndActivate(wallet)
+                DispatchQueue.main.async { resolve(self.publicWalletResponse(wallet)) }
             } catch {
                 DispatchQueue.main.async { reject("IMPORT_ERROR", error.localizedDescription, error) }
             }
@@ -160,19 +168,21 @@ class EthereumWallet: NSObject {
     }
     
     @objc func importStellarPrivateKey(_ secretKey: String,
+                         name: String,
                          resolver resolve: @escaping RCTPromiseResolveBlock,
                          rejecter reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let result = try self.importStellarPrivateKey(secretKey)
-                DispatchQueue.main.async { resolve(result) }
+                let wallet = try self.importStellarPrivateKey(secretKey, name: name)
+                try self.saveWalletAndActivate(wallet)
+                DispatchQueue.main.async { resolve(self.publicWalletResponse(wallet)) }
             } catch {
                 DispatchQueue.main.async { reject("IMPORT_ERROR", error.localizedDescription, error) }
             }
         }
     }
     
-    private func generateWallet(passphrase: String = "") throws -> [String: Any] {
+    private func generateWallet(name: String, passphrase: String = "") throws -> [String: Any] {
         guard let wallet = HDWallet(strength: 128, passphrase: passphrase) else {
             throw WalletError.generationFailed
         }
@@ -181,20 +191,17 @@ class EthereumWallet: NSObject {
         let ethereumWallet = try self.deriveEthereum(from: wallet)
         let stellarWallet = try self.deriveStellar(from: wallet)
         
-        return [
-            "mnemonic": mnemonic,
-            "ethereum": [
-                "address": ethereumWallet.address,
-                "privateKey": ethereumWallet.privateKey
-            ],
-            "stellar": [
-                "publicKey": stellarWallet.publicKey,
-                "secretKey": stellarWallet.secretKey
-            ]
-        ]
+        return storedWallet(
+            name: name,
+            address: ethereumWallet.address,
+            privatekey: ethereumWallet.privateKey,
+            stellarPublicKey: stellarWallet.publicKey,
+            stellarPrivateKey: stellarWallet.secretKey,
+            mnemonic: mnemonic
+        )
     }
     
-    private func restoreWallet(mnemonic: String, passphrase: String = "") throws -> [String: Any] {
+    private func restoreWallet(mnemonic: String, passphrase: String = "", name: String) throws -> [String: Any] {
         guard Mnemonic.isValid(mnemonic: mnemonic),
               let wallet = HDWallet(mnemonic: mnemonic, passphrase: passphrase) else {
             throw WalletError.invalidMnemonic
@@ -202,13 +209,17 @@ class EthereumWallet: NSObject {
         let ethereumWallet = try deriveEthereum(from: wallet)
         let stellarWallet = try deriveStellar(from: wallet)
         
-        return [
-            "ethereum": ["address": ethereumWallet.address, "privateKey": ethereumWallet.privateKey],
-            "stellar": ["publicKey": stellarWallet.publicKey, "secretKey": stellarWallet.secretKey]
-        ]
+        return storedWallet(
+            name: name,
+            address: ethereumWallet.address,
+            privatekey: ethereumWallet.privateKey,
+            stellarPublicKey: stellarWallet.publicKey,
+            stellarPrivateKey: stellarWallet.secretKey,
+            mnemonic: mnemonic
+        )
     }
     
-    private func importEthereumPrivateKey(_ privateKeyHex: String) throws -> [String: Any] {
+    private func importEthereumPrivateKey(_ privateKeyHex: String, name: String) throws -> [String: Any] {
         let cleanKey = privateKeyHex.hasPrefix("0x") ? String(privateKeyHex.dropFirst(2)) : privateKeyHex
         guard cleanKey.count == 64, let privateKeyData = cleanKey.hexData else {
             throw WalletError.invalidPrivateKey
@@ -218,21 +229,144 @@ class EthereumWallet: NSObject {
         let ethAddress = CoinType.ethereum.deriveAddress(privateKey: privateKey)
         let stellarWallet = try generateFreshStellarWallet()
         
-        return [
-            "original": ["type": "ethereum", "privateKey": privateKeyHex, "address": ethAddress],
-            "generated": ["type": "stellar", "publicKey": stellarWallet.publicKey, "secretKey": stellarWallet.secretKey]
-        ]
+        return storedWallet(
+            name: name,
+            address: ethAddress,
+            privatekey: privateKeyHex,
+            stellarPublicKey: stellarWallet.publicKey,
+            stellarPrivateKey: stellarWallet.secretKey,
+            mnemonic: ""
+        )
     }
     
-    private func importStellarPrivateKey(_ secretKey: String) throws -> [String: Any] {
+    private func importStellarPrivateKey(_ secretKey: String, name: String) throws -> [String: Any] {
         let keyPair = try KeyPair(secretSeed: secretKey)
         let stellarAddress = keyPair.accountId
         let ethereumWallet = try generateFreshEthereumWallet()
         
+        return storedWallet(
+            name: name,
+            address: ethereumWallet.address,
+            privatekey: ethereumWallet.privateKey,
+            stellarPublicKey: stellarAddress,
+            stellarPrivateKey: secretKey,
+            mnemonic: ""
+        )
+    }
+
+    private func walletId() -> String {
+        return String(Int.random(in: 1000...9999))
+    }
+
+    private func storedWallet(
+        name: String,
+        address: String,
+        privatekey: String,
+        stellarPublicKey: String,
+        stellarPrivateKey: String,
+        mnemonic: String
+    ) -> [String: Any] {
         return [
-            "original": ["type": "stellar", "secretKey": secretKey, "publicKey": stellarAddress],
-            "generated": ["type": "ethereum", "privateKey": ethereumWallet.privateKey, "address": ethereumWallet.address]
+            "walletId": walletId(),
+            "name": name,
+            "address": address,
+            "privatekey": privatekey,
+            "stellarPublicKey": stellarPublicKey,
+            "stellarPrivateKey": stellarPrivateKey,
+            "mnemonic": mnemonic,
+            "walletType": "Multi-coin"
         ]
+    }
+
+    private func publicWalletResponse(_ wallet: [String: Any]) -> [String: Any] {
+        let stellarPublicKey = wallet["stellarPublicKey"] as? String ?? ""
+        return [
+            "walletId": wallet["walletId"] as? String ?? "",
+            "name": wallet["name"] as? String ?? "",
+            "address": wallet["address"] as? String ?? "",
+            "stellarPublicKey": stellarPublicKey,
+            "walletType": wallet["walletType"] as? String ?? "Multi-coin",
+            "xrp": ["address": "000000000"],
+            "stellarWallet": ["publicKey": stellarPublicKey]
+        ]
+    }
+
+    private func saveWalletAndActivate(_ wallet: [String: Any]) throws {
+        var usersArray: [[String: Any]] = []
+        if let existing = try? getFromKeychain(key: "appAllWallet"),
+           let data = existing.data(using: .utf8),
+           let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            usersArray = arr
+        }
+        usersArray.append(wallet)
+
+        let allWalletData = try JSONSerialization.data(withJSONObject: usersArray)
+        let activeWalletData = try JSONSerialization.data(withJSONObject: wallet)
+        guard
+            let allWallets = String(data: allWalletData, encoding: .utf8),
+            let activeWallet = String(data: activeWalletData, encoding: .utf8)
+        else {
+            throw WalletError.generationFailed
+        }
+
+        try saveToKeychainSecure(key: "appAllWallet", value: allWallets)
+        try saveToKeychainSecure(key: "activeUserWallet", value: activeWallet)
+    }
+
+    private func saveToKeychainSecure(key: String, value: String) throws {
+        guard let data = value.data(using: .utf8) else { throw WalletError.generationFailed }
+        try? deleteFromKeychain(key: key)
+
+        var error: Unmanaged<CFError>?
+        guard let access = SecAccessControlCreateWithFlags(
+            kCFAllocatorDefault,
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            .biometryCurrentSet,
+            &error
+        ) else {
+            throw WalletError.generationFailed
+        }
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key,
+            kSecAttrService as String: serviceNameV2,
+            kSecValueData as String: data,
+            kSecAttrAccessControl as String: access,
+        ]
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else { throw WalletError.generationFailed }
+    }
+
+    private func getFromKeychain(key: String) throws -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key,
+            kSecAttrService as String: serviceNameV2,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseOperationPrompt as String: "Authenticate to access wallet",
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess else { throw WalletError.generationFailed }
+        guard let data = result as? Data, let value = String(data: data, encoding: .utf8) else {
+            throw WalletError.generationFailed
+        }
+        return value
+    }
+
+    private func deleteFromKeychain(key: String) throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key,
+            kSecAttrService as String: serviceNameV2,
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            throw WalletError.generationFailed
+        }
     }
 
     private func generateFreshStellarWallet() throws -> (publicKey: String, secretKey: String) {
