@@ -17,6 +17,7 @@ import Icon from "../icon";
 import { colors } from "../Screens/ThemeColorsConfig";
 import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import { alert } from "./reusables/Toasts";
+import AuthRequest from "./reusables/AuthRequest";
 
 const MyPrivateKey = () => {
   const navigation = useNavigation();
@@ -24,6 +25,7 @@ const MyPrivateKey = () => {
   const theme = state.THEME.THEME ? colors.dark : colors.light;
   const styles = useMemo(() => getStyles(theme), [theme]);
   const [loading, setLoading] = useState(false);
+  const [pinBackupVisible, setPinBackupVisible] = useState(false);
 
   const openNativeBackup = async () => {
     try {
@@ -34,7 +36,11 @@ const MyPrivateKey = () => {
       }
     } catch (error) {
       console.log("openWalletBackupScreen error", error);
-      alert("error", "Unable to open secret backup");
+      if (error?.code === "AUTH_UNAVAILABLE") {
+        setPinBackupVisible(true);
+      } else {
+        alert("error", "Unable to open secret backup");
+      }
     } finally {
       setLoading(false);
     }
@@ -50,9 +56,9 @@ const MyPrivateKey = () => {
           size={72}
           color={colors.dark.buttonColor}
         />
-        <Text style={styles.title}>Secure Wallet Backup</Text>
+        <Text style={styles.title}>Wallet Overview</Text>
         <Text style={styles.description}>
-          View your recovery details in the device-protected native screen.
+          Your complete wallet overview, with everything you need right at your fingertips.
         </Text>
         <TouchableOpacity
           style={[styles.button, loading && styles.disabledButton]}
@@ -62,10 +68,25 @@ const MyPrivateKey = () => {
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>Open Secure Backup</Text>
+            <Text style={styles.buttonText}>Go to Wallet</Text>
           )}
         </TouchableOpacity>
       </View>
+      <AuthRequest
+        visible={pinBackupVisible}
+        heading="Account Access"
+        subHeading="Authentication requird to view account information."
+        proccedNextStep={() => setPinBackupVisible(false)}
+        onPasscodeVerified={async (pin) => {
+          try {
+            await NativeModules.StorageModule.openWalletBackupScreenWithPin(pin);
+            setPinBackupVisible(false);
+          } catch (error) {
+            console.log("openWalletBackupScreenWithPin error", error);
+            alert("error", "Unable to open secret");
+          }
+        }}
+      />
     </View>
   );
 };

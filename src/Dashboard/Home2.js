@@ -18,6 +18,7 @@ import { setCurrentWallet } from "../components/Redux/actions/auth";
 import { useNavigationState } from "@react-navigation/native";
 import { useFocusEffect } from "@react-navigation/native";
 import LockAppModal from "./Modals/lockAppModal";
+import AuthRequest from "./reusables/AuthRequest";
 import useFirebaseCloudMessaging from "./notifications/firebaseNotifications";
 import CustomInfoProvider from "./exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import { colors } from "../Screens/ThemeColorsConfig";
@@ -32,6 +33,7 @@ const Home2 = ({ navigation }) => {
   const dispatch = useDispatch();
   const currentState = useRef(AppState.currentState);
   const [visible, setVisible] = useState(false)
+  const [pinBackupSetupVisible, setPinBackupSetupVisible] = useState(false)
   const { getToken, requestUserPermission } = useFirebaseCloudMessaging();
   const mergeWithApiTokens = async (apiTokens) => {
     try {
@@ -140,9 +142,16 @@ const Home2 = ({ navigation }) => {
 
         try {
           const alreadyMigrated = await NativeModules.StorageModule.isMigrated();
+          let migrationReady = alreadyMigrated;
           if (!alreadyMigrated) {
             const result = await NativeModules.StorageModule.migrateToSecureStorage();
             console.log('H-4 migration:', result?.status);
+            migrationReady = result?.success === true;
+          }
+          if (migrationReady) {
+            const hasRecoveryBackup = await NativeModules.StorageModule.hasPinRecoveryBackup();
+            const hasAppPin = !!(await AsyncStorageLib.getItem("pin"));
+            if (!hasRecoveryBackup && hasAppPin) setPinBackupSetupVisible(true);
           }
         } catch (migErr) {
           console.warn('H-4 migration (non-fatal):', migErr?.message);
@@ -218,6 +227,20 @@ const Home2 = ({ navigation }) => {
         {/* <InvestmentChart/> */}
       </View>
       <LockAppModal pinViewVisible={visible} setPinViewVisible={setVisible} />
+      <AuthRequest
+        visible={pinBackupSetupVisible}
+        heading="Protect wallet recovery"
+        subHeading="Enter your app PIN."
+        proccedNextStep={() => setPinBackupSetupVisible(false)}
+        onPasscodeVerified={async (pin) => {
+          try {
+            await NativeModules.StorageModule.createPinRecoveryBackup(pin);
+            setPinBackupSetupVisible(false);
+          } catch (backupError) {
+            console.warn('PIN recovery backup setup failed:', backupError?.message);
+          }
+        }}
+      />
     </View>
   );
 };

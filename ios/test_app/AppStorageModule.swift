@@ -3,6 +3,8 @@ import React
 import Security
 import LocalAuthentication
 import UIKit
+import CryptoKit
+import CommonCrypto
 
 @objc(StorageModule)
 class StorageModule: NSObject {
@@ -10,8 +12,63 @@ class StorageModule: NSObject {
     private let serviceNameV2 = "com.appSwiftEx.appStorage.v2"
     private let migrationKey  = "swiftex_h4_migrated_v1"
     private let backupViewedAtKey = "lastWalletBackupViewedAt"
+    private let pinRecoveryService = "com.appSwiftEx.pinRecovery.v1"
+    private let pinRecoveryAccount = "recoveryEnvelope"
+    private let pinRecoveryVersion = 1
+    private let pinRecoveryIterations: UInt32 = 600000
+    private let appPinVerifierService = "com.appSwiftEx.appPinVerifier.v1"
+    private let appPinVerifierAccount = "verifier"
 
     @objc static func requiresMainQueueSetup() -> Bool { return false }
+
+    @objc(setAppPin:resolver:rejecter:)
+    func setAppPin(_ pin: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+                   rejecter reject: @escaping RCTPromiseRejectBlock) {
+        do {
+            guard pin.count == 6, pin.allSatisfy({ $0.isNumber }) else {
+                throw SecureStorageError.invalidPin
+            }
+            var salt = Data(count: 16)
+            _ = salt.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }
+            let key = try derivePinKey(pin, salt: salt)
+            let verifier = try JSONSerialization.data(withJSONObject: [
+                "version": 1,
+                "kdf": "PBKDF2-HMAC-SHA256",
+                "iterations": pinRecoveryIterations,
+                "salt": salt.base64EncodedString(),
+                "verifier": key.withUnsafeBytes { Data($0).base64EncodedString() },
+            ]).base64EncodedString()
+            try saveToKeychain(key: appPinVerifierAccount, value: verifier, service: appPinVerifierService)
+            resolve(true)
+        } catch {
+            reject("PIN_STORAGE_ERROR", error.localizedDescription, error)
+        }
+    }
+
+    @objc(validateAppPin:resolver:rejecter:)
+    func validateAppPin(_ pin: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+                        rejecter reject: @escaping RCTPromiseRejectBlock) {
+        do {
+            guard let encoded = try getFromKeychain(key: appPinVerifierAccount, service: appPinVerifierService),
+                  let data = Data(base64Encoded: encoded),
+                  let value = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let saltText = value["salt"] as? String,
+                  let salt = Data(base64Encoded: saltText),
+                  let expectedText = value["verifier"] as? String,
+                  let expected = Data(base64Encoded: expectedText) else {
+                resolve(false)
+                return
+            }
+            let actual = try derivePinKey(pin, salt: salt)
+            resolve(actual.withUnsafeBytes { actualBytes in
+                expected.withUnsafeBytes { expectedBytes in
+                    actualBytes.elementsEqual(expectedBytes)
+                }
+            })
+        } catch {
+            resolve(false)
+        }
+    }
 
     private func publicWallet(_ w: [String: Any]) -> [String: Any] {
         return [
@@ -59,7 +116,15 @@ class StorageModule: NSObject {
         var error: NSError?
 
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
-            completion(.failure(error ?? SecureStorageError.authenticationUnavailable))
+            DispatchQueue.main.async {
+                NativePinBottomSheet.show { pin in
+                    guard let pin, AppPinVerifierIOS.validate(pin) else {
+                        completion(.failure(SecureStorageError.authenticationFailed))
+                        return
+                    }
+                    completion(.success(()))
+                }
+            }
             return
         }
 
@@ -83,6 +148,10 @@ class StorageModule: NSObject {
             }
         }
         if case SecureStorageError.authenticationUnavailable = error {
+            return "AUTH_UNAVAILABLE"
+        }
+        if case SecureStorageError.keychainError(let status) = error,
+           status == errSecAuthFailed || status == errSecInteractionNotAllowed {
             return "AUTH_UNAVAILABLE"
         }
         return "AUTH_FAILED"
@@ -158,6 +227,18 @@ class StorageModule: NSObject {
     @objc
     func migrateToSecureStorage(_ resolve: @escaping RCTPromiseResolveBlock,
               rejecter reject: @escaping RCTPromiseRejectBlock) {
+        self.authenticateForSecretView { authResult in
+            do {
+                try authResult.get()
+                self.performSecureStorageMigration(resolve: resolve, reject: reject)
+            } catch {
+                reject(self.storageAuthCode(error), error.localizedDescription, error)
+            }
+        }
+    }
+
+    private func performSecureStorageMigration(resolve: @escaping RCTPromiseResolveBlock,
+                                               reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
             if (try? self.getFromKeychain(key: self.migrationKey, service: self.serviceNameV2)) != nil {
                 DispatchQueue.main.async {
@@ -271,6 +352,105 @@ class StorageModule: NSObject {
         }
     }
 
+    private func derivePinKey(_ pin: String, salt: Data) throws -> SymmetricKey {
+        guard pin.count == 6, pin.allSatisfy({ $0.isNumber }) else {
+            throw SecureStorageError.invalidPin
+        }
+        var derived = Data(count: 32)
+        let status = derived.withUnsafeMutableBytes { output in
+            salt.withUnsafeBytes { saltBytes in
+                pin.withCString { pinBytes in
+                    CCKeyDerivationPBKDF(
+                        CCPBKDFAlgorithm(kCCPBKDF2),
+                        pinBytes,
+                        pin.utf8.count,
+                        saltBytes.bindMemory(to: UInt8.self).baseAddress,
+                        salt.count,
+                        CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+                        pinRecoveryIterations,
+                        output.bindMemory(to: UInt8.self).baseAddress,
+                        32
+                    )
+                }
+            }
+        }
+        guard status == kCCSuccess else { throw SecureStorageError.keyDerivationError }
+        return SymmetricKey(data: derived)
+    }
+
+    private func encryptPinBackup(pin: String, payload: String) throws -> String {
+        var salt = Data(count: 16)
+        var nonce = Data(count: 12)
+        _ = salt.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }
+        _ = nonce.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 12, $0.baseAddress!) }
+        let key = try derivePinKey(pin, salt: salt)
+        let sealed = try AES.GCM.seal(Data(payload.utf8), using: key, nonce: AES.GCM.Nonce(data: nonce))
+        return try JSONSerialization.data(withJSONObject: [
+            "version": pinRecoveryVersion,
+            "kdf": "PBKDF2-HMAC-SHA256",
+            "iterations": pinRecoveryIterations,
+            "salt": salt.base64EncodedString(),
+            "nonce": nonce.base64EncodedString(),
+            "ciphertext": sealed.combined!.base64EncodedString(),
+        ]).base64EncodedString()
+    }
+
+    private func decryptPinBackup(pin: String, envelope: String) throws -> String {
+        guard let data = Data(base64Encoded: envelope),
+              let value = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              value["version"] as? Int == pinRecoveryVersion,
+              value["kdf"] as? String == "PBKDF2-HMAC-SHA256",
+              UInt32(value["iterations"] as? Int ?? 0) == pinRecoveryIterations,
+              let saltText = value["salt"] as? String,
+              let salt = Data(base64Encoded: saltText),
+              let combinedText = value["ciphertext"] as? String,
+              let combined = Data(base64Encoded: combinedText)
+        else { throw SecureStorageError.invalidRecoveryBackup }
+        let key = try derivePinKey(pin, salt: salt)
+        let sealed = try AES.GCM.SealedBox(combined: combined)
+        let clear = try AES.GCM.open(sealed, using: key)
+        guard let payload = String(data: clear, encoding: .utf8) else {
+            throw SecureStorageError.decodingError
+        }
+        return payload
+    }
+
+    private func pinRecoveryValue() throws -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: pinRecoveryAccount,
+            kSecAttrService as String: pinRecoveryService,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let data = result as? Data,
+              let value = String(data: data, encoding: .utf8) else {
+            throw SecureStorageError.keychainError(status: status)
+        }
+        return value
+    }
+
+    private func savePinRecoveryValue(_ value: String) throws {
+        let data = Data(value.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: pinRecoveryAccount,
+            kSecAttrService as String: pinRecoveryService,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ]
+        SecItemDelete([
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: pinRecoveryAccount,
+            kSecAttrService as String: pinRecoveryService,
+        ] as CFDictionary)
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else { throw SecureStorageError.keychainError(status: status) }
+    }
+
     private func getAllKeysFromKeychain() throws -> [String] {
         let query: [String: Any] = [
             kSecClass          as String: kSecClassGenericPassword,
@@ -294,6 +474,72 @@ class StorageModule: NSObject {
         let status = SecItemDelete(query as CFDictionary)
         if status != errSecSuccess && status != errSecItemNotFound {
             throw SecureStorageError.keychainError(status: status)
+        }
+    }
+
+    @objc
+    func createPinRecoveryBackup(_ pin: String,
+                                 resolver resolve: @escaping RCTPromiseResolveBlock,
+                                 rejecter reject: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                guard let wallets = try self.getFromKeychain(key: "appAllWallet"),
+                      let active = try self.getFromKeychain(key: "activeUserWallet") else {
+                    throw SecureStorageError.decodingError
+                }
+                let payloadData = try JSONSerialization.data(withJSONObject: [
+                    "appAllWallet": wallets,
+                    "activeUserWallet": active,
+                ])
+                let payload = String(data: payloadData, encoding: .utf8)!
+                let envelope = try self.encryptPinBackup(pin: pin, payload: payload)
+                guard try self.decryptPinBackup(pin: pin, envelope: envelope) == payload else {
+                    throw SecureStorageError.recoveryVerificationFailed
+                }
+                try self.savePinRecoveryValue(envelope)
+                DispatchQueue.main.async { resolve(["success": true, "status": "created"]) }
+            } catch {
+                DispatchQueue.main.async { reject("RECOVERY_BACKUP_ERROR", error.localizedDescription, error) }
+            }
+        }
+    }
+
+    @objc
+    func hasPinRecoveryBackup(_ resolve: @escaping RCTPromiseResolveBlock,
+                              rejecter reject: @escaping RCTPromiseRejectBlock) {
+        do { resolve(try pinRecoveryValue() != nil) }
+        catch { reject("RECOVERY_BACKUP_ERROR", error.localizedDescription, error) }
+    }
+
+    @objc
+    func restoreFromPinRecoveryBackup(_ pin: String,
+                                      resolver resolve: @escaping RCTPromiseResolveBlock,
+                                      rejecter reject: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                guard let envelope = try self.pinRecoveryValue() else {
+                    throw SecureStorageError.recoveryBackupMissing
+                }
+                guard let payloadData = try self.decryptPinBackup(pin: pin, envelope: envelope).data(using: .utf8),
+                      let payload = try JSONSerialization.jsonObject(with: payloadData) as? [String: String],
+                      let wallets = payload["appAllWallet"],
+                      let active = payload["activeUserWallet"] else {
+                    throw SecureStorageError.invalidRecoveryBackup
+                }
+                guard let walletData = wallets.data(using: .utf8),
+                      let activeData = active.data(using: .utf8),
+                      (try JSONSerialization.jsonObject(with: walletData)) is [[String: Any]],
+                      (try JSONSerialization.jsonObject(with: activeData)) is [String: Any] else {
+                    throw SecureStorageError.invalidRecoveryBackup
+                }
+                // This fallback service is device-unlock protected and app-PIN gated by JS.
+                try self.saveToKeychain(key: "appAllWallet", value: wallets)
+                try self.saveToKeychain(key: "activeUserWallet", value: active)
+                try self.saveToKeychain(key: self.migrationKey, value: "1")
+                DispatchQueue.main.async { resolve(["success": true, "status": "restored"]) }
+            } catch {
+                DispatchQueue.main.async { reject("RECOVERY_RESTORE_ERROR", "PIN recovery failed", error) }
+            }
         }
     }
 
@@ -450,6 +696,44 @@ class StorageModule: NSObject {
     }
 
     @objc
+    func openWalletBackupScreenWithPin(_ pin: String,
+                                       resolver resolve: @escaping RCTPromiseResolveBlock,
+                                       rejecter reject: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                guard let envelope = try self.pinRecoveryValue(),
+                      let payloadData = try self.decryptPinBackup(pin: pin, envelope: envelope).data(using: .utf8),
+                      let payload = try JSONSerialization.jsonObject(with: payloadData) as? [String: String],
+                      let backupActive = payload["activeUserWallet"] else {
+                    throw SecureStorageError.invalidRecoveryBackup
+                }
+                let active = (try? self.getFromKeychain(key: "activeUserWallet")) ?? backupActive
+                guard let activeData = active.data(using: .utf8),
+                      let wallet = try JSONSerialization.jsonObject(with: activeData) as? [String: Any] else {
+                    throw SecureStorageError.invalidRecoveryBackup
+                }
+                let backupText = self.formatBackupText(wallet)
+                guard !backupText.isEmpty else { throw SecureStorageError.decodingError }
+                try self.savePinRecoveryValue(envelope)
+                try self.saveToKeychain(
+                    key: self.backupViewedAtKey,
+                    value: String(Int(Date().timeIntervalSince1970 * 1000))
+                )
+                DispatchQueue.main.async {
+                    guard let presenter = self.topViewController() else {
+                        reject("VIEW_CONTROLLER_UNAVAILABLE", "No active view controller", nil)
+                        return
+                    }
+                    presenter.present(self.makeBackupViewController(backupText), animated: true)
+                    resolve(["success": true])
+                }
+            } catch {
+                DispatchQueue.main.async { reject("OPEN_BACKUP_ERROR", "PIN backup authentication failed", error) }
+            }
+        }
+    }
+
+    @objc
     func delete(_ id: String,
                 resolver resolve: @escaping RCTPromiseResolveBlock,
                 rejecter reject: @escaping RCTPromiseRejectBlock) {
@@ -525,6 +809,11 @@ enum SecureStorageError: Error, LocalizedError {
     case keychainError(status: OSStatus)
     case authenticationUnavailable
     case authenticationFailed
+    case invalidPin
+    case keyDerivationError
+    case invalidRecoveryBackup
+    case recoveryBackupMissing
+    case recoveryVerificationFailed
 
     var errorDescription: String? {
         switch self {
@@ -534,6 +823,11 @@ enum SecureStorageError: Error, LocalizedError {
         case .keychainError(let s): return "Keychain error: \(s)"
         case .authenticationUnavailable: return "Device authentication is not available"
         case .authenticationFailed: return "Authentication failed"
+        case .invalidPin: return "PIN must contain 6 digits"
+        case .keyDerivationError: return "Failed to derive recovery key"
+        case .invalidRecoveryBackup: return "Invalid recovery backup"
+        case .recoveryBackupMissing: return "No PIN recovery backup found"
+        case .recoveryVerificationFailed: return "Recovery backup verification failed"
         }
     }
 }

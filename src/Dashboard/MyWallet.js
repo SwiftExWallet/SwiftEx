@@ -31,7 +31,6 @@ const MyWallet = (props) => {
   const [user, setUser] = useState("");
   const [visible, setVisible] = useState(false);
   const [backupVisible, setbackupVisible] = useState(false);
-  const [showAuthRequest,setshowAuthRequest] = useState(false);
   const [walletName, setWalletName] = useState("");
   const [editWalletName, setEditWalletName] = useState(false);
   const [updatingLoading, setUpdatingLoading] = useState(false);
@@ -170,7 +169,7 @@ const MyWallet = (props) => {
         }
       </View>
       
-      <TouchableOpacity onPress={() => { setshowAuthRequest(!showAuthRequest) }} style={[styles.btnCard, { backgroundColor: state.THEME.THEME === false ? colors.light.cardBg : colors.dark.cardBg }]}>
+      <TouchableOpacity onPress={() => { setVisible(!visible) }} style={[styles.btnCard, { backgroundColor: state.THEME.THEME === false ? colors.light.cardBg : colors.dark.cardBg }]}>
         <View style={{ flexDirection: "row", }}>
           <View style={[styles.iconCon,{backgroundColor:"#5B65E133"}]}>
             <Icon name="eye" type={"materialCommunity"} color={"#5B65E1"} size={24} />
@@ -201,7 +200,6 @@ const MyWallet = (props) => {
           setVisible(false);
         }}
       />
-      <AuthRequest visible={showAuthRequest} heading={"Account Access"} subHeading={"Authentication required to view account information."} proccedNextStep={()=>{setshowAuthRequest(false),setVisible(!visible)}}/>
     </View>
 
   );

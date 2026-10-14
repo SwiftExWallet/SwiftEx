@@ -15,7 +15,7 @@ class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJav
     private val TAG = "StellarSigner"
     private val PREF_NAME = SecureWalletStore.PREF_NAME
     private val KEY_WALLET = "activeUserWallet"
-    private val stellarServer = Server("https://horizon.stellar.org")
+    private val stellarServer = Server("https://horizon-testnet.stellar.org")
 
     private val prefs by lazy { SecureWalletStore.open(reactApplicationContext) }
 
@@ -29,7 +29,14 @@ class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJav
             BiometricManager.Authenticators.DEVICE_CREDENTIAL
         val canAuthenticate = BiometricManager.from(activity).canAuthenticate(authenticators)
         if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
-            return promise.reject("AUTH_UNAVAILABLE", "Device authentication is not available")
+            return NativePinBottomSheet.show(
+                activity,
+                onSubmit = { pin ->
+                    if (AppPinVerifier.validate(prefs, pin)) onAuthenticated()
+                    else promise.reject("PIN_INVALID", "Invalid app PIN")
+                },
+                onCancel = { promise.reject("AUTH_CANCELLED", "Authentication cancelled") },
+            )
         }
 
         val executor = ContextCompat.getMainExecutor(activity)

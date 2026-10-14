@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.Base64
 import android.util.Log
 import android.view.Gravity
 import android.view.ViewGroup
@@ -23,6 +24,12 @@ import androidx.security.crypto.MasterKey
 import androidx.security.crypto.MasterKeys
 import org.json.JSONArray
 import org.json.JSONObject
+import java.nio.charset.StandardCharsets
+import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
 
 class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
     private val TAG = "StorageModule"
@@ -31,9 +38,77 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     private val PREF_NAME_V3 = "com_swiftEx_app_secure_v3"
     private val MIGRATION_FLAG = "swiftex_h4_migrated_v1"
     private val BACKUP_VIEWED_AT = "lastWalletBackupViewedAt"
+    private val PIN_BACKUP_PREFS = "com_swiftEx_app_pin_recovery_v1"
+    private val PIN_BACKUP_KEY = "recoveryEnvelope"
+    private val PIN_BACKUP_VERSION = 1
+    private val PIN_BACKUP_ITERATIONS = 600_000
+    private val APP_PIN_VERIFIER_KEY = "appPinVerifier"
 
     private var prefs = SecureWalletStore.open(reactApplicationContext)
     private var runtimeStoreCorrupt = false
+
+    private fun pinBackupPrefs() = reactApplicationContext.getSharedPreferences(
+        PIN_BACKUP_PREFS,
+        Context.MODE_PRIVATE
+    )
+
+    private fun derivePinKey(pin: String, salt: ByteArray): ByteArray {
+        require(pin.length == 6) { "PIN must contain 6 digits" }
+        require(pin.all { it.isDigit() }) { "PIN must contain digits only" }
+        val spec = PBEKeySpec(pin.toCharArray(), salt, PIN_BACKUP_ITERATIONS, 256)
+        return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+    }
+
+    private fun encryptPinBackup(pin: String, payload: String): String {
+        val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        val nonce = ByteArray(12).also { SecureRandom().nextBytes(it) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, javax.crypto.spec.SecretKeySpec(derivePinKey(pin, salt), "AES"), GCMParameterSpec(128, nonce))
+        val ciphertext = cipher.doFinal(payload.toByteArray(StandardCharsets.UTF_8))
+        return JSONObject().apply {
+            put("version", PIN_BACKUP_VERSION)
+            put("kdf", "PBKDF2-HMAC-SHA256")
+            put("iterations", PIN_BACKUP_ITERATIONS)
+            put("salt", Base64.encodeToString(salt, Base64.NO_WRAP))
+            put("nonce", Base64.encodeToString(nonce, Base64.NO_WRAP))
+            put("ciphertext", Base64.encodeToString(ciphertext, Base64.NO_WRAP))
+        }.toString()
+    }
+
+    private fun decryptPinBackup(pin: String, envelope: String): String {
+        val value = JSONObject(envelope)
+        require(value.optInt("version") == PIN_BACKUP_VERSION) { "Unsupported recovery backup" }
+        require(value.optString("kdf") == "PBKDF2-HMAC-SHA256") { "Unsupported recovery KDF" }
+        require(value.optInt("iterations") == PIN_BACKUP_ITERATIONS) { "Unsupported recovery parameters" }
+        val salt = Base64.decode(value.getString("salt"), Base64.DEFAULT)
+        val nonce = Base64.decode(value.getString("nonce"), Base64.DEFAULT)
+        val ciphertext = Base64.decode(value.getString("ciphertext"), Base64.DEFAULT)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, javax.crypto.spec.SecretKeySpec(derivePinKey(pin, salt), "AES"), GCMParameterSpec(128, nonce))
+        return String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8)
+    }
+
+    private fun appPinVerifier(pin: String): String {
+        val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        val derived = derivePinKey(pin, salt)
+        return JSONObject().apply {
+            put("version", 1)
+            put("kdf", "PBKDF2-HMAC-SHA256")
+            put("iterations", PIN_BACKUP_ITERATIONS)
+            put("salt", Base64.encodeToString(salt, Base64.NO_WRAP))
+            put("verifier", Base64.encodeToString(derived, Base64.NO_WRAP))
+        }.toString()
+    }
+
+    private fun validateAppPinValue(pin: String, verifier: String): Boolean {
+        val value = JSONObject(verifier)
+        require(value.optInt("version") == 1)
+        require(value.optString("kdf") == "PBKDF2-HMAC-SHA256")
+        require(value.optInt("iterations") == PIN_BACKUP_ITERATIONS)
+        val salt = Base64.decode(value.getString("salt"), Base64.DEFAULT)
+        val expected = Base64.decode(value.getString("verifier"), Base64.DEFAULT)
+        return java.security.MessageDigest.isEqual(expected, derivePinKey(pin, salt))
+    }
 
     private fun oldV2AuthPrefs(): android.content.SharedPreferences {
                 val spec = KeyGenParameterSpec.Builder(
@@ -120,6 +195,27 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
 
     override fun getName() = "StorageModule"
 
+    @ReactMethod
+    fun setAppPin(pin: String, promise: Promise) {
+        try {
+            derivePinKey(pin, ByteArray(16))
+            prefs.edit().putString(APP_PIN_VERIFIER_KEY, appPinVerifier(pin)).apply()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("PIN_STORAGE_ERROR", "Unable to store app PIN verifier", e)
+        }
+    }
+
+    @ReactMethod
+    fun validateAppPin(pin: String, promise: Promise) {
+        try {
+            val verifier = prefs.getString(APP_PIN_VERIFIER_KEY, null)
+            promise.resolve(verifier != null && validateAppPinValue(pin, verifier))
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
     private fun publicWalletMap(w: JSONObject): WritableMap {
         return Arguments.createMap().apply {
             putString("address",          w.optString("address"))
@@ -155,7 +251,14 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
             BiometricManager.Authenticators.DEVICE_CREDENTIAL
         val canAuthenticate = BiometricManager.from(activity).canAuthenticate(authenticators)
         if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
-            return promise.reject("AUTH_UNAVAILABLE", "Device authentication is not available")
+            return NativePinBottomSheet.show(
+                activity,
+                onSubmit = { pin ->
+                    if (AppPinVerifier.validate(prefs, pin)) onAuthenticated()
+                    else promise.reject("PIN_INVALID", "Invalid app PIN")
+                },
+                onCancel = { promise.reject("AUTH_CANCELLED", "Authentication cancelled") },
+            )
         }
 
         val prompt = BiometricPrompt(
@@ -381,6 +484,65 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     }
 
     @ReactMethod
+    fun createPinRecoveryBackup(pin: String, promise: Promise) {
+        try {
+            val wallets = prefs.getString("appAllWallet", null)
+                ?: return promise.reject("RECOVERY_BACKUP_UNAVAILABLE", "No wallet data found")
+            val active = prefs.getString("activeUserWallet", null)
+                ?: return promise.reject("RECOVERY_BACKUP_UNAVAILABLE", "No active wallet found")
+            val payload = JSONObject().apply {
+                put("appAllWallet", wallets)
+                put("activeUserWallet", active)
+            }.toString()
+            val envelope = encryptPinBackup(pin, payload)
+            val verified = decryptPinBackup(pin, envelope)
+            require(verified == payload) { "Recovery backup verification failed" }
+            pinBackupPrefs().edit().putString(PIN_BACKUP_KEY, envelope).apply()
+            promise.resolve(Arguments.createMap().apply {
+                putBoolean("success", true)
+                putString("status", "created")
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "PIN recovery backup creation failed", e)
+            promise.reject("RECOVERY_BACKUP_ERROR", describeError(e), e)
+        }
+    }
+
+    @ReactMethod
+    fun hasPinRecoveryBackup(promise: Promise) {
+        promise.resolve(pinBackupPrefs().contains(PIN_BACKUP_KEY))
+    }
+
+    @ReactMethod
+    fun restoreFromPinRecoveryBackup(pin: String, promise: Promise) {
+        try {
+            val envelope = pinBackupPrefs().getString(PIN_BACKUP_KEY, null)
+                ?: return promise.reject("RECOVERY_BACKUP_MISSING", "No PIN recovery backup found")
+            val payload = JSONObject(decryptPinBackup(pin, envelope))
+            val wallets = payload.getString("appAllWallet")
+            val active = payload.getString("activeUserWallet")
+            JSONArray(wallets)
+            JSONObject(active)
+
+            prefs.edit()
+                .putString("appAllWallet", wallets)
+                .putString("activeUserWallet", active)
+                .putBoolean(MIGRATION_FLAG, true)
+                .apply()
+            require(prefs.getString("activeUserWallet", null) == active) {
+                "Recovery storage verification failed"
+            }
+            promise.resolve(Arguments.createMap().apply {
+                putBoolean("success", true)
+                putString("status", "restored")
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "PIN recovery restore failed", e)
+            promise.reject("RECOVERY_RESTORE_ERROR", "PIN recovery failed", e)
+        }
+    }
+
+    @ReactMethod
     fun saveWallet(value: String, promise: Promise) {
         try {
             val newUser = try { JSONObject(value) } catch (_: Exception) {
@@ -510,6 +672,26 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     }
 
     @ReactMethod
+    fun openWalletBackupScreenWithPin(pin: String, promise: Promise) {
+        try {
+            val envelope = pinBackupPrefs().getString(PIN_BACKUP_KEY, null)
+                ?: return promise.reject("RECOVERY_BACKUP_MISSING", "No PIN recovery backup found")
+            val payload = JSONObject(decryptPinBackup(pin, envelope))
+            val active = runCatching { prefs.getString("activeUserWallet", null) }
+                .getOrNull()
+                ?: payload.getString("activeUserWallet")
+            val backupText = formatBackupText(JSONObject(active))
+            if (backupText.isBlank()) return promise.reject("GET_WALLET_ERROR", "No backup data found")
+            prefs.edit().putLong(BACKUP_VIEWED_AT, System.currentTimeMillis()).apply()
+            showBackupScreen(backupText)
+            promise.resolve(Arguments.createMap().apply { putBoolean("success", true) })
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to open PIN wallet backup", e)
+            promise.reject("OPEN_BACKUP_ERROR", "PIN backup authentication failed", e)
+        }
+    }
+
+    @ReactMethod
     fun delete(key: String, promise: Promise) {
         try {
             val data = prefs.all["appAllWallet"]?.toString()
@@ -567,6 +749,7 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     fun clearAll(promise: Promise) {
         try {
             prefs.edit().clear().apply()
+            pinBackupPrefs().edit().clear().apply()
             promise.resolve(Arguments.createMap().apply { putBoolean("success", true) })
         } catch (e: Exception) { promise.reject("CLEAR_ALL_ERROR", e.message) }
     }

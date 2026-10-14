@@ -18,7 +18,15 @@ class TransactionSigner: NSObject {
       var error: NSError?
 
       guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
-          completion(.failure(error ?? SignerError.authenticationUnavailable))
+          DispatchQueue.main.async {
+              NativePinBottomSheet.show { pin in
+                  guard let pin, AppPinVerifierIOS.validate(pin) else {
+                      completion(.failure(SignerError.authenticationFailed))
+                      return
+                  }
+                  completion(.success(()))
+              }
+          }
           return
       }
 

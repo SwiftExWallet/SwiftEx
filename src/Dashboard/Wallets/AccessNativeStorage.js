@@ -1,4 +1,5 @@
 import { NativeModules, Platform } from 'react-native';
+import { consumeRecoveryPin } from '../../biometrics/utils';
 const { StorageModule } = NativeModules;
 
 class AccessNativeStorage {
@@ -18,6 +19,10 @@ class AccessNativeStorage {
                 const saveResponse = await StorageModule.saveWallet(stringValue);
                 if(saveResponse.success){
                     await this.updateActiveWallet(Id.toString())
+                    const recoveryPin = consumeRecoveryPin();
+                    if (recoveryPin) {
+                        await StorageModule.createPinRecoveryBackup(recoveryPin);
+                    }
                 }
                 return saveResponse;
             } else {
@@ -25,6 +30,10 @@ class AccessNativeStorage {
                 const saveResponse = await StorageModule.saveWallet(stringValue);
                 if (saveResponse.success) {
                     await this.updateActiveWallet(Id.toString())
+                    const recoveryPin = consumeRecoveryPin();
+                    if (recoveryPin) {
+                        await StorageModule.createPinRecoveryBackup(recoveryPin);
+                    }
                 }
                 return saveResponse;
             }

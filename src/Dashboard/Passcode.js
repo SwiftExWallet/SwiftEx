@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { StyleSheet, View, Text, TouchableOpacity, Animated, Alert, Image, Platform, } from "react-native";
+import { StyleSheet, View, Text, TouchableOpacity, Animated, Alert, Image, Platform, NativeModules, } from "react-native";
 import darkBlue from "../../assets/darkBlue.png";
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from "react-native-responsive-screen";
 import { useDispatch } from "react-redux";
@@ -33,6 +33,11 @@ const Passcode = (props) => {
       if (status === "verify") {
         if (tempPin === newPin) {
           await AddPassCode(tempPin)
+          try {
+            await NativeModules.StorageModule.createPinRecoveryBackup(tempPin);
+          } catch (recoveryError) {
+            console.warn("PIN recovery backup not created yet:", recoveryError?.message);
+          }
           resetInput();
           setStatus("");
           AppNavigation(props)

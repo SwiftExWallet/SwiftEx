@@ -13,7 +13,7 @@ import Snackbar from "react-native-snackbar";
 import { useBiometrics_run } from "../../biometrics/biometric";
 import { CheckPasscode } from "../../biometrics/utils";
 
-const AuthRequest = ({ visible, heading, subHeading, proccedNextStep }) => {
+const AuthRequest = ({ visible, heading, subHeading, proccedNextStep, onPasscodeVerified }) => {
     const state = useSelector((state) => state);
     const theme = state.THEME.THEME ? colors.dark : colors.light;
     const navigation = useNavigation();
@@ -48,7 +48,11 @@ const AuthRequest = ({ visible, heading, subHeading, proccedNextStep }) => {
                     const validPin=await CheckPasscode(enteredPin);
                     if (validPin) {
                         pinView.current.clearAll();
-                        proccedNextStep()
+                        if (onPasscodeVerified) {
+                            onPasscodeVerified(enteredPin)
+                        } else {
+                            proccedNextStep()
+                        }
                     }
                     else {
                         pinView.current.clearAll();

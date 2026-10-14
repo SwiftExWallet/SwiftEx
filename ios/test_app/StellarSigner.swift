@@ -5,7 +5,7 @@ import LocalAuthentication
 @objc(StellarSigner)
 class StellarSigner: NSObject {
   
-  let sdk = StellarSDK(withHorizonUrl: "https://horizon.stellar.org")
+  let sdk = StellarSDK(withHorizonUrl: "https://horizon-testnet.stellar.org")
   let serviceName = "com.appSwiftEx.appStorage.v2"
 
   private func authenticateForSigning(_ completion: @escaping (Result<Void, Error>) -> Void) {
@@ -14,7 +14,15 @@ class StellarSigner: NSObject {
     var error: NSError?
 
     guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
-      completion(.failure(error ?? NSError(domain: "AUTH", code: -1, userInfo: [NSLocalizedDescriptionKey: "Device authentication is not available"])))
+      DispatchQueue.main.async {
+        NativePinBottomSheet.show { pin in
+          guard let pin, AppPinVerifierIOS.validate(pin) else {
+            completion(.failure(NSError(domain: "AUTH", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid app PIN"])))
+            return
+          }
+          completion(.success(()))
+        }
+      }
       return
     }
 
