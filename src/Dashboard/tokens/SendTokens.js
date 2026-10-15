@@ -561,13 +561,19 @@ const checkPermission = async () => {
           isChainProvide={true}
           chain={selectedChain.symbol}
           selectedToken={(item) => {
-            if (item.chain === "STR") {
+            if (item.chain === "STR" || item.chain === "Stellar") {
               if (item.symbol === "XLM" || item.code === "XLM") {
                 setShowTokens(false);
                 navigation.navigate("SendXLM");
               } else {
                 setShowTokens(false);
-                navigation.navigate("send_recive", { bala: 0, assetIssuer: item?.issuer, asset_name: item.code });
+                navigation.navigate("send_recive", {
+                  bala: item?.balance || 0,
+                  assetIssuer: item?.issuer,
+                  assetContract: item?.contractAddress || item?.contract,
+                  assetDecimals: item?.decimals,
+                  asset_name: item?.code || item?.symbol,
+                });
               }
             } else {
               if (item.chain === item.symbol) {

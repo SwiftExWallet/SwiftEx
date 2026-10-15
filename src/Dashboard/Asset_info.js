@@ -2248,6 +2248,13 @@ const Asset_info = ({ route }) => {
                 asset_type
                   ?.contractAddress,
 
+              assetContract:
+                asset_type?.contractAddress?.startsWith?.("C")
+                  ? asset_type.contractAddress
+                  : undefined,
+
+              assetDecimals: asset_type?.decimals,
+
               asset_name:
                 asset_type.symbol,
             }

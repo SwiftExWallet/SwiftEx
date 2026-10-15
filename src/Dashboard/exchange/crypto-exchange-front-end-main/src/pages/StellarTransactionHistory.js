@@ -58,6 +58,31 @@ const getTokenByContract = (contractId) => {
   );
 };
 
+const getBalanceChangeContract = (change) =>
+  change?.asset_contract_id || change?.contract_id || change?.asset;
+
+const getBalanceChangeAsset = (change) => {
+  const contract = getBalanceChangeContract(change);
+  return (
+    change?.asset_code ||
+    getTokenByContract(contract)?.code ||
+    (contract ? `${contract.slice(0, 4)}...${contract.slice(-4)}` : null)
+  );
+};
+
+const formatBalanceChangeAmount = (change) => {
+  if (!change || change.amount == null) return null;
+  const contract = getBalanceChangeContract(change);
+  const decimals = getTokenByContract(contract)?.decimals ?? 7;
+  return formatRawAmount(change.amount, decimals) ?? String(change.amount);
+};
+
+const getOperationAsset = (operation) =>
+  operation?.transferAsset ||
+  operation?.asset_code ||
+  (operation?.asset_type === "native" ? "XLM" : null) ||
+  "";
+
 const resolveTokenCode = (contractId) => {
   const token = getTokenByContract(contractId);
   return token?.code || null;
@@ -247,9 +272,30 @@ const getContractFunctionName = (params = []) => {
     if (!symParam?.value) return null;
     return Buffer.from(symParam.value, "base64")
       .toString("utf-8")
-      // strip the SCVal type-tag bytes that precede the ascii symbol name
       .replace(/[^\x20-\x7E]/g, "");
   } catch {
+    return null;
+  }
+};
+
+const decodeContractTransfer = (operation) => {
+  if (getContractFunctionName(operation?.parameters) !== "transfer") return null;
+
+  try {
+    const params = operation.parameters || [];
+    const decode = (param) => StellarSdk.xdr.ScVal.fromXDR(param.value, "base64");
+    const contractAddress = StellarSdk.Address.fromScAddress(decode(params[0]).address()).toString();
+    const from = StellarSdk.Address.fromScAddress(decode(params[2]).address()).toString();
+    const to = StellarSdk.Address.fromScAddress(decode(params[3]).address()).toString();
+    const amountValue = decode(params[4]).i128();
+    const amount = (
+      (BigInt(amountValue.hi().toString()) << 64n) +
+      BigInt(amountValue.lo().toString())
+    ).toString();
+
+    return {contractAddress, from, to, amount};
+  } catch (error) {
+    console.log("Contract transfer decode error:", error);
     return null;
   }
 };
@@ -398,9 +444,6 @@ const getTransactionIcon = (operation) => {
   }
 };
 
-// Maps an operation to a semantic tint bucket in theme.tint so colors carry
-// meaning consistently (success/warning/danger/accent/pro/neutral) instead
-// of being assigned type-by-type ad hoc.
 const getCardTint = (operation, item, isReceived) => {
   if (item.success === false || ["failed", "Failed", "FAILED"].includes(item.success)) {
     return "danger";
@@ -540,6 +583,13 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
     operations.find((op) =>
       ["payment", "path_payment_strict_receive", "path_payment_strict_send", "invoke_host_function","swap_exact_tokens_for_tokens"].includes(op.type)
     ) || operations[0];
+  const decodedTransfer = decodeContractTransfer(operation);
+  const decodedTransferAmount = decodedTransfer
+    ? formatRawAmount(decodedTransfer.amount, getTokenByContract(decodedTransfer.contractAddress)?.decimals ?? 7)
+    : null;
+  const decodedTransferAsset = decodedTransfer
+    ? getTokenByContract(decodedTransfer.contractAddress)?.code || getBalanceChangeAsset({asset_contract_id: decodedTransfer.contractAddress})
+    : null;
 
   const txType = operation.asset_balance_changes?.find((resObj) => resObj.to === userPublicKey);
   const isReceived =
@@ -552,7 +602,7 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
       operation.type === "swap_exact_tokens_for_tokens"
     ) &&
     !!txType
-  );
+  ) || decodedTransfer?.to === userPublicKey || item?.isReceived;
 
   const mintForwardReceived = operation.contractSubtype === "mint_forward"
     ? Boolean(operation.mintForwardReceived)
@@ -584,14 +634,17 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
       operation.asset_balance_changes?.filter(
         (resObj) => resObj.type === "transfer" && (resObj.to === userPublicKey || resObj.from === userPublicKey)
       ) || [];
-    amountText = transfers.length > 1 ? transfers[1].amount : transfers[0]?.amount || "0";
+    const transfer = transfers.length > 1 ? transfers[1] : transfers[0];
+    amountText = formatBalanceChangeAmount(transfer) || operation.transferAmount || decodedTransferAmount || item?.amount || "0";
+    operation.transferAsset = operation.transferAsset || decodedTransferAsset;
   }
  else if (operation.type === "swap_exact_tokens_for_tokens") {
     const transfers =
       operation.asset_balance_changes?.filter(
         (resObj) => resObj.type === "transfer" && (resObj.to === userPublicKey || resObj.from === userPublicKey)
       ) || [];
-    amountText = transfers.length > 1 ? transfers[1].amount : transfers[0]?.amount || "0";
+    const transfer = transfers.length > 1 ? transfers[1] : transfers[0];
+    amountText = formatBalanceChangeAmount(transfer) || operation.transferAmount || decodedTransferAmount || item?.amount || "0";
   } else if (operation.type === "manage_sell_offer" || operation.type === "manage_buy_offer") {
     amountText = operation.amount;
   } else if (operation.type === "buyCry" || operation.type === "sellCry") {
@@ -666,8 +719,7 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
       return;
     }
     if (txType === "invoke_host_function"||txType==="swap_exact_tokens_for_tokens" && !received) {
-      setshowTxHash([{ chain: "SRB", hash: txId }]);
-      setshowTx(true);
+      Linking.openURL(`${STELLAR_URL.EXPERT_URL}/tx/${txId}`);
     } else if (txType === "wallet_tx") {
       setshowTxHash([{ chain: operation.chain, hash: operation.hash }]);
       setshowTx(true);
@@ -766,6 +818,8 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
           ? "-"
           : ""
       }${operation.mintForwardAmount} ${operation.mintForwardAsset || ""}`
+    : amountText !== "0"
+    ? `${isReceived ? "+" : operation.type === "payment" ? "-" : ""}${amountText} ${getOperationAsset(operation)}`
     : "—"}
 </Text>
               </View>
@@ -837,11 +891,25 @@ if (firstOp.type === "payment") {
     isReceived = true;
   } else if (firstOp.type === "invoke_host_function"||firstOp.type==="swap_exact_tokens_for_tokens") {
     const decodedChain = decodeDestinationChain(firstOp.parameters);
-    firstOp.destinationChain = decodedChain; // null when this call never left Stellar
+    firstOp.destinationChain = decodedChain;
 
     const fnName = getContractFunctionName(firstOp.parameters);
     firstOp.contractFunctionName = fnName;
     firstOp.contractSubtype = getInvokeHostFunctionSubtype(fnName, firstOp.asset_balance_changes, !!decodedChain);
+    const contractTransfer = decodeContractTransfer(firstOp);
+
+    if (contractTransfer) {
+      const transferToken = getTokenByContract(contractTransfer.contractAddress);
+      firstOp.transferAmount = formatRawAmount(
+        contractTransfer.amount,
+        transferToken?.decimals ?? 7,
+      ) || contractTransfer.amount;
+      firstOp.transferAsset = transferToken?.code || getBalanceChangeAsset({
+        asset_contract_id: contractTransfer.contractAddress,
+      });
+      amount = firstOp.transferAmount;
+      isReceived = contractTransfer.to === publicKey;
+    }
 
     if (firstOp.contractSubtype === "mint_forward") {
   const changes = firstOp.asset_balance_changes || [];
@@ -850,30 +918,24 @@ if (firstOp.type === "payment") {
     c => c.type === "transfer" && c.amount != null
   );
 
-  // First priority: current wallet ko receive hua transfer
   const received = transfers.find(
     c => c.to === publicKey
   );
 
-  // Second priority: current wallet se outgoing transfer
   const sent = transfers.find(
     c => c.from === publicKey
   );
 
-  // Agar wallet direct participant nahi hai,
-  // to transaction ka forwarded amount separately preserve karo.
   const forwarded = transfers.find(
     c => c.from?.startsWith("C") && c.to?.startsWith("G")
   );
 
   const matched = received || sent || forwarded;
 
-  firstOp.mintForwardAmount = matched?.amount ?? null;
-  firstOp.mintForwardAsset = matched?.asset_code || "USDC";
+  firstOp.mintForwardAmount = formatBalanceChangeAmount(matched);
+  firstOp.mintForwardAsset = getBalanceChangeAsset(matched) || "USDC";
   firstOp.mintForwardReceived = Boolean(received);
 
-  // Forwarded amount mila, lekin wallet recipient nahi hai:
-  // direction unknown rakho, galat minus sign mat lagao.
   firstOp.mintForwardDirection =
     received ? "received" :
     sent ? "sent" :
@@ -895,7 +957,6 @@ if (firstOp.type === "payment") {
     firstOp.swapFromAmount = swapData.fromAmount;
     firstOp.swapMinToAmount = swapData.minToAmount;
 
-// Actual received amount available ho to use karo
 const incomingTransfer = firstOp.asset_balance_changes?.find(
   (t) =>
     t.type === "transfer" &&
@@ -928,7 +989,8 @@ firstOp.swapToAmount =
       ) || null;
 
     if (resBal && firstOp.contractSubtype !== "mint_forward") {
-      amount = resBal.amount || "0";
+      amount = formatBalanceChangeAmount(resBal) || "0";
+      firstOp.transferAsset = getBalanceChangeAsset(resBal);
       isReceived = resBal.to === publicKey;
     }
   } else if (["change_trust"].includes(firstOp.type)) {

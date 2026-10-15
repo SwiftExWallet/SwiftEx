@@ -636,6 +636,7 @@ export default function BridgeScreen({directionEnable}) {
   const [fast, setFast] = useState(true);
   const [quote, setQuote] = useState(null);
   const [transfer, setTransfer] = useState(null);
+  const [signingInProgress, setSigningInProgress] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -1229,6 +1230,7 @@ export default function BridgeScreen({directionEnable}) {
       if (lastSigningRef.current === signingKey) return;
       lastSigningRef.current = signingKey;
       processingRef.current = true;
+      setSigningInProgress(true);
       try {
         if (request.type === 'EVM') {
           setMessage(
@@ -1249,6 +1251,7 @@ export default function BridgeScreen({directionEnable}) {
         setMessage('Signature required.');
       } finally {
         processingRef.current = false;
+        setSigningInProgress(false);
       }
     },
     [readableError, signEvm, signStellar],
@@ -1349,6 +1352,7 @@ export default function BridgeScreen({directionEnable}) {
     setFast(true);
     setQuote(null);
     setTransfer(null);
+    setSigningInProgress(false);
     setMessage('');
     setError('');
     lastSigningRef.current = null;
@@ -1817,7 +1821,7 @@ export default function BridgeScreen({directionEnable}) {
               'MINT_SIGNATURE_REQUIRED',
               'STELLAR_SIGNATURE_REQUIRED',
               'STELLAR_APPROVAL_SIGNATURE_REQUIRED',
-            ].includes(transfer.status) && (
+            ].includes(transfer.status) && !signingInProgress && (
               <TouchableOpacity
                 style={[
                   s.primaryBtn,
@@ -1826,6 +1830,23 @@ export default function BridgeScreen({directionEnable}) {
                 onPress={retrySignature}>
                 <Text style={s.primaryBtnText}>Sign / Retry</Text>
               </TouchableOpacity>
+            )}
+
+            {[
+              'APPROVAL_SIGNATURE_REQUIRED',
+              'BRIDGE_SIGNATURE_REQUIRED',
+              'BURN_SIGNATURE_REQUIRED',
+              'MINT_SIGNATURE_REQUIRED',
+              'STELLAR_SIGNATURE_REQUIRED',
+              'STELLAR_APPROVAL_SIGNATURE_REQUIRED',
+            ].includes(transfer.status) && signingInProgress && (
+              <View
+                style={[
+                  s.primaryBtn,
+                  {backgroundColor: theme.warn, marginTop: 14},
+                ]}>
+                <ActivityIndicator color="#fff" size="small" />
+              </View>
             )}
 
             {['COMPLETED', 'FAILED'].includes(transfer.status) && (

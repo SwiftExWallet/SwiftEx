@@ -168,22 +168,48 @@ const AMMSwap = ({ FROM_TOKEN = null, TO_TOKEN = null }) => {
   }
 
   const myAssetBalances = React.useMemo(() => {
-    const portfolioTokens = state?.activeWalletPortFolio;
+    const portfolio = state?.activeWalletPortFolio;
+    const portfolioTokens = Array.isArray(portfolio) ? portfolio : portfolio?.tokens;
     const map = new Map();
     if (!Array.isArray(portfolioTokens)) return map;
 
     portfolioTokens
       .filter((t) => t.chain === 'Stellar' || t.chain === 'STR')
       .forEach((t) => {
-        const key = t.contractAddress === 'Native' ? 'native' : `${t.symbol}:${t.contractAddress}`;
-        map.set(key, parseFloat(t.balance) || 0);
-        if (t.contract) {
-          map.set(`${t.symbol}:${t.contract}`, parseFloat(t.balance) || 0);
+        const code = t.symbol || t.code;
+        const balance = parseFloat(t.balance) || 0;
+        const identifiers = [t.contractAddress, t.contract, t.issuer]
+          .filter(Boolean)
+          .map((value) => String(value).toLowerCase());
+
+        if (t.contractAddress === 'Native' || code === 'XLM') {
+          map.set('native', balance);
+          map.set('xlm:native', balance);
         }
+        identifiers.forEach((identifier) => {
+          map.set(`${code}:${identifier}`, balance);
+        });
       });
 
     return map;
   }, [state?.activeWalletPortFolio]);
+
+  const getHeldBalance = (token) => {
+    const code = token?.code || token?.symbol;
+    const candidates = [];
+    if (code === 'XLM' || token?.issuer == null && !token?.contract) {
+      candidates.push('native', 'xlm:native');
+    }
+    [token?.contract, token?.issuer]
+      .filter(Boolean)
+      .forEach((identifier) => candidates.push(`${code}:${String(identifier).toLowerCase()}`));
+
+    for (const key of candidates) {
+      const balance = myAssetBalances.get(key);
+      if (balance !== undefined) return balance;
+    }
+    return undefined;
+  };
 
   const refreshFromBalance = async () => {
     if (refreshingFromBal) return;
@@ -879,8 +905,7 @@ const AMMSwap = ({ FROM_TOKEN = null, TO_TOKEN = null }) => {
 
 
   const renderTokenItem = ({ item }) => {
-    const key = item.contract ? `${item.code}:${item.contract}` : item.issuer ? `${item.code}:${item.issuer}` : 'native';
-    const heldBalance = myAssetBalances.get(key);
+    const heldBalance = getHeldBalance(item);
 
     return (
       <TouchableOpacity
@@ -1347,10 +1372,8 @@ const AMMSwap = ({ FROM_TOKEN = null, TO_TOKEN = null }) => {
     }
 
     return list.slice().sort((a, b) => {
-      const keyA = a.contract ? `${a.code}:${a.contract}` : a.issuer ? `${a.code}:${a.issuer}` : 'native';
-      const keyB = b.contract ? `${b.code}:${b.contract}` : b.issuer ? `${b.code}:${b.issuer}` : 'native';
-      const balA = myAssetBalances.get(keyA) || 0;
-      const balB = myAssetBalances.get(keyB) || 0;
+      const balA = getHeldBalance(a) || 0;
+      const balB = getHeldBalance(b) || 0;
       return balB - balA;
     });
   };
