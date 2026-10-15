@@ -117,7 +117,7 @@ class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJav
                 }
 
                 val sourceKeyPair = KeyPair.fromSecretSeed(secretKey)
-                val network = Network.PUBLIC
+                val network = Network.TESTNET
                 val envelope = Transaction.fromEnvelopeXdr(
                     transactionXDR,
                     network

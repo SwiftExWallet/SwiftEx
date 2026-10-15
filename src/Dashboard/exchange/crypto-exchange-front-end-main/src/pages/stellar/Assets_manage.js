@@ -15,8 +15,20 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 import ClaimableBalanceChecker from "./ClaimableBalanceChecker";
 import stellarTokens from "./Tokens.json";
 import { colors } from "../../../../../../Screens/ThemeColorsConfig";
-import { CHAINS, GetStellarTokenList } from "../../../../../../utilities/TokenUtils";
+import { GetStellarTokenList } from "../../../../../../utilities/TokenUtils";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const isContractId = (s) => typeof s === 'string' && s.length === 56 && s.startsWith('C');
+const toDisplay = (raw, decimals = 7) => {
+    const s = String(raw).padStart(decimals + 1, '0');
+    return `${s.slice(0, -decimals)}.${s.slice(-decimals)}`;
+};
+const fetchExpertBalances = async (address) => {
+    const res = await fetch(`${STELLAR_URL.BASEROUTE}/account/${address}/value`);
+    if (!res.ok) throw new Error(`Stellar Expert ${res.status}`);
+    const json = await res.json();
+    return Array.isArray(json.balances) ? json.balances : [];
+};
 
 const Assets_manage = ({ route }) => {
     const FOCUSED = useIsFocused();
@@ -40,28 +52,17 @@ const Assets_manage = ({ route }) => {
             "selling_liabilities": "0.0000000",
         },
     ]);
-    const [TokenList, setTokenList] = useState(stellarTokens.assets);
     const state = useSelector((state) => state);
 
     const get_stellar = async () => {
         try {
-            const response = await fetch(CHAINS["STR"].supportedTokenList);
-            if (!response.ok) {
-                throw new Error(`Token list fetch failed: ${response.status}`);
-            }
-            const tokens = await response.json();
-            const list = tokens?.assets || [];
-            setTokenList(list);
             setLoading_assets_bal(true);
-            ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC;
             const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
             const account = await server.loadAccount(state.STELLAR_PUBLICK_KEY);
-            const tokenList = (supportedAssetsList.length > 0 ? supportedAssetsList : TokenList);
-            const updatedAssets = account.balances.map((bal) => {
+            const tokenList = supportedAssetsList.length > 0 ? supportedAssetsList : stellarTokens.assets;
+            const classicAssets = account.balances.map((bal) => {
                 const match = tokenList.find(
-                    (res) =>
-                        res.code === bal.asset_code &&
-                        (res.issuer === bal.asset_issuer || !res.issuer)
+                    (res) => res.code === bal.asset_code && (res.issuer === bal.asset_issuer || !res.issuer)
                 );
                 return {
                     ...bal,
@@ -70,14 +71,34 @@ const Assets_manage = ({ route }) => {
                     org: match?.org || "Unknown",
                 };
             });
-            setassets(updatedAssets);
-            dispatch_({
-                type: SET_ASSET_DATA,
-                payload: updatedAssets,
-            });
+
+            let contractAssets = [];
+            try {
+                const expertBalances = await fetchExpertBalances(state.STELLAR_PUBLICK_KEY);
+                contractAssets = expertBalances
+                    .filter((b) => isContractId(b.asset))
+                    .map((b) => {
+                        const meta = tokenList.find((t) => t.contract === b.asset);
+                        return {
+                            asset_type: "contract",
+                            asset_code: meta?.code || `${b.asset.slice(0, 4)}...${b.asset.slice(-4)}`,
+                            asset_issuer: b.asset,
+                            contract: b.asset,
+                            balance: toDisplay(b.balance, meta?.decimals ?? 7),
+                            icon: meta?.icon || null,
+                            name: meta?.name || meta?.code || "Unknown",
+                            org: meta?.org || "Unknown",
+                        };
+                    });
+            } catch (e) {
+                console.error("Expert contract balances failed", e);
+            }
+            const finalAssets = [...classicAssets, ...contractAssets];
+            setassets(finalAssets);
+            dispatch_({ type: SET_ASSET_DATA, payload: finalAssets });
             setLoading_assets_bal(false);
         } catch (error) {
-            console.log("Error in get_stellar", error);
+            console.error("Error in get_stellar", error);
             setLoading_assets_bal(false);
         }
     };
@@ -86,11 +107,11 @@ const Assets_manage = ({ route }) => {
         setLoading(domainName)
         try {
             const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
-            ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC
+            ENVIRONMENT === 'TESTNET'? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC
             const account = await server.loadAccount(state.STELLAR_PUBLICK_KEY);
             const transaction = new StellarSdk.TransactionBuilder(account, {
                 fee: StellarSdk.BASE_FEE,
-                networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
+                networkPassphrase: ENVIRONMENT === 'TESTNET'? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC,
             })
                 .addOperation(
                     StellarSdk.Operation.changeTrust({
@@ -127,11 +148,11 @@ const Assets_manage = ({ route }) => {
         setLoading(domainName)
         try {
             const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
-            ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC
+            ENVIRONMENT === 'TESTNET'? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC
             const account = await server.loadAccount(state.STELLAR_PUBLICK_KEY);
             const transaction = new StellarSdk.TransactionBuilder(account, {
                 fee: StellarSdk.BASE_FEE,
-                networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
+                networkPassphrase: ENVIRONMENT === 'TESTNET'? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC,
             })
                 .addOperation(
                     StellarSdk.Operation.changeTrust({
@@ -165,18 +186,9 @@ const Assets_manage = ({ route }) => {
         }
     };
 
-    const refreshAccountBalances = () => {
-        const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
-        server.loadAccount(state.STELLAR_PUBLICK_KEY)
-            .then(account => {
-                setLoading(null)
-                get_stellar()
-            })
-            .catch(error => {
-                console.log('Error loading account:', error);
-                setLoading(null)
-                get_stellar()
-            });
+    const refreshAccountBalances = async () => {
+        setLoading(null);
+        await get_stellar();
     };
 
     const handleFetchIssuerAssets = async () => {
@@ -270,7 +282,7 @@ const Assets_manage = ({ route }) => {
 
     const theme = state.THEME.THEME ? colors.dark : colors.light;
 
-    const fillteredAssets = (supportedAssetsList.length > 0 ? supportedAssetsList : TokenList)
+    const fillteredAssets = (supportedAssetsList.length > 0 ? supportedAssetsList : stellarTokens?.assets)
         ?.slice(1)
         ?.filter((item) => {
             if (!searchQuery.trim()) return true;
@@ -304,37 +316,20 @@ const Assets_manage = ({ route }) => {
             <View style={[styles.main_con, { backgroundColor: theme.bg }]}>
                 <View style={styles.assetCon}>
                      <FlatList
-                        data={assets.filter(item =>
-                            item.asset_type === "native" ||
-                            parseFloat(item.balance) > 0
-                        )}
+                        data={assets}
                         keyExtractor={(item, index) => index.toString()}
                         style={{ marginBottom: hp(5) }}
                         renderItem={({ item, index }) => {
                         return (
-                            <TouchableOpacity key={index} style={[styles.assetCard, { backgroundColor: theme.cardBg }]}
-                                disabled={item.asset_type === "liquidity_pool_shares"}
-                                onPress={() => {
-                                    if (item.asset_type === "liquidity_pool_shares") return;
-                                    navigation.navigate("send_recive", { bala: item.balance, assetIssuer: item.asset_type === "native" ? "native" : item?.asset_issuer, asset_name: item.asset_type === "native" ? "native" : item.asset_code === "USDC" ? "USDC" : item.asset_code })
-                                }}>
+                            <TouchableOpacity key={index} style={[styles.assetCard, { backgroundColor: theme.cardBg }]} onPress={() => { navigation.navigate("send_recive", { bala: item.balance, assetIssuer: item.asset_type === "native" ? "native" : item?.asset_issuer, asset_name: item.asset_type === "native" ? "native" : item.asset_code === "USDC" ? "USDC" : item.asset_code }) }}>
                                 <View style={{flexDirection: "row",alignItems:"center",justifyContent:"flex-start",width:wp(45)}}>
                                     <View style={styles.assetImgCom}>
-                                        {item.asset_type === "native" ? <Image source={{uri:TokenList[0]?.icon}} width={43} height={43}/> :
-                                        item.asset_type === "liquidity_pool_shares" ? <Text style={[styles.assetLatter,{color:theme.headingTx}]}>LP</Text> :
-                                        (item.icon == null) ? <Text style={[styles.assetLatter,{color:theme.headingTx}]}>{(item?.asset_code?.[0] ?? item?.asset_type?.[0] ?? "?").toUpperCase()}</Text> : <Image source={{uri:item.icon}} width={43} height={43}/>}
+                                        {item.asset_type === "native" ? <Image source={{uri:stellarTokens?.assets[0]?.icon}} width={43} height={43}/> :
+                                        item.icon===null ? <Text style={[styles.assetLatter,{color:theme.headingTx}]}>{item.asset_type === "native" ? "L" : item?.asset_code[0]?.toUpperCase() }</Text> : <Image source={{uri:item.icon}} width={43} height={43}/>}
                                     </View>
                                     <View style={{ flexDirection: "column",marginLeft:10 }}>
-                                        <Text style={[styles.assetName, { color: theme.headingTx }]}>
-                                            {item.asset_type === "native" ? "XLM" :
-                                            item.asset_type === "liquidity_pool_shares" ? "Liquidity Pool" :
-                                            (item.asset_code || item.asset_type)}
-                                        </Text>
-                                        <Text style={[styles.domainName, { color: theme.inactiveTx }]} numberOfLines={1}>
-                                            {item.asset_type === "liquidity_pool_shares"
-                                                ? (item?.liquidity_pool_id ? item.liquidity_pool_id.slice(0,6) + "...." + item.liquidity_pool_id.slice(-6) : "Pool")
-                                                : item?.asset_issuer ? item?.asset_issuer?.slice(0, 3) + "...." + item?.asset_issuer?.slice(-3) : "Native Lumens"}
-                                        </Text>
+                                        <Text style={[styles.assetName, { color: theme.headingTx }]}>{item.asset_type === "native" ? "XLM" : item.asset_code}</Text>
+                                        <Text style={[styles.domainName, { color: theme.inactiveTx }]}>{item?.asset_issuer ? item?.asset_issuer?.slice(0, 3) + "...." + item?.asset_issuer?.slice(-3) : "Native Lumens"}</Text>
                                     </View>
                                 </View>
                                 {Loading_assets_bal === true ? <ActivityIndicator color={"#4052D6"} /> : <Text style={[styles.assetValue, { color: theme.headingTx }]} numberOfLines={1}>{item.balance}</Text>}

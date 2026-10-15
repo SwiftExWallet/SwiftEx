@@ -246,16 +246,13 @@ export const proxyRequest = async (
       }
     }
 
-    const shouldSendWalletAddress =
-      url !== '/v1/wallet' && resolvedWalletAddress;
-
     const opts = {
       url,
       body,
       headers: {
         authorization: `Bearer ${deviceToken}`,
         'x-auth-device-token': deviceToken,
-        ...(shouldSendWalletAddress
+        ...(resolvedWalletAddress
           ? { 'x-wallet-address': resolvedWalletAddress }
           : {}),
       },

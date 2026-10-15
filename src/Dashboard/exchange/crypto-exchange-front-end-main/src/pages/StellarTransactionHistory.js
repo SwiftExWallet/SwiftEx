@@ -16,9 +16,143 @@ import { useNavigation } from "@react-navigation/native";
 import { authRequest, POST } from "../api";
 import LocalTxManager from "../../../../../utilities/LocalTxManager";
 import { useSelector } from "react-redux";
+import { AllbridgeCoreSdk, nodeRpcUrlsDefault } from "@allbridge/bridge-core-sdk";
 import CustomInfoProvider from "../components/CustomInfoProvider";
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
 import { configure, GetNearIntentStatus } from "../../../../../nearIntent/nearIntentUtil";
+
+import tokenList from "./stellar/Tokens.json";
+
+const tokenMap = new Map(
+  tokenList.assets
+    .filter(token => token.contract)
+    .map(token => [token.contract.toUpperCase(), token])
+);
+
+const getToken = (contractId) =>
+  tokenMap.get(contractId?.toUpperCase()) || null;
+
+const formatRawAmount = (rawAmount, decimals = 7) => {
+  if (rawAmount == null) return null;
+
+  const negative = String(rawAmount).startsWith("-");
+  const digits = String(rawAmount).replace("-", "");
+  if (!/^\d+$/.test(digits)) return null;
+
+  const padded = digits.padStart(decimals + 1, "0");
+  const split = padded.length - decimals;
+
+  const whole = padded.slice(0, split);
+  const fraction = padded.slice(split).replace(/0+$/, "");
+
+  return `${negative ? "-" : ""}${whole}${fraction ? "." + fraction : ""}`;
+};
+
+const getTokenByContract = (contractId) => {
+  if (!contractId) return null;
+
+  return tokenList.assets.find(
+    (token) =>
+      token.contract?.toUpperCase() ===
+      contractId.toUpperCase()
+  );
+};
+
+const resolveTokenCode = (contractId) => {
+  const token = getTokenByContract(contractId);
+  return token?.code || null;
+};
+
+const decodeSwapParams = (operation) => {
+  try {
+    const params = operation.parameters || [];
+
+    const decoded = params.map(p =>
+      StellarSdk.xdr.ScVal.fromXDR(
+        p.value,
+        "base64"
+      )
+    );
+
+    const functionName = decoded
+      .find(v => v.switch().name === "scvSymbol")
+      ?.sym()?.toString();
+
+    if (
+      ![
+        "swap_exact_tokens_for_tokens",
+        "swap_tokens_for_exact_tokens"
+      ].includes(functionName)
+    ) {
+      return null;
+    }
+
+    const args = decoded.slice(2);
+
+    const getInt = (v) => {
+      const type = v.switch().name;
+
+      if (type === "scvI128") {
+        const value = v.i128();
+        return (
+          (BigInt(value.hi().toString()) << 64n) +
+          BigInt(value.lo().toString())
+        ).toString();
+      }
+
+      if (type === "scvU128") {
+        const value = v.u128();
+        return (
+          (BigInt(value.hi().toString()) << 64n) +
+          BigInt(value.lo().toString())
+        ).toString();
+      }
+
+      if (type === "scvI64") return v.i64().toString();
+      if (type === "scvU64") return v.u64().toString();
+
+      return null;
+    };
+
+    const pathValue = args[2];
+
+    if (pathValue?.switch().name !== "scvVec") {
+      return null;
+    }
+
+    const path = pathValue.vec().map(v => {
+      if (v.switch().name !== "scvAddress") return null;
+
+      return StellarSdk.Address.fromScAddress(
+        v.address()
+      ).toString();
+    });
+
+    if (path.length < 2 || path.some(v => !v)) {
+      return null;
+    }
+
+    const fromToken = getToken(path[0]);
+    const toToken = getToken(path[path.length - 1]);
+
+    return {
+      functionName,
+      fromContract: path[0],
+      toContract: path[path.length - 1],
+      fromCode: fromToken?.code || null,
+      toCode: toToken?.code || null,
+      fromAmount: fromToken
+        ? formatRawAmount(getInt(args[0]), fromToken.decimals)
+        : null,
+      minToAmount: toToken
+        ? formatRawAmount(getInt(args[1]), toToken.decimals)
+        : null,
+    };
+  } catch (error) {
+    console.log("Swap decode error:", error);
+    return null;
+  }
+};
 
 const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
 const PAGE_SIZE = 10;
@@ -134,10 +268,25 @@ const UNAMBIGUOUS_BRIDGE_FUNCTIONS = ["deposit", "withdraw", "claim_balance"];
 const getInvokeHostFunctionSubtype = (fnName = "", assetBalanceChanges = [], hasDestinationChain = false) => {
   const name = (fnName || "").toLowerCase();
 
-  if (UNAMBIGUOUS_BRIDGE_FUNCTIONS.includes(name)) return "bridge";
-
-  if (name.includes("swap") || name.includes("liquidity")) {
+  if (
+    name === "swap_exact_tokens_for_tokens" ||
+    name === "swap_tokens_for_exact_tokens" ||
+    name === "swap_chained" ||
+    name.includes("swap")
+  ) {
     return hasDestinationChain ? "bridge" : "swap";
+  }
+
+  if (UNAMBIGUOUS_BRIDGE_FUNCTIONS.includes(name)) {
+    return "bridge";
+  }
+
+  if (name.includes("liquidity")) {
+    return hasDestinationChain ? "bridge" : "swap";
+  }
+
+  if (name === "mint_and_forward") {
+    return "mint_forward";
   }
 
   const changeType = assetBalanceChanges?.[0]?.type;
@@ -166,12 +315,17 @@ const getTransactionType = (operation, userPublicKey, isReceived) => {
       return "Swap Out";
     case "manage_buy_offer":
       return "Swap In";
-    case "invoke_host_function": {
+    case "invoke_host_function": 
+    case "swap_exact_tokens_for_tokens":
+    {
       const subtype = operation.contractSubtype || "bridge";
+      if (subtype === "mint_forward") {
+        return operation.mintForwardReceived ? "Received" : "Withdraw";
+      }
       if (subtype === "swap") {
-        const fromAsset = operation.swapFromCode || "Unknown";
-        const toAsset = operation.swapToCode || "Unknown";
-        return `${fromAsset} -> ${toAsset}`;
+        const fromAsset = operation.swapFromCode;
+        const toAsset = operation.swapToCode;
+        return "Swap";
       }
       if (subtype === "transfer") {
         return isReceived ? "Received" : "Sent";
@@ -222,7 +376,8 @@ const getTransactionIcon = (operation) => {
     case "path_payment_strict_send":
     case "path_payment_strict_receive":
       return "swap-vertical";
-    case "invoke_host_function": {
+    case "invoke_host_function":
+      case "swap_exact_tokens_for_tokens": {
       const subtype = operation.contractSubtype || "bridge";
       if (subtype === "swap") return "swap-horizontal";
       if (subtype === "transfer") return "cash-multiple";
@@ -270,7 +425,8 @@ const getCardTint = (operation, item, isReceived) => {
       return "success";
     case "create_claimable_balance":
       return "pro";
-    case "invoke_host_function": {
+    case "invoke_host_function":
+      case "swap_exact_tokens_for_tokens": {
       const subtype = operation.contractSubtype || "bridge";
       if (subtype === "swap") return "pro";
       if (subtype === "transfer") return isReceived ? "success" : "neutral";
@@ -382,7 +538,7 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
   const operations = item?.operations?.records || [];
   const operation =
     operations.find((op) =>
-      ["payment", "path_payment_strict_receive", "path_payment_strict_send", "invoke_host_function"].includes(op.type)
+      ["payment", "path_payment_strict_receive", "path_payment_strict_send", "invoke_host_function","swap_exact_tokens_for_tokens"].includes(op.type)
     ) || operations[0];
 
   const txType = operation.asset_balance_changes?.find((resObj) => resObj.to === userPublicKey);
@@ -390,11 +546,23 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
     operation?.to === userPublicKey ||
     operation.type === "create_account" ||
     operation.type === "change_trust" ||
-    (operation.type === "invoke_host_function" && !!txType);
+    (
+    (
+      operation.type === "invoke_host_function" ||
+      operation.type === "swap_exact_tokens_for_tokens"
+    ) &&
+    !!txType
+  );
 
-  const multiTxType = [...new Set(operations.map((op) => getTransactionType(op, userPublicKey, isReceived)))].join(" & ");
+  const mintForwardReceived = operation.contractSubtype === "mint_forward"
+    ? Boolean(operation.mintForwardReceived)
+    : isReceived;
+
+  const multiTxType = [...new Set(operations.map((op) => getTransactionType(op, userPublicKey, mintForwardReceived)))].join(" & ");
   const transactionType = multiTxType;
 
+  const [showTx, setshowTx] = useState(false);
+  const [showTxHash, setshowTxHash] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const iconName = getTransactionIcon(operation);
@@ -402,13 +570,23 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
   const tint = colors.tint[tintKey];
 
   let amountText = "0";
-  if (operation.type === "create_claimable_balance") {
+  if (operation.contractSubtype === "mint_forward") {
+  amountText = operation.mintForwardAmount ?? "—";
+}
+ else if (operation.type === "create_claimable_balance") {
     amountText = operation.amount;
   } else if (operation.type === "payment") {
     amountText = operation.amount;
   } else if (operation.type === "create_account") {
     amountText = operation.starting_balance;
   } else if (operation.type === "invoke_host_function") {
+    const transfers =
+      operation.asset_balance_changes?.filter(
+        (resObj) => resObj.type === "transfer" && (resObj.to === userPublicKey || resObj.from === userPublicKey)
+      ) || [];
+    amountText = transfers.length > 1 ? transfers[1].amount : transfers[0]?.amount || "0";
+  }
+ else if (operation.type === "swap_exact_tokens_for_tokens") {
     const transfers =
       operation.asset_balance_changes?.filter(
         (resObj) => resObj.type === "transfer" && (resObj.to === userPublicKey || resObj.from === userPublicKey)
@@ -424,7 +602,12 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
     operation.type === "path_payment_strict_send" || operation.type === "path_payment_strict_receive";
   const isWalletTx = operation.type === "wallet_tx";
   const isBridgeInvoke = operation.type === "invoke_host_function" && (operation.contractSubtype || "bridge") === "bridge";
-  const isSwapInvoke = operation.type === "invoke_host_function" && operation.contractSubtype === "swap";
+  const isSwapInvoke =
+  (
+    operation.type === "invoke_host_function" ||
+    operation.type === "swap_exact_tokens_for_tokens"
+  ) &&
+  operation.contractSubtype === "swap";
   const isBridgeLike = isWalletTx && operation.txType !== "nearIntent";
   const isNearIntentPayment = isNearIntentWithdrawal(operation);
   const isDualAmount = isPathPayment || isSwapInvoke || isBridgeInvoke || isNearIntentPayment;
@@ -440,14 +623,14 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
     amountFrom = operation.source_amount;
     amountTo = operation.amount;
   } else if (isSwapInvoke) {
-    assetFrom = operation.swapFromCode || "Unknown";
-    assetTo = operation.swapToCode || "Unknown";
+    assetFrom = operation.swapFromCode || "Token";
+    assetTo = operation.swapToCode || "Token";
+    amountFrom = operation.swapFromAmount;
     const transfers = operation.asset_balance_changes || [];
-    const outLeg = transfers.find((t) => t.from === userPublicKey);
-    const inLeg = transfers.find((t) => t.to === userPublicKey);
-    amountFrom = outLeg?.amount || operation.amount;
-    amountTo = inLeg && inLeg !== outLeg ? inLeg.amount : null;
-  } else if (isBridgeInvoke) {
+
+    const inLeg = transfers.find((t) =>t.type === "transfer" &&t.to === userPublicKey);
+    amountTo =operation.swapToAmount ??inLeg?.amount ??operation.swapMinToAmount ??null;
+} else if (isBridgeInvoke) {
     const transfers = operation.asset_balance_changes || [];
     const outLeg = transfers.find((t) => t.from === userPublicKey);
     const inLeg = transfers.find((t) => t.to === userPublicKey);
@@ -459,7 +642,7 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
   }
 
   const providerLabel =
-    operation.type === "invoke_host_function"
+    operation.type === "invoke_host_function"||operation.type==="swap_exact_tokens_for_tokens"
       ? getContractProvider(operation.contractFunctionName, operation.contractSubtype)
       : isNearIntentPayment
       ? "NEAR Intent"
@@ -482,7 +665,15 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
       Linking.openURL(explorerUrl);
       return;
     }
-    Linking.openURL(`${STELLAR_URL.EXPERT_URL}/tx/${txId}`);
+    if (txType === "invoke_host_function"||txType==="swap_exact_tokens_for_tokens" && !received) {
+      setshowTxHash([{ chain: "SRB", hash: txId }]);
+      setshowTx(true);
+    } else if (txType === "wallet_tx") {
+      setshowTxHash([{ chain: operation.chain, hash: operation.hash }]);
+      setshowTx(true);
+    } else {
+      Linking.openURL(`${STELLAR_URL.EXPERT_URL}/tx/${txId}`);
+    }
   };
 
   const statusLabel = () => {
@@ -557,15 +748,26 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
           ) : (
             !isDualAmount && (
               <View style={styles.transactionHeader}>
-                <Text style={[styles.amount, { color: colors.primaryText }]}>
-                  {isReceived ||
-                  ["manage_sell_offer", "manage_buy_offer", "sellCry", "buyCry", "create_claimable_balance"].includes(
-                    operation.type
-                  )
-                    ? ""
-                    : "-"}
-                  {operation.type !== "change_trust" && amountText}
-                </Text>
+                <Text
+  style={[
+    styles.amount,
+    {
+      color: operation.mintForwardDirection === "received"
+        ? colors.tint.success.fg
+        : colors.primaryText
+    }
+  ]}
+>
+  {operation.mintForwardAmount != null
+    ? `${
+        operation.mintForwardDirection === "received"
+          ? "+"
+          : operation.mintForwardDirection === "sent"
+          ? "-"
+          : ""
+      }${operation.mintForwardAmount} ${operation.mintForwardAsset || ""}`
+    : "—"}
+</Text>
               </View>
             )
           )}
@@ -576,8 +778,10 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
                 <View>
                   <Text style={[styles.type, { color: colors.primaryText, maxWidth: 140 }]}>{transactionType}</Text>
                   <Text style={[styles.date, { color: colors.secondaryText }]}>{item.date}</Text>
-                   {providerLabel==="Aquarius" && (
+                   {providerLabel==="Aquarius" ? (
                     <Text style={[styles.providerLabel, { color: colors.tint.pro.fg }]}>via {providerLabel}</Text>
+                  ):(
+                    <Text style={[styles.providerLabel, { color: colors.tint.pro.fg }]}>via SoroSwap</Text>
                   )}
                 </View>
                 <View>
@@ -625,14 +829,13 @@ const processStellarTx = async (tx, publicKey) => {
   const firstOp = operations.records[0];
   let amount = "0";
   let isReceived = false;
-
-  if (firstOp.type === "payment") {
+if (firstOp.type === "payment") {
     amount = firstOp.amount;
     isReceived = firstOp.to === publicKey;
   } else if (firstOp.type === "create_account") {
     amount = firstOp.starting_balance;
     isReceived = true;
-  } else if (firstOp.type === "invoke_host_function") {
+  } else if (firstOp.type === "invoke_host_function"||firstOp.type==="swap_exact_tokens_for_tokens") {
     const decodedChain = decodeDestinationChain(firstOp.parameters);
     firstOp.destinationChain = decodedChain; // null when this call never left Stellar
 
@@ -640,20 +843,91 @@ const processStellarTx = async (tx, publicKey) => {
     firstOp.contractFunctionName = fnName;
     firstOp.contractSubtype = getInvokeHostFunctionSubtype(fnName, firstOp.asset_balance_changes, !!decodedChain);
 
+    if (firstOp.contractSubtype === "mint_forward") {
+  const changes = firstOp.asset_balance_changes || [];
+
+  const transfers = changes.filter(
+    c => c.type === "transfer" && c.amount != null
+  );
+
+  // First priority: current wallet ko receive hua transfer
+  const received = transfers.find(
+    c => c.to === publicKey
+  );
+
+  // Second priority: current wallet se outgoing transfer
+  const sent = transfers.find(
+    c => c.from === publicKey
+  );
+
+  // Agar wallet direct participant nahi hai,
+  // to transaction ka forwarded amount separately preserve karo.
+  const forwarded = transfers.find(
+    c => c.from?.startsWith("C") && c.to?.startsWith("G")
+  );
+
+  const matched = received || sent || forwarded;
+
+  firstOp.mintForwardAmount = matched?.amount ?? null;
+  firstOp.mintForwardAsset = matched?.asset_code || "USDC";
+  firstOp.mintForwardReceived = Boolean(received);
+
+  // Forwarded amount mila, lekin wallet recipient nahi hai:
+  // direction unknown rakho, galat minus sign mat lagao.
+  firstOp.mintForwardDirection =
+    received ? "received" :
+    sent ? "sent" :
+    matched ? "forwarded" : "unknown";
+
+  amount = firstOp.mintForwardAmount ?? "0";
+  isReceived = Boolean(received);
+}
+
+
     if (firstOp.contractSubtype === "swap") {
-      const legs = firstOp.asset_balance_changes || [];
-      const outLeg = legs.find((l) => l.from === publicKey);
-      const inLeg = legs.find((l) => l.to === publicKey && l !== outLeg);
-      firstOp.swapFromCode = outLeg ? (outLeg.asset_type === "native" ? "XLM" : outLeg.asset_code || "Unknown") : "Unknown";
-      firstOp.swapToCode = inLeg ? (inLeg.asset_type === "native" ? "XLM" : inLeg.asset_code || "Unknown") : "Unknown";
-    }
+  const swapData = decodeSwapParams(firstOp);
+
+  if (swapData) {
+    firstOp.swapFromCode = swapData.fromCode;
+    firstOp.swapToCode = swapData.toCode;
+    firstOp.swapFromContract = swapData.fromContract;
+    firstOp.swapToContract = swapData.toContract;
+    firstOp.swapFromAmount = swapData.fromAmount;
+    firstOp.swapMinToAmount = swapData.minToAmount;
+
+// Actual received amount available ho to use karo
+const incomingTransfer = firstOp.asset_balance_changes?.find(
+  (t) =>
+    t.type === "transfer" &&
+    t.to === publicKey &&
+    (
+      !swapData.toContract ||
+      t.asset_contract_id === swapData.toContract ||
+      t.contract_id === swapData.toContract
+    )
+);
+
+firstOp.swapToAmount =
+  incomingTransfer?.amount ?? null;
+  } else {
+    const legs = firstOp.asset_balance_changes || [];
+
+    const outLeg = legs.find(l => l.from === publicKey);
+    const inLeg = legs.find(l => l.to === publicKey);
+
+    firstOp.swapFromCode = outLeg?.asset_code || null;
+    firstOp.swapToCode = inLeg?.asset_code || null;
+    firstOp.swapFromAmount = outLeg?.amount || null;
+    firstOp.swapToAmount = inLeg?.amount || null;
+  }
+}
 
     const resBal =
       firstOp.asset_balance_changes?.find(
         (resObj) => (resObj.to === publicKey || resObj.from === publicKey) && resObj.type === "transfer"
       ) || null;
 
-    if (resBal) {
+    if (resBal && firstOp.contractSubtype !== "mint_forward") {
       amount = resBal.amount || "0";
       isReceived = resBal.to === publicKey;
     }
@@ -700,7 +974,51 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
     allTransactionsRef.current = allTransactions;
   }, [allTransactions]);
 
-  const refreshSingleTx = async () => ({ status: "pending", statusColor: "#eec14fff" });
+  const refreshSingleTx = async (chainSymbol, txHash) => {
+    try {
+      const sdk = new AllbridgeCoreSdk(nodeRpcUrlsDefault);
+      const matchedTx = await sdk.getTransferStatus(chainSymbol, txHash);
+
+      let updatedStatus = { chain: chainSymbol, hash: txHash, status: "pending", statusColor: "#eec14fff" };
+
+      if (matchedTx.isSuspended) {
+        updatedStatus = { chain: chainSymbol, hash: txHash, status: "failed", statusColor: "#de2727ff" };
+      } else if (matchedTx.receive?.txId) {
+        const confirmed = matchedTx.receive.confirmations >= (matchedTx.receive.confirmationsNeeded || 0);
+        updatedStatus = {
+          chain: chainSymbol,
+          hash: txHash,
+          status: confirmed ? "completed" : "pending",
+          statusColor: confirmed ? "#09b317ff" : "#eec14fff",
+        };
+      } else if (matchedTx.send?.txId) {
+        updatedStatus = { chain: chainSymbol, hash: txHash, status: "processing", statusColor: "#eec14fff" };
+      }
+
+      await LocalTxManager.updateTxStatus(state?.wallet?.address, updatedStatus);
+
+      const updateTransactions = (txList) =>
+        txList.map((tx) => {
+          if (tx.id === `wallet_tx_${txHash}` && tx.operations.records[0].chain === chainSymbol) {
+            return {
+              ...tx,
+              success: updatedStatus.status,
+              operations: {
+                records: [{ ...tx.operations.records[0], status: updatedStatus.status, statusColor: updatedStatus.statusColor }],
+              },
+            };
+          }
+          return tx;
+        });
+      setAllTransactions((prev) => updateTransactions(prev));
+      setDisplayedTransactions((prev) => updateTransactions(prev));
+
+      return { status: updatedStatus.status, statusColor: updatedStatus.statusColor };
+    } catch (err) {
+      console.error("error in refreshing tx:", err);
+      return { status: "pending", statusColor: "#eec14fff" };
+    }
+  };
 
   const refreshNearIntentTx = async (chainSymbol, depositAddress, depositMemo) => {
     try {
@@ -801,7 +1119,7 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
           }
           const stellarInvokeTxIds = new Set(
             processedTransactions
-              .filter((tx) => tx.operations.records[0].type === "invoke_host_function")
+              .filter((tx) => tx.operations.records[0].type === "invoke_host_function"||tx.operations.records[0].type === "swap_exact_tokens_for_tokens")
               .map((tx) => tx.operations.records[0].transaction_hash)
               .filter(Boolean)
           );
@@ -974,8 +1292,21 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
       }
 
       if (filterTab === "path") {
-        return opType === "path_payment_strict_send" || opType === "path_payment_strict_receive" || opType === "wallet_tx";
-      }
+  const op = tx.operations.records[0];
+
+  return (
+    op.type === "path_payment_strict_send" ||
+    op.type === "path_payment_strict_receive" ||
+    op.type === "wallet_tx" ||
+    (
+      (
+        op.type === "invoke_host_function" ||
+        op.type === "swap_exact_tokens_for_tokens"
+      ) &&
+      op.contractSubtype === "swap"
+    )
+  );
+}
 
       return true;
     });
@@ -1193,6 +1524,7 @@ const styles = StyleSheet.create({
   emptyContainer: { alignItems: "center", justifyContent: "center", padding: 20 },
   emptyText: { fontSize: 18, fontWeight: "bold", marginTop: 16 },
   emptySubText: { fontSize: 14, textAlign: "center", marginTop: 8, marginHorizontal: 20 },
+  allBridgeTxCon: { zIndex: 20, position: "absolute", width: "100%", maxHeight: "50%", bottom: 25 },
   tryAgainBtn: { backgroundColor: "#4052D6", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 },
   footerLoader: { paddingVertical: 20, alignItems: "center" },
   loadingText: { marginTop: 8, fontSize: 14 },

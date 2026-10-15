@@ -13,7 +13,7 @@ const CONFIG = {
   TIMEOUT: 10000,
   APIS: {
     COINGECKO: REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL,
-    STELLAR_HORIZON: STELLAR_URL.URL_INDEXER
+    STELLAR_HORIZON: STELLAR_URL.URL
   },
   TOKEN_LISTS: {
     XLM: StellarTokenList
@@ -202,6 +202,133 @@ const getStellarTokenImage = (symbol = null, issuer = null, contractAddress = nu
   return null;
 };
 
+const isContractId = (value) => typeof value === 'string' && value.length === 56 && value.startsWith('C');
+
+const toDisplay = (raw, decimals = 7) => {
+  const value = String(raw ?? '0').padStart(decimals + 1, '0');
+  return `${value.slice(0, -decimals)}.${value.slice(-decimals)}`;
+};
+
+const findTestnetStellarMeta = (tokenList, balance) => {
+  if (balance.asset_type === 'native') {
+    return tokenList.find((token) => token.code === 'XLM' || token.code === 'STR');
+  }
+
+  if (balance.asset_type === 'contract') {
+    return tokenList.find((token) => token.contract === balance.contract);
+  }
+
+  return tokenList.find(
+    (token) => token.code === balance.asset_code && (token.issuer === balance.asset_issuer || !token.issuer)
+  );
+};
+
+export const normalizeTestnetStellarAssets = ({ classicBalances = [], expertBalances = [], tokenList = [] }) => {
+  const classicAssets = classicBalances
+    .filter((balance) => balance.asset_type !== 'liquidity_pool_shares')
+    .map((balance) => {
+      const symbol = balance.asset_type === 'native' ? 'XLM' : balance.asset_code;
+      const contractAddress = balance.asset_type === 'native' ? 'Native' : balance.asset_issuer;
+      const normalizedBalance = {
+        ...balance,
+        asset_code: symbol,
+        asset_issuer: contractAddress,
+      };
+      const meta = findTestnetStellarMeta(tokenList, normalizedBalance);
+      const balanceAmount = parseNumber(balance.balance);
+
+      return {
+        chain: 'Stellar',
+        name: meta?.name || symbol || 'Unknown',
+        symbol,
+        balance: balanceAmount,
+        balanceUSD: balanceAmount,
+        decimals: 7,
+        contractAddress,
+        active: true,
+        price: balanceAmount,
+        imageUrl: meta?.icon || getStellarTokenImage(symbol, contractAddress),
+        org: meta?.org || 'Unknown',
+      };
+    });
+
+  const contractAssets = expertBalances
+    .filter((balance) => isContractId(balance.asset))
+    .map((balance) => {
+      const meta = tokenList.find((token) => token.contract === balance.asset);
+      const decimals = meta?.decimals ?? 7;
+      const balanceAmount = parseNumber(toDisplay(balance.balance, decimals), decimals);
+      const symbol = meta?.code || `${balance.asset.slice(0, 4)}...${balance.asset.slice(-4)}`;
+
+      return {
+        chain: 'Stellar',
+        name: meta?.name || meta?.code || 'Unknown',
+        symbol,
+        balance: balanceAmount,
+        balanceUSD: balanceAmount,
+        decimals,
+        contractAddress: balance.asset,
+        contract: balance.asset,
+        active: true,
+        price: balanceAmount,
+        imageUrl: meta?.icon || getStellarTokenImage(symbol, null, balance.asset),
+        org: meta?.org || 'Unknown',
+      };
+    });
+
+  return [...classicAssets, ...contractAssets];
+};
+
+const fetchExpertBalances = async (address) => {
+  const response = await fetch(`${STELLAR_URL.BASEROUTE}/account/${address}/value`);
+  if (!response.ok) throw new Error(`Stellar Expert ${response.status}`);
+  const json = await response.json();
+  return Array.isArray(json.balances) ? json.balances : [];
+};
+
+const getTestnetStellarTokens = async (walletAddress, onProgress = null, cacheKey = null) => {
+  try {
+    const server = new StellarSdk.Horizon.Server(CONFIG.APIS.STELLAR_HORIZON);
+    const account = await server.loadAccount(walletAddress);
+    const tokenList = await GetStellarTokenList();
+    let expertBalances = [];
+
+    try {
+      expertBalances = await fetchExpertBalances(walletAddress);
+    } catch (error) {
+      console.error('Expert contract balances failed', error);
+    }
+
+    const tokens = normalizeTestnetStellarAssets({
+      classicBalances: account.balances,
+      expertBalances,
+      tokenList: tokenList.length > 0 ? tokenList : StellarTokenList.assets,
+    });
+    const totalValueUSD = parseNumber(tokens.reduce((sum, token) => sum + (token.balanceUSD || 0), 0), 2);
+
+    if (onProgress) {
+      onProgress({
+        chain: 'Stellar',
+        tokens,
+        totalValueUSD,
+        isPartial: false
+      });
+    }
+
+    return { tokens, totalValueUSD };
+  } catch (error) {
+    console.error('Testnet Stellar fetch failed:', error);
+    if (cacheKey) {
+      const cached = getFromCache(cacheKey);
+      if (cached?.tokens) {
+        const stellarTokens = cached.tokens.filter(t => t.chain === 'Stellar');
+        return { tokens: stellarTokens, totalValueUSD: stellarTokens.reduce((s, t) => s + t.balanceUSD, 0) };
+      }
+    }
+    return { tokens: [], totalValueUSD: 0 };
+  }
+};
+
 const getXLMPrice = async () => {
   const cacheKey = 'xlm-usd-price';
   const cached = getCachedPrice(cacheKey);
@@ -232,22 +359,27 @@ const getEVMTokens = async (network, walletAddress, onProgress = null, cacheKey 
 
     for (const item of networkData) {
       const isNative = item.tokenAddress === null;
-      const decimals = item?.decimals ?? 18;
-      const balance = parseNumber(item.balance);
-      const price = parseNumber(parseFloat(item.priceUsd || 0), 2);
-      const balanceUSD = parseNumber(item.valueUsd);
+      const decimals = ENVIRONMENT==="TESTNET"?item.decimals:item.tokenMetadata?.decimals ?? 18;
+      const rawBalance = Number(
+        ENVIRONMENT === "TESTNET"
+          ? ethers.utils.formatUnits(item.balanceHex.toString(), decimals || 18)
+          : ethers.utils.formatUnits(item.tokenBalance, decimals || 18)
+      );
+      const balance = ENVIRONMENT==="TESTNET"?rawBalance:parseNumber(rawBalance / Math.pow(10, decimals));
+      const price = ENVIRONMENT==="TESTNET"?rawBalance:parseNumber(parseFloat(item.tokenPrices?.[0]?.value || 0), 2);
+      const balanceUSD = ENVIRONMENT==="TESTNET"?balance:parseNumber(balance * price, 2);
 
       tokens.push({
         chain: config.chain,
-        name: isNative ? config.nativeName : ENVIRONMENT==="TESTNET"?(item?.name || 'Unknown'):(item?.name || 'Unknown'),
-        symbol: isNative ? config.nativeSymbol : ENVIRONMENT==="TESTNET"?(item?.symbol || '???'):(item?.symbol || '???'),
+        name: isNative ? config.nativeName : ENVIRONMENT==="TESTNET"?(item?.name || 'Unknown'):(item.tokenMetadata?.name || 'Unknown'),
+        symbol: isNative ? config.nativeSymbol : ENVIRONMENT==="TESTNET"?(item?.symbol || '???'):(item.tokenMetadata?.symbol || '???'),
         balance,
         balanceUSD,
         decimals,
         contractAddress: isNative ? 'Native' : item.tokenAddress,
         active:ENVIRONMENT==="TESTNET"?true:isNative&&true,
         price,
-        imageUrl: isNative ? config.nativeImage : item?.logo || null,
+        imageUrl: isNative ? config.nativeImage : item.tokenMetadata?.logo || null,
       });
       totalValueUSD += balanceUSD;
     }
@@ -307,6 +439,10 @@ const getEVMTokens = async (network, walletAddress, onProgress = null, cacheKey 
 };
 
 const getStellarTokens = async (walletAddress, onProgress = null, cacheKey = null) => {
+  if (ENVIRONMENT === 'TESTNET') {
+    return getTestnetStellarTokens(walletAddress, onProgress, cacheKey);
+  }
+
   try {
     const server = new StellarSdk.Horizon.Server(CONFIG.APIS.STELLAR_HORIZON);
     const account = await server.accounts().accountId(walletAddress).call();

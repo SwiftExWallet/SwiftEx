@@ -29,7 +29,7 @@ import Svg,
   Stop,
   Path
 } from "react-native-svg";
-import { STELLAR_URL } from "../../../../constants";
+import { ENVIRONMENT, STELLAR_URL } from "../../../../constants";
 import PnlOverView from "../../../../reusables/PnlOverView";
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
 import Clipboard from "@react-native-clipboard/clipboard";
@@ -136,7 +136,14 @@ export const HomeView = () => {
     } catch (e) { } finally { setOrdersLoading(false); }
   }, [stellarKey]);
   useEffect(() => { if (focused) fetchOrders(); }, [focused, fetchOrders]);
-  const nav = (i) => { [() => navigation.navigate("newOffer_modal"), () => navigation.navigate("classic", { Asset_type: "ETH" }), () => navigation.navigate("ExportUSDC", { Asset_type: "ETH" })][i]?.(); };
+  const nav = (i) => { [() => navigation.navigate("newOffer_modal"), () =>
+      navigation.navigate("Bridge", {
+        tabs: ENVIRONMENT==="TESTNET"?["depositCCTP"]:["deposit", "depositCCTP"],
+        title: "Bridge",
+      }), () => navigation.navigate("Bridge", {
+        tabs: ENVIRONMENT==="TESTNET"?["withdrawCCTP"]:["withdraw", "withdrawCCTP"],
+        title: "Bridge",
+      })][i]?.(); };
   const toolNav = (i) => { [() => navigation.navigate("Assets_manage"), () => navigation.navigate("payout"), () => navigation.navigate("StellarOffers"), () => navigation.navigate("StellarTransactions"), () => navigation.navigate("WalletNetworkSelection", { selectionType: "importForSetupedApp", backScreenName: "ExchangeHome" }),][i]?.(); };
 
   const usdcBal = state?.assetData?.find(b => b.asset_code === "USDC")?.balance || "0.00";

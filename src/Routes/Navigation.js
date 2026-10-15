@@ -55,6 +55,7 @@ import { WalletNetworkSelection } from "../Dashboard/ImportWalletModule/WalletNe
 import RampProvider from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/RampProvider";
 import BanxaRampProvider from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/BanxaRampProvider";
 import AppStatus from "../Screens/AppChecks/AppStatus";
+import BridgeTabScreen from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/Bridgetabscreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -386,6 +387,14 @@ const AuthStack = () => {
       <Stack.Screen
         name="AppStatus"
         component={AppStatus}
+        options={{
+          headerShown:false
+        }}
+      />
+
+      <Stack.Screen
+        name="Bridge"
+        component={BridgeTabScreen}
         options={{
           headerShown:false
         }}
