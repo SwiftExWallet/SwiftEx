@@ -9,7 +9,8 @@ import CommonCrypto
 @objc(StorageModule)
 class StorageModule: NSObject {
     private let serviceName   = "com.appSwiftEx.appStorage"
-    private let serviceNameV2 = "com.appSwiftEx.appStorage.v2"
+    private let serviceNameV2 = "com.appSwiftEx.appStorage.v3"
+    private let legacySecureServiceV2 = "com.appSwiftEx.appStorage.v2"
     private let migrationKey  = "swiftex_h4_migrated_v1"
     private let backupViewedAtKey = "lastWalletBackupViewedAt"
     private let pinRecoveryService = "com.appSwiftEx.pinRecovery.v1"
@@ -247,8 +248,22 @@ class StorageModule: NSObject {
                 return
             }
 
-            let legacyWallets = try? self.getFromKeychain(key: "appAllWallet",service: self.serviceName)
-            let legacyActive  = try? self.getFromKeychain(key: "activeUserWallet", service: self.serviceName)
+            let oldSecureWallets = try? self.getFromKeychain(
+                key: "appAllWallet",
+                service: self.legacySecureServiceV2
+            )
+            let oldSecureActive = try? self.getFromKeychain(
+                key: "activeUserWallet",
+                service: self.legacySecureServiceV2
+            )
+            let legacyWallets = oldSecureWallets ?? (try? self.getFromKeychain(
+                key: "appAllWallet",
+                service: self.serviceName
+            ))
+            let legacyActive = oldSecureActive ?? (try? self.getFromKeychain(
+                key: "activeUserWallet",
+                service: self.serviceName
+            ))
 
             if legacyWallets == nil && legacyActive == nil {
                 try? self.saveToKeychainSecure(key: self.migrationKey, value: "1")
@@ -264,6 +279,8 @@ class StorageModule: NSObject {
                 try self.saveToKeychainSecure(key: self.migrationKey, value: "1")
                 try? self.deleteFromKeychain(key: "appAllWallet",     service: self.serviceName)
                 try? self.deleteFromKeychain(key: "activeUserWallet", service: self.serviceName)
+                try? self.deleteFromKeychain(key: "appAllWallet",     service: self.legacySecureServiceV2)
+                try? self.deleteFromKeychain(key: "activeUserWallet", service: self.legacySecureServiceV2)
 
                 DispatchQueue.main.async {
                     resolve(["success": true, "status": "migrated"])
@@ -281,22 +298,12 @@ class StorageModule: NSObject {
 
         try? deleteFromKeychain(key: key, service: serviceNameV2)
 
-        var error: Unmanaged<CFError>?
-        guard let access = SecAccessControlCreateWithFlags(
-            kCFAllocatorDefault,
-            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            .biometryCurrentSet,
-            &error
-        ) else {
-            throw SecureStorageError.accessControlError
-        }
-
         let query: [String: Any] = [
             kSecClass           as String: kSecClassGenericPassword,
             kSecAttrAccount     as String: key,
             kSecAttrService     as String: serviceNameV2,
             kSecValueData       as String: data,
-            kSecAttrAccessControl as String: access,
+            kSecAttrAccessible  as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
 
         let status = SecItemAdd(query as CFDictionary, nil)

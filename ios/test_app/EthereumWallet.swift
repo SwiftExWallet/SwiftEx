@@ -81,7 +81,7 @@ enum WalletError: Error, LocalizedError {
 
 @objc(EthereumWallet)
 class EthereumWallet: NSObject {
-    private let serviceNameV2 = "com.appSwiftEx.appStorage.v2"
+    private let serviceNameV2 = "com.appSwiftEx.appStorage.v3"
     
     @objc
     static func requiresMainQueueSetup() -> Bool {
@@ -317,22 +317,12 @@ class EthereumWallet: NSObject {
         guard let data = value.data(using: .utf8) else { throw WalletError.generationFailed }
         try? deleteFromKeychain(key: key)
 
-        var error: Unmanaged<CFError>?
-        guard let access = SecAccessControlCreateWithFlags(
-            kCFAllocatorDefault,
-            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            .biometryCurrentSet,
-            &error
-        ) else {
-            throw WalletError.generationFailed
-        }
-
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
             kSecAttrService as String: serviceNameV2,
             kSecValueData as String: data,
-            kSecAttrAccessControl as String: access,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else { throw WalletError.generationFailed }
@@ -479,4 +469,3 @@ class EthereumWallet: NSObject {
         return "S" + result
     }
 }
-
