@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { StyleSheet, View, Text, TouchableOpacity, Animated, Alert, Image, Platform, NativeModules, } from "react-native";
+import { StyleSheet, View, Text, TouchableOpacity, Animated, Alert, Image, Platform, } from "react-native";
 import darkBlue from "../../assets/darkBlue.png";
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from "react-native-responsive-screen";
 import { useDispatch } from "react-redux";
@@ -12,7 +12,7 @@ import Icon from "../icon";
 import { setPlatform } from "../components/Redux/actions/auth";
 import { colors } from "../Screens/ThemeColorsConfig";
 import { AppNavigation } from "../Screens/AppChecks/AppCheckService";
-import { AddPassCode, CheckPasscode } from "../biometrics/utils";
+import { AddPassCode, CheckPasscode, createPinRecoveryBackup } from "../biometrics/utils";
 
 const Passcode = (props) => {
   const [pin, setPin] = useState("");
@@ -33,11 +33,7 @@ const Passcode = (props) => {
       if (status === "verify") {
         if (tempPin === newPin) {
           await AddPassCode(tempPin)
-          try {
-            await NativeModules.StorageModule.createPinRecoveryBackup(tempPin);
-          } catch (recoveryError) {
-            console.warn("PIN recovery backup not created yet:", recoveryError?.message);
-          }
+          await createPinRecoveryBackup(tempPin);
           resetInput();
           setStatus("");
           AppNavigation(props)
@@ -55,6 +51,7 @@ const Passcode = (props) => {
         const user = await AsyncStorage.getItem("user");
 
         if (validPin) {
+          await createPinRecoveryBackup(newPin);
           setIsSuccess(true);
           setTimeout(() => {
             resetInput();

@@ -391,7 +391,7 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
                     putString("status", "already_migrated")
                 })
             }
-            authenticateForSecretView(promise) { performSecureStorageMigration(promise) }
+            performSecureStorageMigration(promise)
         } catch (e: Exception) {
             Log.e(TAG, "Secure storage unavailable before migration", e)
             promise.reject("SECURE_STORAGE_UNAVAILABLE", describeError(e), e)
@@ -434,6 +434,33 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
                 })
             }
 
+            authenticateForSecretView(promise) {
+                completeSecureStorageMigration(
+                    promise,
+                    legacyWallets,
+                    legacyActive,
+                    oldV2Auth,
+                    oldV2Legacy,
+                    oldV3,
+                    oldPlain,
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Migration failed; source storage preserved", e)
+            promise.reject("MIGRATION_ERROR", describeError(e), e)
+        }
+    }
+
+    private fun completeSecureStorageMigration(
+        promise: Promise,
+        legacyWallets: String?,
+        legacyActive: String?,
+        oldV2Auth: android.content.SharedPreferences?,
+        oldV2Legacy: android.content.SharedPreferences?,
+        oldV3: android.content.SharedPreferences?,
+        oldPlain: android.content.SharedPreferences?,
+    ) {
+        try {
             if (runtimeStoreCorrupt) {
                 resetRuntimeStoreFromVerifiedLegacyData()
             }

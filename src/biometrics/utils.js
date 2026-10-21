@@ -5,6 +5,17 @@ import { POSTFIX, SALTS } from "../Dashboard/constants";
 
 let recoveryPin = null;
 
+export async function createPinRecoveryBackup(pin) {
+    try {
+        if (!NativeModules.StorageModule?.createPinRecoveryBackup) return false;
+        await NativeModules.StorageModule.createPinRecoveryBackup(pin);
+        return true;
+    } catch (error) {
+        console.warn("PIN recovery backup not created yet:", error?.message);
+        return false;
+    }
+}
+
 export async function AddPassCode(passcode) {
     const getSalt = bcrypt.genSaltSync(SALTS);
     const encryptData = bcrypt.hashSync(passcode + POSTFIX, getSalt);

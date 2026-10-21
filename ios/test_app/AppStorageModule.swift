@@ -228,18 +228,12 @@ class StorageModule: NSObject {
     @objc
     func migrateToSecureStorage(_ resolve: @escaping RCTPromiseResolveBlock,
               rejecter reject: @escaping RCTPromiseRejectBlock) {
-        self.authenticateForSecretView { authResult in
-            do {
-                try authResult.get()
-                self.performSecureStorageMigration(resolve: resolve, reject: reject)
-            } catch {
-                reject(self.storageAuthCode(error), error.localizedDescription, error)
-            }
-        }
+        self.performSecureStorageMigration(resolve: resolve, reject: reject, isAuthenticated: false)
     }
 
     private func performSecureStorageMigration(resolve: @escaping RCTPromiseResolveBlock,
-                                               reject: @escaping RCTPromiseRejectBlock) {
+                                               reject: @escaping RCTPromiseRejectBlock,
+                                               isAuthenticated: Bool) {
         DispatchQueue.global(qos: .userInitiated).async {
             if (try? self.getFromKeychain(key: self.migrationKey, service: self.serviceNameV2)) != nil {
                 DispatchQueue.main.async {
@@ -266,9 +260,33 @@ class StorageModule: NSObject {
             ))
 
             if legacyWallets == nil && legacyActive == nil {
-                try? self.saveToKeychainSecure(key: self.migrationKey, value: "1")
+                do {
+                    try self.saveToKeychainSecure(key: self.migrationKey, value: "1")
+                    DispatchQueue.main.async {
+                        resolve(["success": true, "status": "fresh_install"])
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        reject("MIGRATION_ERROR", error.localizedDescription, error)
+                    }
+                }
+                return
+            }
+
+            guard isAuthenticated else {
                 DispatchQueue.main.async {
-                    resolve(["success": true, "status": "fresh_install"])
+                    self.authenticateForSecretView { authResult in
+                        do {
+                            try authResult.get()
+                            self.performSecureStorageMigration(
+                                resolve: resolve,
+                                reject: reject,
+                                isAuthenticated: true
+                            )
+                        } catch {
+                            reject(self.storageAuthCode(error), error.localizedDescription, error)
+                        }
+                    }
                 }
                 return
             }
