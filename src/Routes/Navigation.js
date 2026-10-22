@@ -56,8 +56,20 @@ import RampProvider from "../Dashboard/exchange/crypto-exchange-front-end-main/s
 import BanxaRampProvider from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/BanxaRampProvider";
 import AppStatus from "../Screens/AppChecks/AppStatus";
 import BridgeTabScreen from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/Bridgetabscreen";
+import WalletRecoveryModule from "../Dashboard/Recovery/WalletRecoveryModule";
 
 const Stack = createNativeStackNavigator();
+
+const WalletRecoveryRoute = props => {
+  const stellarAddress = useSelector(state => state?.STELLAR_PUBLICK_KEY || state?.wallet?.stellarPublicKey || '');
+  return (
+    <WalletRecoveryModule
+      {...props}
+      walletAddress={props.route?.params?.walletAddress || stellarAddress}
+      onExit={() => props.navigation.goBack()}
+    />
+  );
+};
 
 const AuthStack = () => {
   const [webUri, setWebUri] = useState(null);
@@ -398,6 +410,12 @@ const AuthStack = () => {
         options={{
           headerShown:false
         }}
+      />
+
+      <Stack.Screen
+        name="WalletRecovery"
+        component={WalletRecoveryRoute}
+        options={{ headerShown: false }}
       />
 
       <Stack.Screen

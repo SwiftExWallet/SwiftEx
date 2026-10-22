@@ -184,6 +184,21 @@ const MyWallet = (props) => {
         </View>
       </TouchableOpacity>
 
+      <TouchableOpacity onPress={() => { navigation.navigate('WalletRecovery')}} style={[styles.btnCard, { backgroundColor: state.THEME.THEME === false ? colors.light.cardBg : colors.dark.cardBg }]}>
+        <View style={{ flexDirection: "row", }}>
+          <View style={[styles.iconCon,{backgroundColor:"#5B65E133"}]}>
+            <Icon name="cloud-upload" type={"materialCommunity"} color={"#5B65E1"} size={24} />
+          </View>
+          <View style={styles.iconContainer}>
+            <Text style={[styles.secretText, { color: state.THEME.THEME === false ? "black" : "#fff" }]}>Wallet Recovery</Text>
+            <Text style={[styles.secretSubText, { color: state.THEME.THEME === false ? "black" : "#AAAAAA" }]}>Manage your wallet recovery</Text>
+          </View>
+        </View>
+        <View style={styles.rightIcon}>
+          <Icon name="right" type={"antDesign"} color={state.THEME.THEME === false ? "black" : "#fff"} size={20}/>
+        </View>
+      </TouchableOpacity>
+
 
       <View style={styles.infoCard}>
         <View style={{padding:5,borderRadius:50,backgroundColor:"#ECB742",marginRight:4}}>
