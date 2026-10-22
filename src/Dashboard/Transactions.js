@@ -320,19 +320,20 @@ const TransactionCard = ({ item, walletAddress, activeChain, activeFilter, navig
   const getExplorerUrl = async () => {
     if (item.provider) {
       switch (item.provider) {
+        case 'STELLAR': return `https://stellar.expert/explorer/testnet/tx/${item.txHash}`;
         case 'NEARINTENT': return `https://explorer.near-intents.org/transactions/${item.txHash}`;
         case 'UNISWAP':
         case 'EVMTX':
         case 'ONEINCH':
           switch (item.fromChain) {
-            case 'ETH': return `https://etherscan.io/tx/${item.txHash}`;
+            case 'ETH': return `https://sepolia.etherscan.io/tx/${item.txHash}`
             case 'BSC':
-            case 'BNB': return `https://bscscan.com/tx/${item.txHash}`;
-            case "POL": return `https://polygonscan.com/tx/${item.txHash}`
-            case "ARB": return `https://arbiscan.io/tx/${item.txHash}`
-            case "OPT": return `https://optimistic.etherscan.io/tx/${item.txHash}`
-            case "AVAX": return `https://avascan.info/blockchain/c/tx/${item.txHash}`
-            case "BASE": return `https://basescan.org/tx/${item.txHash}`
+            case 'BNB': return `https://testnet.bscscan.com/tx/${item.txHash}`
+            case "POL": return `https://amoy.polygonscan.com/tx/${item.txHash}`
+            case "ARB": return `https://sepolia.arbiscan.io/tx/${item.txHash}`
+            case "OPT": return `https://sepolia-optimism.etherscan.io/tx/${item.txHash}`
+            case "AVAX": return `https://testnet.snowtrace.io/tx/${item.txHash}`
+            case "BASE": return `https://sepolia.basescan.org/tx/${item.txHash}`
             default: return null;
           }
         default: return null;
@@ -340,14 +341,14 @@ const TransactionCard = ({ item, walletAddress, activeChain, activeFilter, navig
     } else {
       const chain = item.chain || activeChain;
       switch (chain) {
-        case 'ETH': return `https://etherscan.io/tx/${item.hash}`;
+        case 'ETH': return `https://sepolia.etherscan.io/tx/${item.hash}`;
         case 'BSC':
-        case 'BNB': return `https://bscscan.com/tx/${item.hash}`;
-        case "POL": return `https://polygonscan.com/tx/${item.hash}`
-        case "ARB": return `https://arbiscan.io/tx/${item.hash}`
-        case "OPT": return `https://optimistic.etherscan.io/tx/${item.hash}`
-        case "AVAX": return `https://avascan.info/blockchain/c/tx/${item.hash}`
-        case "BASE": return `https://basescan.org/tx/${item.hash}`
+        case 'BNB': return `https://testnet.bscscan.com/tx/${item.hash}`;
+        case "POL": return `https://amoy.polygonscan.com/tx/${item.hash}`
+        case "ARB": return `https://sepolia.arbiscan.io/tx/${item.hash}`
+        case "OPT": return `https://sepolia-optimism.etherscan.io/tx/${item.hash}`
+        case "AVAX": return `https://testnet.snowtrace.io/tx/${item.hash}`
+        case "BASE": return `https://sepolia.basescan.org/tx/${item.hash}`
         default: return null;
       }
     }

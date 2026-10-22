@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDispatch } from 'react-redux';
 import { MULTICHAIN_PORTFOLIO } from '../components/Redux/actions/type';
+import {resolvePortfolioTokenActive} from './portfolioVisibility';
 
 export const  getAssetId = (asset) => `${asset.symbol}_${asset.contractAddress.toLowerCase()}`;
 
@@ -15,28 +16,10 @@ export const useAssetManager = (walletAddress) => {
             const merged = apiTokens.map(apiToken => {
                 const id = getAssetId(apiToken);
                 const savedToken = savedMap.get(id);
-
-                if (savedToken) {
-                    return {
-                        ...apiToken,
-                        active: savedToken.active,
-                    };
-                }
-
-                if (apiToken && apiToken.balanceUSD !== undefined && apiToken.balanceUSD !== null) {
-                    const balanceVal = parseFloat(apiToken.balanceUSD);
-                    if (balanceVal <= 0) {
-                        return apiToken;
-                    }
-
-                    const isWorthy = balanceVal >= 0.50;
-                    return {
-                        ...apiToken,
-                        active: isWorthy ? true : false
-                    };
-                }
-
-                return apiToken;
+                return {
+                    ...apiToken,
+                    active: resolvePortfolioTokenActive(apiToken, savedToken),
+                };
             });
             const apiIds = new Set(apiTokens.map(getAssetId));
             const KNOWN_CHAINS = ['ETH','BSC','BNB','POL','ARB','BASE','AVAX','OPT','Stellar','STR',];

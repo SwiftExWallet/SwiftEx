@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useSelector } from 'react-redux';
-import { useNavigation } from '@react-navigation/native';
+import {useIsFocused, useNavigation} from '@react-navigation/native';
 import { colors } from '../../../../../Screens/ThemeColorsConfig';
 import { Exchange_screen_header } from '../../../../reusables/ExchangeHeader';
 import Classic from './classic';
@@ -44,6 +44,7 @@ const SCREEN_REGISTRY = {
 
 export default function BridgeTabScreen({ route, ...props }) {
   const navigation = useNavigation();
+  const isScreenFocused = useIsFocused();
   const state = useSelector(s => s);
   const isDark = state.THEME.THEME;
   const theme = isDark ? colors.dark : colors.light;
@@ -89,9 +90,10 @@ export default function BridgeTabScreen({ route, ...props }) {
               hideHeader
               themeMode={isDark}
               evmAddress={state?.wallet?.address}
-              stellarAddress={state?.STELLAR_PUBLICK_KEY}
-              directionEnable={tab.directionEnable}
-            />
+            stellarAddress={state?.STELLAR_PUBLICK_KEY}
+            directionEnable={tab.directionEnable}
+            isActive={isScreenFocused && activeTab === tab.key}
+          />
           </View>
         );
       })}

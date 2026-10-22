@@ -6,6 +6,7 @@ import { FOLIO_BASE_ROUTE, REACT_APP_COIN_GECKO_SIMPLE_PRICE_URL, REACT_APP_HOST
 import apiHelper from "../../src/Dashboard/exchange/crypto-exchange-front-end-main/src/apiHelper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ethers } from "ethers";
+import { getTestnetStellarPrice } from './testnetPriceUtils';
 const BASEROUTE = `${REACT_APP_HOST}/v1/portfolio/`;
 
 const providerCache = new Map();
@@ -223,7 +224,7 @@ const findTestnetStellarMeta = (tokenList, balance) => {
   );
 };
 
-export const normalizeTestnetStellarAssets = ({ classicBalances = [], expertBalances = [], tokenList = [] }) => {
+export const normalizeTestnetStellarAssets = ({ classicBalances = [], expertBalances = [], tokenList = [], xlmUsdPrice = 0 }) => {
   const classicAssets = classicBalances
     .filter((balance) => balance.asset_type !== 'liquidity_pool_shares')
     .map((balance) => {
@@ -236,17 +237,22 @@ export const normalizeTestnetStellarAssets = ({ classicBalances = [], expertBala
       };
       const meta = findTestnetStellarMeta(tokenList, normalizedBalance);
       const balanceAmount = parseNumber(balance.balance);
+      const price = getTestnetStellarPrice({
+        assetType: balance.asset_type,
+        symbol,
+        xlmUsdPrice,
+      });
 
       return {
         chain: 'Stellar',
         name: meta?.name || symbol || 'Unknown',
         symbol,
         balance: balanceAmount,
-        balanceUSD: balanceAmount,
+        balanceUSD: parseNumber(balanceAmount * price, 2),
         decimals: 7,
         contractAddress,
         active: true,
-        price: balanceAmount,
+        price,
         imageUrl: meta?.icon || getStellarTokenImage(symbol, contractAddress),
         org: meta?.org || 'Unknown',
       };
@@ -259,18 +265,23 @@ export const normalizeTestnetStellarAssets = ({ classicBalances = [], expertBala
       const decimals = meta?.decimals ?? 7;
       const balanceAmount = parseNumber(toDisplay(balance.balance, decimals), decimals);
       const symbol = meta?.code || `${balance.asset.slice(0, 4)}...${balance.asset.slice(-4)}`;
+      const price = getTestnetStellarPrice({
+        assetType: 'contract',
+        symbol,
+        xlmUsdPrice,
+      });
 
       return {
         chain: 'Stellar',
         name: meta?.name || meta?.code || 'Unknown',
         symbol,
         balance: balanceAmount,
-        balanceUSD: balanceAmount,
+        balanceUSD: parseNumber(balanceAmount * price, 2),
         decimals,
         contractAddress: balance.asset,
         contract: balance.asset,
         active: true,
-        price: balanceAmount,
+        price,
         imageUrl: meta?.icon || getStellarTokenImage(symbol, null, balance.asset),
         org: meta?.org || 'Unknown',
       };
@@ -299,10 +310,12 @@ const getTestnetStellarTokens = async (walletAddress, onProgress = null, cacheKe
       console.error('Expert contract balances failed', error);
     }
 
+    const xlmUsdPrice = await getXLMPrice();
     const tokens = normalizeTestnetStellarAssets({
       classicBalances: account.balances,
       expertBalances,
       tokenList: tokenList.length > 0 ? tokenList : StellarTokenList.assets,
+      xlmUsdPrice,
     });
     const totalValueUSD = parseNumber(tokens.reduce((sum, token) => sum + (token.balanceUSD || 0), 0), 2);
 
@@ -339,11 +352,11 @@ const getXLMPrice = async () => {
       params: { ids: 'stellar', vs_currencies: 'usd' },
       timeout: CONFIG.TIMEOUT
     });
-    const price = response.data?.stellar?.usd || 0.10;
+    const price = response.data?.stellar?.usd || 0;
     setCachedPrice(cacheKey, price);
     return price;
   } catch (error) {
-    return 0.10;
+    return 0;
   }
 };
 

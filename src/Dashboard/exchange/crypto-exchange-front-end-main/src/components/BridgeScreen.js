@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   NativeModules,
   SafeAreaView,
   ScrollView,
@@ -22,6 +23,18 @@ import {
   STELLAR_URL,
 } from '../../../../constants';
 import {activateStellarAccountFlow} from '../utils/WalletActivationComponent';
+import {
+  hasMinimumSepoliaEth,
+  MINIMUM_SEPOLIA_ETH_FOR_MINT,
+} from './bridgeRequirements';
+import {
+  clearSavedBridgeTransfer,
+  getSavedBridgeTransfer,
+  isInsufficientGasError,
+  isMissingBridgeTransferError,
+  isTerminalBridgeStatus,
+  saveBridgeTransfer,
+} from './bridgeTransferStorage';
 import * as StellarSdk from '@stellar/stellar-sdk';
 
 const {TransactionSigner, StellarSigner} = NativeModules;
@@ -588,7 +601,91 @@ const hashStyles = StyleSheet.create({
   hash: {fontSize: 11, fontFamily: 'monospace'},
 });
 
-export default function BridgeScreen({directionEnable}) {
+function RecoveryBottomSheet({message, transfer, theme, visible, onClose}) {
+  if (!transfer) return null;
+
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="slide"
+      onRequestClose={onClose}>
+      <View style={recoverySheetStyles.backdrop}>
+        <View
+          style={[
+            recoverySheetStyles.sheet,
+            {backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor},
+          ]}>
+          <View
+            style={[
+              recoverySheetStyles.handle,
+              {backgroundColor: theme.smallCardBorderColor},
+            ]}
+          />
+          <View style={recoverySheetStyles.header}>
+            <View>
+              <Text style={[recoverySheetStyles.title, {color: theme.headingTx}]}>
+                Bridge transfer in progress
+              </Text>
+              <Text style={[recoverySheetStyles.subtitle, {color: theme.inactiveTx}]}>
+                We restored your latest transfer and are checking its status.
+              </Text>
+            </View>
+            <TouchableOpacity onPress={onClose} hitSlop={10}>
+              <Text style={[recoverySheetStyles.close, {color: theme.inactiveTx}]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <StatusBadge status={transfer.status} theme={theme} />
+          <ProgressStepper status={transfer.status} theme={theme} />
+          <Text style={[recoverySheetStyles.status, {color: theme.buttonColor}]}>
+            {transfer.error || message || transfer.status}
+          </Text>
+          <Text style={[recoverySheetStyles.idLabel, {color: theme.inactiveTx}]}>
+            Transfer ID
+          </Text>
+          <Text
+            numberOfLines={1}
+            style={[recoverySheetStyles.id, {color: theme.headingTx}]}
+          >
+            {transfer.id}
+          </Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const recoverySheetStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: '#00000088',
+  },
+  sheet: {
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 28,
+  },
+  handle: {alignSelf: 'center', borderRadius: 3, height: 5, width: 44},
+  header: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 18,
+  },
+  title: {fontSize: 18, fontWeight: '800'},
+  subtitle: {fontSize: 12, lineHeight: 17, marginTop: 4, maxWidth: 285},
+  close: {fontSize: 20, fontWeight: '700', paddingLeft: 12},
+  status: {fontSize: 13, fontWeight: '700', marginBottom: 10, textAlign: 'center'},
+  idLabel: {fontSize: 11, fontWeight: '700', marginTop: 4},
+  id: {fontFamily: 'monospace', fontSize: 12, marginTop: 4},
+});
+
+export default function BridgeScreen({directionEnable, isActive = true}) {
   console.info(directionEnable);
   const dispatch = useDispatch();
   const state = useSelector(state => state);
@@ -597,6 +694,8 @@ export default function BridgeScreen({directionEnable}) {
   const stellarAssetData = state.assetData;
   const portfolio = Array.isArray(state.activeWalletPortFolio)
     ? state.activeWalletPortFolio
+    : Array.isArray(state.activeWalletPortFolio?.tokens)
+    ? state.activeWalletPortFolio.tokens
     : [];
   const themeMode = state.THEME.THEME;
   const isDark = !!themeMode;
@@ -636,6 +735,9 @@ export default function BridgeScreen({directionEnable}) {
   const [fast, setFast] = useState(true);
   const [quote, setQuote] = useState(null);
   const [transfer, setTransfer] = useState(null);
+  const [recoverySheetVisible, setRecoverySheetVisible] = useState(false);
+  const [pollingPaused, setPollingPaused] = useState(false);
+  const [pollingRefreshKey, setPollingRefreshKey] = useState(0);
   const [signingInProgress, setSigningInProgress] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -655,6 +757,7 @@ export default function BridgeScreen({directionEnable}) {
   const lastSigningRef = useRef(null);
   const activationRetryingRef = useRef(false);
   const activationRequiredRef = useRef(false);
+  const restorationStartedRef = useRef(false);
 
   const selectedChain =
     EVM_SOURCE_CHAINS[sourceChain] || EVM_SOURCE_CHAINS.sepolia;
@@ -668,6 +771,12 @@ export default function BridgeScreen({directionEnable}) {
     ? CHAINS.STR
     : CHAINS[CCTP_CHAIN_META[sourceChain]];
   const destinationChainMeta = isReverse ? CHAINS.ETH : CHAINS.STR;
+  const walletStorageScope = [evmAddress, stellarAddress]
+    .filter(Boolean)
+    .map(address => String(address).toLowerCase())
+    .join(':');
+  const transferWalletScopeRef = useRef(null);
+  const currentWalletScopeRef = useRef(walletStorageScope);
   const shouldShowActivationFee = !isReverse && stellarUsdcReady === false;
   const sourcePortfolioChainKey = !isReverse
     ? CCTP_CHAIN_META[sourceChain]
@@ -686,6 +795,7 @@ export default function BridgeScreen({directionEnable}) {
     !!quote &&
     requiredSourceUsdc > 0 &&
     selectedUsdcBalance < requiredSourceUsdc;
+  const hasRequiredSepoliaEth = hasMinimumSepoliaEth(portfolio);
 
   const isActivationRequiredError = useCallback(value => {
     const raw = value?.message || String(value || '');
@@ -771,6 +881,57 @@ export default function BridgeScreen({directionEnable}) {
       };
     });
   }, [isReverse, stellarUsdcReady]);
+
+  useEffect(() => {
+    if (currentWalletScopeRef.current === walletStorageScope) return;
+    currentWalletScopeRef.current = walletStorageScope;
+    transferWalletScopeRef.current = null;
+    restorationStartedRef.current = false;
+    setTransfer(null);
+    setRecoverySheetVisible(false);
+    setMessage('');
+  }, [walletStorageScope]);
+
+  useEffect(() => {
+    if (
+      !isActive ||
+      !walletStorageScope ||
+      transfer ||
+      restorationStartedRef.current
+    )
+      return;
+
+    let cancelled = false;
+    restorationStartedRef.current = true;
+    getSavedBridgeTransfer(directionEnable, walletStorageScope).then(savedTransfer => {
+      if (cancelled || !savedTransfer) return;
+      transferWalletScopeRef.current = walletStorageScope;
+      setTransfer(savedTransfer);
+      setRecoverySheetVisible(true);
+      setMessage('Restoring your previous bridge transfer...');
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [directionEnable, isActive, transfer, walletStorageScope]);
+
+  useEffect(() => {
+    if (!transfer?.id || !transfer?.status) return;
+    if (transferWalletScopeRef.current !== walletStorageScope) return;
+
+    if (isTerminalBridgeStatus(transfer.status)) {
+      clearSavedBridgeTransfer(directionEnable, walletStorageScope).catch(error =>
+        console.error('Bridge transfer cleanup error:', error),
+      );
+      setRecoverySheetVisible(false);
+      return;
+    }
+
+    saveBridgeTransfer(directionEnable, transfer, walletStorageScope).catch(error =>
+      console.error('Bridge transfer persistence error:', error),
+    );
+  }, [directionEnable, transfer, walletStorageScope]);
 
   const runActivationFlow = useCallback(async () => {
     if (activationRetryingRef.current) return false;
@@ -1024,6 +1185,13 @@ export default function BridgeScreen({directionEnable}) {
         Alert.alert('Quote', 'Get a quote first.');
         return;
       }
+      if (isReverse && !hasRequiredSepoliaEth) {
+        Alert.alert(
+          'Sepolia ETH required',
+          `Keep at least ${MINIMUM_SEPOLIA_ETH_FOR_MINT} Sepolia ETH in your destination wallet. Without it, the EVM mint transaction cannot complete.`,
+        );
+        return;
+      }
       if (hasInsufficientSourceBalance && !BRIDGE_UI_DEMO_MODE) {
         Alert.alert(
           'Insufficient USDC',
@@ -1086,6 +1254,8 @@ export default function BridgeScreen({directionEnable}) {
               : {}),
           }),
         });
+        transferWalletScopeRef.current = walletStorageScope;
+        setPollingPaused(false);
         setTransfer(result);
         setActivationFlow(currentFlow =>
           currentFlow.visible
@@ -1138,6 +1308,7 @@ export default function BridgeScreen({directionEnable}) {
       isReverse,
       isActivationRequiredError,
       hasInsufficientSourceBalance,
+      hasRequiredSepoliaEth,
       quote,
       readableError,
       requiredSourceUsdc,
@@ -1148,6 +1319,7 @@ export default function BridgeScreen({directionEnable}) {
       selectedUsdcBalance,
       stellarAddress,
       stellarUsdcReady,
+      walletStorageScope,
     ],
   );
   const signEvm = useCallback(
@@ -1263,13 +1435,10 @@ export default function BridgeScreen({directionEnable}) {
 
   useEffect(() => {
     if (
+      !isActive ||
+      pollingPaused ||
       !transfer?.id ||
-      ![
-        'APPROVAL_PENDING',
-        'SOURCE_PENDING',
-        'ATTESTATION_PENDING',
-        'DESTINATION_PENDING',
-      ].includes(transfer.status)
+      isTerminalBridgeStatus(transfer.status)
     )
       return undefined;
     let cancelled = false,
@@ -1281,6 +1450,29 @@ export default function BridgeScreen({directionEnable}) {
         const next = await apiRequest(`/bridge/${transfer.id}`);
         if (!cancelled) setTransfer(next);
       } catch (error) {
+        if (isMissingBridgeTransferError(error)) {
+          restorationStartedRef.current = true;
+          transferWalletScopeRef.current = null;
+          clearSavedBridgeTransfer(directionEnable, walletStorageScope).catch(
+            cleanupError =>
+              console.error('Missing bridge transfer cleanup error:', cleanupError),
+          );
+          if (!cancelled) {
+            setTransfer(null);
+            setRecoverySheetVisible(false);
+            setMessage('');
+          }
+          return;
+        }
+        if (isInsufficientGasError(error)) {
+          if (!cancelled) {
+            setPollingPaused(true);
+            setMessage(
+              'Insufficient native balance for gas. Add native token for gas, then refresh the transfer status.',
+            );
+          }
+          return;
+        }
         console.error('Status polling error:', error);
       } finally {
         inFlight = false;
@@ -1292,7 +1484,15 @@ export default function BridgeScreen({directionEnable}) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [transfer?.id, transfer?.status]);
+  }, [
+    directionEnable,
+    isActive,
+    pollingPaused,
+    pollingRefreshKey,
+    transfer?.id,
+    transfer?.status,
+    walletStorageScope,
+  ]);
 
   useEffect(() => {
     const status = transfer?.status;
@@ -1345,13 +1545,22 @@ export default function BridgeScreen({directionEnable}) {
     processSigningRequest(transfer);
   }, [processSigningRequest, transfer]);
 
+  const refreshTransferStatus = useCallback(() => {
+    setPollingPaused(false);
+    setMessage('Refreshing bridge transfer status...');
+    setPollingRefreshKey(currentKey => currentKey + 1);
+  }, []);
+
   const reset = () => {
     setAmount('');
-    setDirection(EVM_TO_STELLAR);
+    setDirection(directionEnable);
     setSourceChain('sepolia');
     setFast(true);
     setQuote(null);
     setTransfer(null);
+    setRecoverySheetVisible(false);
+    setPollingPaused(false);
+    setPollingRefreshKey(0);
     setSigningInProgress(false);
     setMessage('');
     setError('');
@@ -1361,6 +1570,11 @@ export default function BridgeScreen({directionEnable}) {
     reverseIdempotencyRef.current = null;
     activationRetryingRef.current = false;
     activationRequiredRef.current = false;
+    restorationStartedRef.current = false;
+    transferWalletScopeRef.current = null;
+    clearSavedBridgeTransfer(directionEnable, walletStorageScope).catch(error =>
+      console.error('Bridge transfer reset cleanup error:', error),
+    );
     setActivationFlow({
       visible: false,
       activation: 'idle',
@@ -1814,6 +2028,17 @@ export default function BridgeScreen({directionEnable}) {
               </Text>
             )}
 
+            {pollingPaused && (
+              <TouchableOpacity
+                style={[
+                  s.primaryBtn,
+                  {backgroundColor: theme.buttonColor, marginTop: 14},
+                ]}
+                onPress={refreshTransferStatus}>
+                <Text style={s.primaryBtnText}>Refresh Status</Text>
+              </TouchableOpacity>
+            )}
+
             {[
               'APPROVAL_SIGNATURE_REQUIRED',
               'BRIDGE_SIGNATURE_REQUIRED',
@@ -1874,6 +2099,13 @@ export default function BridgeScreen({directionEnable}) {
 
         <View style={{height: 32}} />
       </ScrollView>
+      <RecoveryBottomSheet
+        message={message}
+        transfer={transfer}
+        theme={theme}
+        visible={isActive && recoverySheetVisible}
+        onClose={() => setRecoverySheetVisible(false)}
+      />
     </SafeAreaView>
   );
 }
