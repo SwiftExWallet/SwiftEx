@@ -3,8 +3,8 @@
 [![Stellar](https://img.shields.io/badge/Stellar-Testnet-blue.svg?style=flat-square&logo=stellar)](https://stellar.org)
 [![React Native](https://img.shields.io/badge/React_Native-Android_%7C_iOS-61DAFB.svg?style=flat-square&logo=react&logoColor=black)](https://reactnative.dev)
 [![Node](https://img.shields.io/badge/Node.js-%E2%89%A5_22.11-339933.svg?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
-[![Signing](https://img.shields.io/badge/Signing-On--Device-emerald.svg?style=flat-square)](./docs/ARCHITECTURE.md#-native-signing)
-[![Backend](https://img.shields.io/badge/Backend-External-orange.svg?style=flat-square)](./docs/ARCHITECTURE.md#-trust-boundaries)
+[![Signing](https://img.shields.io/badge/Signing-On--Device-emerald.svg?style=flat-square)](./docs/Architecture.md#-native-signing)
+[![Backend](https://img.shields.io/badge/Backend-External-orange.svg?style=flat-square)](./docs/Architecture.md#-trust-boundaries)
 
 > **SwiftEx Wallet Recovery** is the Stellar wallet-recovery feature of the SwiftEx React Native app. A wallet owner registers an **email guardian**, proves recovery intent through that email, waits through a **safety timelock**, and then completes a **recovery sweep** to a destination wallet. Transactions are signed on the device with the device-held Stellar key.
 
@@ -19,9 +19,9 @@ For in-depth guides and technical specifications, explore the dedicated document
 
 | Document | Description |
 | :--- | :--- |
-| 🏗️ [**Architecture & Integration Guide**](./docs/ARCHITECTURE.md) | Component hierarchy, trust boundaries, signing, backend APIs, assets & reserve floor, sequence diagrams |
-| ⚙️ [**Installation & Setup Guide**](./docs/INSTALLATION.md) | Prerequisites, Android/iOS setup, deployment configuration, validation, and troubleshooting |
-| 🚀 [**End-to-End Walkthrough & Demo Guide**](./docs/DEMO_GUIDE.md) | Step-by-step instructions to register a guardian and run a full recovery demo |
+| 🏗️ [**Architecture & Integration Guide**](./docs/Architecture.md) | Component hierarchy, trust boundaries, signing, backend APIs, assets & reserve floor, sequence diagrams |
+| ⚙️ [**Installation & Setup Guide**](./docs/Installation.md) | Prerequisites, Android/iOS setup, deployment configuration, validation, and troubleshooting |
+| 🚀 [**End-to-End Walkthrough & Demo Guide**](./docs/DemoGuide.md) | Step-by-step instructions to register a guardian and run a full recovery demo |
 
 ---
 
@@ -90,7 +90,7 @@ npm run ios         # iOS
 
 Connect or import an **activated** Stellar wallet, then open **Wallet Recovery** from the wallet area.
 
-For full steps, see the [Installation & Setup Guide](./docs/INSTALLATION.md) and the [Demo Guide](./docs/DEMO_GUIDE.md).
+For full steps, see the [Installation & Setup Guide](./docs/Installation.md) and the [Demo Guide](./docs/DemoGuide.md).
 
 > [!WARNING]
 > Do not attempt to run this directory by itself.
