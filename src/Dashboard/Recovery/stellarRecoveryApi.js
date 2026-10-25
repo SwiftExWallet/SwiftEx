@@ -1,6 +1,12 @@
 import {NativeModules} from 'react-native';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import {SRB_RPC_URL, STELLAR_URL} from '../constants';
+import {
+  isApprovedRecoveryClassicAsset,
+  RECOVERY_USDC_ISSUER,
+} from './recoveryAssetConfig';
+
+export {RECOVERY_USDC_ISSUER};
 
 export function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -42,7 +48,12 @@ export async function fetchRecoveryAssets(address) {
       (balance.asset_type === 'credit_alphanum4' ||
         balance.asset_type === 'credit_alphanum12') &&
       balance.asset_code &&
-      balance.asset_issuer
+      balance.asset_issuer &&
+      isApprovedRecoveryClassicAsset({
+        type: 'classic',
+        code: balance.asset_code,
+        issuer: balance.asset_issuer,
+      })
     ) {
       return [{
         key: `classic:${balance.asset_issuer}:${balance.asset_code}`,

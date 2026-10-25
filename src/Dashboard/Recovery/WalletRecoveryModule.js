@@ -38,6 +38,10 @@ import {
 } from './recoveryState';
 import {createRecoveryTheme} from './recoveryTheme';
 import {formatRecoveryError} from './recoveryError';
+import {
+  defaultRecoveryAssetKeys,
+  toggleRecoveryAssetKey,
+} from './recoveryAssetSelection';
 const emailPattern = /^\S+@\S+\.\S+$/;
 export const RECOVERY_EMAIL_RECIPIENT = 'claim@swiftexwallet.in';
 const RecoveryStylesContext = React.createContext(null);
@@ -186,12 +190,10 @@ export default function WalletRecoveryModule({
 
   useEffect(() => {
     const available = new Set(recoveryAssets.map(asset => asset.key));
-    const nativeKeys = recoveryAssets
-      .filter(asset => asset.type === 'native')
-      .map(asset => asset.key);
+    const defaultSelectedKeys = defaultRecoveryAssetKeys(recoveryAssets);
     setSelectedAssetKeys(keys => Array.from(new Set([
       ...keys.filter(key => available.has(key)),
-      ...nativeKeys,
+      ...defaultSelectedKeys,
     ])));
   }, [recoveryAssets]);
   const stepRef = useRef(initialStep);
@@ -537,7 +539,7 @@ export default function WalletRecoveryModule({
             <Text style={styles.muted}>Loading live wallet assets…</Text>
           )}
           {recoveryAssets.map(asset => (
-            <TouchableOpacity key={asset.key} disabled={asset.type === 'native'} onPress={() => setSelectedAssetKeys(keys => keys.includes(asset.key) ? keys.filter(key => key !== asset.key) : [...keys, asset.key])} style={styles.assetOption}>
+            <TouchableOpacity key={asset.key} disabled={asset.type === 'native'} onPress={() => setSelectedAssetKeys(keys => toggleRecoveryAssetKey(keys, asset))} style={styles.assetOption}>
               <Text style={styles.assetOptionText}>{selectedAssetKeys.includes(asset.key) ? '☑' : '☐'} {asset.code} — {asset.balance}{asset.type === 'native' ? ' (required)' : ''}</Text>
             </TouchableOpacity>
           ))}

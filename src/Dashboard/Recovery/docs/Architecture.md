@@ -261,9 +261,8 @@ stateDiagram-v2
    * **Always protected:** automatically selected and cannot be deselected.
    * **Reserve floor:** the client sends a `floor` of `20000000` stroops. Backend enforcement and the account's actual reserve requirements must be verified separately.
 2. **Classic Stellar assets:**
-   * Issued assets with a **code and issuer**.
-   * Users can select supported balances to protect.
-   * The client defines no asset issuer allowlist; that is a deployment/backend concern.
+   * Only **USDC** issued by `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` is supported.
+   * It is selected by default and users can deselect it before registration.
 
 ---
 
