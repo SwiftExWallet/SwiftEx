@@ -110,7 +110,7 @@ const NewWalletPrivateKey = ({
               if (result.success) {
                 alert("success", "wallet synced!");
               } else {
-                alert("error", "unable to sync wallet.");
+                // alert("error", "unable to sync wallet.");
                 console.log('Error:', result.error, 'Status:', result.status);
               }
               AsyncStorageLib.setItem("currentWallet", Wallet?.accountName)

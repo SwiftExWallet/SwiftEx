@@ -2,6 +2,7 @@ import {NativeModules} from 'react-native';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import {SRB_RPC_URL, STELLAR_URL} from '../constants';
 import {
+  hasRecoveryUsdcTrustline,
   isApprovedRecoveryClassicAsset,
   RECOVERY_USDC_ISSUER,
 } from './recoveryAssetConfig';
@@ -24,6 +25,22 @@ export async function isStellarWalletActivated(address) {
   } catch (error) {
     if (error?.response?.status === 404 || error?.name === 'NotFoundError') {
       return false;
+    }
+    throw error;
+  }
+}
+
+export async function getRecoveryDestinationReadiness(address) {
+  const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
+  try {
+    const account = await server.loadAccount(String(address || '').trim());
+    return {
+      isActivated: true,
+      hasUsdcTrustline: hasRecoveryUsdcTrustline(account.balances),
+    };
+  } catch (error) {
+    if (error?.response?.status === 404 || error?.name === 'NotFoundError') {
+      return {isActivated: false, hasUsdcTrustline: false};
     }
     throw error;
   }

@@ -208,7 +208,7 @@ export const WalletNetworkSelection = (props) => {
         if (resultApi.success) {
             alert("success", "wallet synced!");
         } else {
-            alert("error", "unable to sync wallet.");
+            // alert("error", "unable to sync wallet.");
             console.log('Error:', resultApi.error, 'Status:', resultApi.status);
         }
     };

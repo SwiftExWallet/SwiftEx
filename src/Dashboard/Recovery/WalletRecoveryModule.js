@@ -1,4 +1,11 @@
-import React, {useCallback, useContext, useEffect, useMemo, useRef, useState} from 'react';
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   AppState,
   Linking,
@@ -20,6 +27,7 @@ import {
 } from '@react-native-documents/picker';
 import {
   fetchRecoveryAssets,
+  getRecoveryDestinationReadiness,
   isStellarWalletActivated,
   isValidStellarAddress,
   normalizeEmail,
@@ -27,7 +35,10 @@ import {
 } from './stellarRecoveryApi';
 import defaultRecoveryApi from './proofApi';
 import {
+  forgetRecoveryDestination,
+  getRecoveryDestination,
   isRecoveryWalletRegistered,
+  rememberRecoveryDestination,
   rememberRecoveryWallet,
 } from './recoveryStorage';
 import {
@@ -42,6 +53,7 @@ import {
   defaultRecoveryAssetKeys,
   toggleRecoveryAssetKey,
 } from './recoveryAssetSelection';
+import {openRecoveryTransaction} from './recoveryTransactionLinks';
 const emailPattern = /^\S+@\S+\.\S+$/;
 export const RECOVERY_EMAIL_RECIPIENT = 'claim@swiftexwallet.in';
 const RecoveryStylesContext = React.createContext(null);
@@ -50,9 +62,9 @@ function useRecoveryStyles() {
   return useContext(RecoveryStylesContext) || fallbackStyles;
 }
 
-export function buildRecoveryMailUrl(walletAddress) {
+export function buildRecoveryMailUrl(destinationAddress) {
   return `mailto:${RECOVERY_EMAIL_RECIPIENT}?subject=${encodeURIComponent(
-    String(walletAddress || '').trim(),
+    String(destinationAddress || '').trim(),
   )}`;
 }
 
@@ -62,7 +74,12 @@ function toMillis(value) {
 }
 
 const Button = ({title, onPress, secondary = false, disabled = false}) => (
-  <ThemedButton title={title} onPress={onPress} secondary={secondary} disabled={disabled} />
+  <ThemedButton
+    title={title}
+    onPress={onPress}
+    secondary={secondary}
+    disabled={disabled}
+  />
 );
 
 const ThemedButton = ({title, onPress, secondary, disabled}) => {
@@ -76,8 +93,29 @@ const ThemedButton = ({title, onPress, secondary, disabled}) => {
         secondary && styles.secondaryButton,
         disabled && styles.disabled,
       ]}>
-      <Text style={[styles.buttonText, secondary && styles.secondaryButtonText]}>
+      <Text
+        style={[styles.buttonText, secondary && styles.secondaryButtonText]}>
         {title}
+      </Text>
+    </TouchableOpacity>
+  );
+};
+
+const RecoveryTransactionLink = ({title, transactionHash}) => {
+  const styles = useRecoveryStyles();
+  const hash = String(transactionHash || '').trim();
+  if (!hash) return null;
+
+  return (
+    <TouchableOpacity
+      accessibilityRole="link"
+      onPress={() => {
+        void openRecoveryTransaction(hash);
+      }}
+      style={styles.transactionLink}>
+      <Text style={styles.transactionLinkTitle}>{title}</Text>
+      <Text numberOfLines={1} style={styles.transactionLinkHash}>
+        {`${hash.slice(0, 12)}…${hash.slice(-8)}`}
       </Text>
     </TouchableOpacity>
   );
@@ -130,7 +168,11 @@ const ThemedField = props => {
 
 const ErrorText = ({message}) => {
   const styles = useRecoveryStyles();
-  return message ? <Text selectabl={true} style={styles.error}>{message}</Text> : null;
+  return message ? (
+    <Text selectabl={true} style={styles.error}>
+      {message}
+    </Text>
+  ) : null;
 };
 
 export default function WalletRecoveryModule({
@@ -152,6 +194,12 @@ export default function WalletRecoveryModule({
   const [targetWallet, setTargetWallet] = useState(walletAddress);
   const [destinationAddress, setDestinationAddress] = useState('');
   const [registration, setRegistration] = useState(null);
+  const [registrationTransactionHash, setRegistrationTransactionHash] =
+    useState('');
+  const [startRecoveryTransactionHash, setStartRecoveryTransactionHash] =
+    useState('');
+  const [executeRecoveryTransactionHash, setExecuteRecoveryTransactionHash] =
+    useState('');
   const [pending, setPending] = useState(null);
   const [selectedEml, setSelectedEml] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -163,10 +211,13 @@ export default function WalletRecoveryModule({
   const [recoveryAssetsLoading, setRecoveryAssetsLoading] = useState(false);
   const [recoveryAssetsError, setRecoveryAssetsError] = useState('');
   const [selectedAssetKeys, setSelectedAssetKeys] = useState([]);
-  const selectedRecoveryAssets = recoveryAssets.filter(asset => selectedAssetKeys.includes(asset.key)).map(({key, balance, ...asset}) => asset);
+  const selectedRecoveryAssets = recoveryAssets
+    .filter(asset => selectedAssetKeys.includes(asset.key))
+    .map(({key, balance, ...asset}) => asset);
 
   useEffect(() => {
-    if (step !== STEPS.SETUP || !isValidStellarAddress(walletAddress)) return undefined;
+    if (step !== STEPS.SETUP || !isValidStellarAddress(walletAddress))
+      return undefined;
     let mounted = true;
     setRecoveryAssetsLoading(true);
     setRecoveryAssetsError('');
@@ -177,7 +228,9 @@ export default function WalletRecoveryModule({
       .catch(() => {
         if (mounted) {
           setRecoveryAssets([]);
-          setRecoveryAssetsError('Could not load wallet assets from Horizon. Please try again.');
+          setRecoveryAssetsError(
+            'Could not load wallet assets from Horizon. Please try again.',
+          );
         }
       })
       .finally(() => {
@@ -191,10 +244,14 @@ export default function WalletRecoveryModule({
   useEffect(() => {
     const available = new Set(recoveryAssets.map(asset => asset.key));
     const defaultSelectedKeys = defaultRecoveryAssetKeys(recoveryAssets);
-    setSelectedAssetKeys(keys => Array.from(new Set([
+    setSelectedAssetKeys(keys =>
+      Array.from(
+        new Set([
       ...keys.filter(key => available.has(key)),
       ...defaultSelectedKeys,
-    ])));
+        ]),
+      ),
+    );
   }, [recoveryAssets]);
   const stepRef = useRef(initialStep);
   const pollInFlight = useRef(false);
@@ -215,8 +272,10 @@ export default function WalletRecoveryModule({
     [step],
   );
 
-  const syncPending = useCallback(async (address, statusResult) => {
-    const result = statusResult || await recoveryApi.getRecoveryStatus(address);
+  const syncPending = useCallback(
+    async (address, statusResult) => {
+      const result =
+        statusResult || (await recoveryApi.getRecoveryStatus(address));
     const status = result?.status || '';
     const nextStep = nextRecoveryStep({
       currentStep: stepRef.current,
@@ -227,7 +286,11 @@ export default function WalletRecoveryModule({
     const statusNotice = recoveryStatusNotice(status);
     if (statusNotice) setNotice(statusNotice);
 
-    if (status === 'PENDING' && result?.unlockAt && nextStep === STEPS.TIMELOCK) {
+      if (
+        status === 'PENDING' &&
+        result?.unlockAt &&
+        nextStep === STEPS.TIMELOCK
+      ) {
       const normalized = {
         isPending: true,
         destination: result.destination,
@@ -255,7 +318,9 @@ export default function WalletRecoveryModule({
       status,
       attempt: result,
     };
-  }, [recoveryApi, commitStep]);
+    },
+    [recoveryApi, commitStep],
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -263,7 +328,11 @@ export default function WalletRecoveryModule({
     commitStep(initialStep);
     setEmail('');
     setConfirmEmail('');
+    setDestinationAddress('');
     setRegistration(null);
+    setRegistrationTransactionHash('');
+    setStartRecoveryTransactionHash('');
+    setExecuteRecoveryTransactionHash('');
 
     const restore = async () => {
       let isRegistered = false;
@@ -275,6 +344,9 @@ export default function WalletRecoveryModule({
           return;
         }
 
+        const restoredDestination = await getRecoveryDestination(walletAddress);
+        if (!mounted) return;
+        setDestinationAddress(restoredDestination);
         const statusResult = await recoveryApi.getRecoveryStatus(walletAddress);
         if (!mounted) return;
         const restoredStep = recoveryStepOnResume({
@@ -283,6 +355,10 @@ export default function WalletRecoveryModule({
           status: statusResult?.status,
           unlockAt: statusResult?.unlockAt,
         });
+        if (restoredStep === STEPS.WAITING && !restoredDestination) {
+          commitStep(STEPS.RECOVER);
+          return;
+        }
         commitStep(restoredStep);
         await syncPending(walletAddress, statusResult);
       } catch {
@@ -351,13 +427,11 @@ export default function WalletRecoveryModule({
     return () => clearInterval(timer);
   }, [step, pending, commitStep]);
 
-  const showError = useCallback(
-    errorValue => {
+  const showError = useCallback(errorValue => {
       if (typeof __DEV__ !== 'undefined' && __DEV__)
         console.warn('Recovery operation failed:', errorValue);
       setError(formatRecoveryError(errorValue));
-    },
-  );
+  });
 
   const register = async () => {
     setError('');
@@ -377,11 +451,16 @@ export default function WalletRecoveryModule({
       if (recoveryAssetsError) throw new Error(recoveryAssetsError);
       if (!selectedRecoveryAssets.length)
         throw new Error('Select at least one asset to protect.');
-      const prepared = await recoveryApi.prepareRecoveryRegistration({email, walletAddress, assets: selectedRecoveryAssets});
+      const prepared = await recoveryApi.prepareRecoveryRegistration({
+        email,
+        walletAddress,
+        assets: selectedRecoveryAssets,
+      });
       const transactionHash = await signAndBroadcastRecoveryTransaction(prepared.unsignedXdr);
       const result = await recoveryApi.confirmRecoveryRegistration({email, walletAddress, transactionHash});
       await rememberRecoveryWallet(walletAddress);
       setRegistration(result);
+      setRegistrationTransactionHash(transactionHash);
       commitStep(STEPS.ACTIVE);
       onComplete?.(result);
     } catch (e) {
@@ -398,6 +477,8 @@ export default function WalletRecoveryModule({
       return setError('Enter the original Stellar wallet address.');
     if (!emailPattern.test(normalizeEmail(email)))
       return setError('Enter the registered recovery email.');
+    if (!isValidStellarAddress(destinationAddress))
+      return setError('Enter a valid new destination Stellar wallet address.');
     setBusy(true);
     try {
       const originalWallet = targetWallet.trim();
@@ -408,6 +489,20 @@ export default function WalletRecoveryModule({
         );
         return;
       }
+      const destinationReadiness = await getRecoveryDestinationReadiness(
+        destinationAddress,
+      );
+      if (!destinationReadiness.isActivated) {
+        setError('Activate the destination wallet with XLM before continuing.');
+        return;
+      }
+      if (!destinationReadiness.hasUsdcTrustline) {
+        setError(
+          'Add the required USDC trustline for issuer GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5 before continuing.',
+        );
+        return;
+      }
+      await rememberRecoveryDestination(originalWallet, destinationAddress);
       const existing = await syncPending(originalWallet);
       if (existing.isActive) return;
       commitStep(STEPS.WAITING);
@@ -436,6 +531,15 @@ export default function WalletRecoveryModule({
     }
   };
 
+  const openRecoveryMail = () => {
+    if (!isValidStellarAddress(destinationAddress)) {
+      setError('Enter a valid new destination Stellar wallet address.');
+      commitStep(STEPS.RECOVER);
+      return;
+    }
+    Linking.openURL(buildRecoveryMailUrl(destinationAddress));
+  };
+
   const submitProof = async () => {
     setBusy(true);
     setError('');
@@ -448,7 +552,7 @@ export default function WalletRecoveryModule({
         owner: targetWallet,
         file: selectedEml,
       });
-      setDestinationAddress(result.destination || '');
+      setStartRecoveryTransactionHash(result.userOpTx || '');
       setNotice(
         result.userOpTx
           ? `Recovery transaction submitted: ${result.userOpTx.slice(0, 12)}…`
@@ -467,16 +571,25 @@ export default function WalletRecoveryModule({
     setError('');
     try {
       const result = await recoveryApi.executeRecovery(targetWallet);
+      setExecuteRecoveryTransactionHash(result.userOpTx || '');
       setNotice(
         result.userOpTx
           ? `Transaction: ${result.userOpTx}`
           : 'Funds swept to the destination wallet.',
       );
-      await syncPending(targetWallet);
+      commitStep(STEPS.COMPLETE);
     } catch (e) {
       showError(e);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const finishRecovery = async () => {
+    try {
+      await forgetRecoveryDestination(targetWallet);
+    } finally {
+      onExit?.();
     }
   };
 
@@ -539,14 +652,28 @@ export default function WalletRecoveryModule({
             <Text style={styles.muted}>Loading live wallet assets…</Text>
           )}
           {recoveryAssets.map(asset => (
-            <TouchableOpacity key={asset.key} disabled={asset.type === 'native'} onPress={() => setSelectedAssetKeys(keys => toggleRecoveryAssetKey(keys, asset))} style={styles.assetOption}>
-              <Text style={styles.assetOptionText}>{selectedAssetKeys.includes(asset.key) ? '☑' : '☐'} {asset.code} — {asset.balance}{asset.type === 'native' ? ' (required)' : ''}</Text>
+            <TouchableOpacity
+              key={asset.key}
+              disabled={asset.type === 'native'}
+              onPress={() =>
+                setSelectedAssetKeys(keys =>
+                  toggleRecoveryAssetKey(keys, asset),
+                )
+              }
+              style={styles.assetOption}>
+              <Text style={styles.assetOptionText}>
+                {selectedAssetKeys.includes(asset.key) ? '☑' : '☐'} {asset.code}{' '}
+                — {asset.balance}
+                {asset.type === 'native' ? ' (required)' : ''}
+              </Text>
             </TouchableOpacity>
           ))}
           <ErrorText message={recoveryAssetsError} />
           <Button
             title={busy ? 'Signing…' : 'Register on Stellar'}
-            disabled={busy || recoveryAssetsLoading || Boolean(recoveryAssetsError)}
+            disabled={
+              busy || recoveryAssetsLoading || Boolean(recoveryAssetsError)
+            }
             onPress={register}
           />
           <ErrorText message={error} />
@@ -570,6 +697,10 @@ export default function WalletRecoveryModule({
               ? `${registration.commitmentHex.slice(0, 12)}…`
               : 'On-chain verified'}
           </Text>
+          <RecoveryTransactionLink
+            title="View registration transaction"
+            transactionHash={registrationTransactionHash}
+          />
           <Button
             title="Recover my funds"
             onPress={() => commitStep(STEPS.RECOVER)}
@@ -598,6 +729,14 @@ export default function WalletRecoveryModule({
             onChangeText={setEmail}
             placeholder="you@example.com"
           />
+          <ThemedField
+            label="New destination wallet address"
+            value={destinationAddress}
+            onChangeText={setDestinationAddress}
+            placeholder="G..."
+            autoCapitalize="characters"
+            disabled={busy}
+          />
           <Button
             title={busy ? 'Checking ledger…' : 'Continue'}
             disabled={busy}
@@ -619,7 +758,11 @@ export default function WalletRecoveryModule({
             as a manual fallback. The Sent copy usually has no DKIM signature.
           </Text>
           <Button
-            title={selectedEml ? `Selected: ${selectedEml.name}` : 'Use .eml fallback'}
+            title={
+              selectedEml
+                ? `Selected: ${selectedEml.name}`
+                : 'Use .eml fallback'
+            }
             secondary
             disabled={busy}
             onPress={pickEml}
@@ -635,10 +778,10 @@ export default function WalletRecoveryModule({
             disabled={busy}
             onPress={() => syncPending(targetWallet)}
           />
-          <Button
-            title="Open mail app"
-            secondary
-            onPress={() => Linking.openURL(buildRecoveryMailUrl(walletAddress))}
+          <Button title="Open mail app" secondary onPress={openRecoveryMail} />
+          <RecoveryTransactionLink
+            title="View recovery transaction"
+            transactionHash={startRecoveryTransactionHash}
           />
           <Text style={styles.notice}>
             {statusChecking ? 'Checking recovery status…' : notice}
@@ -655,6 +798,10 @@ export default function WalletRecoveryModule({
             open.
           </Text>
           <Text style={styles.timer}>{remaining}s</Text>
+          <RecoveryTransactionLink
+            title="View recovery transaction"
+            transactionHash={startRecoveryTransactionHash}
+          />
           <Text style={styles.notice}>
             {statusChecking ? 'Checking recovery status…' : notice}
           </Text>
@@ -666,9 +813,13 @@ export default function WalletRecoveryModule({
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.heading}>Completing recovery</Text>
           <Text style={styles.subheading}>
-            The recovery transaction is being finalized. This screen will
-            update automatically.
+            The recovery transaction is being finalized. This screen will update
+            automatically.
           </Text>
+          <RecoveryTransactionLink
+            title="View recovery transaction"
+            transactionHash={startRecoveryTransactionHash}
+          />
           <Text style={styles.notice}>
             {statusChecking ? 'Checking recovery status…' : notice}
           </Text>
@@ -683,6 +834,10 @@ export default function WalletRecoveryModule({
             The timelock has elapsed. Execute the smart contract sweep to move
             protected assets.
           </Text>
+          <RecoveryTransactionLink
+            title="View recovery transaction"
+            transactionHash={startRecoveryTransactionHash}
+          />
           <Button
             title={busy ? 'Executing…' : 'Execute recovery'}
             disabled={busy}
@@ -701,8 +856,12 @@ export default function WalletRecoveryModule({
           The smart contract execution finished. Check the destination wallet
           for the swept balances.
         </Text>
+        <RecoveryTransactionLink
+          title="View recovery transaction"
+          transactionHash={executeRecoveryTransactionHash}
+        />
         <Text style={styles.notice}>{notice}</Text>
-        <Button title="Done" onPress={onExit} />
+        <Button title="Done" onPress={finishRecovery} />
       </ScrollView>
     );
   };
@@ -727,7 +886,8 @@ export default function WalletRecoveryModule({
   );
 }
 
-const createRecoveryStyles = theme => StyleSheet.create({
+const createRecoveryStyles = theme =>
+  StyleSheet.create({
   root: {flex: 1, backgroundColor: theme.background},
   content: {
     padding: 22,
@@ -771,8 +931,18 @@ const createRecoveryStyles = theme => StyleSheet.create({
     marginBottom: 26,
   },
   fieldWrap: {marginBottom: 16},
-  label: {color: theme.text, fontSize: 13, fontWeight: '600', marginBottom: 7},
-  assetOption: {padding: 13, marginBottom: 8, borderRadius: 10, backgroundColor: theme.input},
+    label: {
+      color: theme.text,
+      fontSize: 13,
+      fontWeight: '600',
+      marginBottom: 7,
+    },
+    assetOption: {
+      padding: 13,
+      marginBottom: 8,
+      borderRadius: 10,
+      backgroundColor: theme.input,
+    },
   assetOptionText: {color: theme.text, fontSize: 14},
   input: {
     minHeight: 48,
@@ -800,7 +970,31 @@ const createRecoveryStyles = theme => StyleSheet.create({
   buttonText: {color: '#FFF', fontSize: 15, fontWeight: '700'},
   secondaryButtonText: {color: theme.text},
   disabled: {opacity: 0.45},
-  error: {color: theme.error, textAlign: 'center', marginTop: 12, lineHeight: 19},
+    transactionLink: {
+      alignItems: 'center',
+      borderColor: theme.border,
+      borderRadius: 12,
+      borderWidth: 1,
+      marginTop: 12,
+      padding: 12,
+    },
+    transactionLinkTitle: {
+      color: theme.primary,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    transactionLinkHash: {
+      color: theme.muted,
+      fontSize: 12,
+      marginTop: 5,
+      maxWidth: '100%',
+    },
+    error: {
+      color: theme.error,
+      textAlign: 'center',
+      marginTop: 12,
+      lineHeight: 19,
+    },
   notice: {
     color: theme.muted,
     textAlign: 'center',
