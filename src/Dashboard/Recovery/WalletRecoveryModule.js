@@ -27,12 +27,12 @@ import {
 } from '@react-native-documents/picker';
 import {
   fetchRecoveryAssets,
-  getRecoveryDestinationReadiness,
-  isStellarWalletActivated,
+  getRecoveryWalletReadiness,
   isValidStellarAddress,
   normalizeEmail,
   signAndBroadcastRecoveryTransaction,
 } from './stellarRecoveryApi';
+import {isRecoveryDestinationUsdcReady} from './recoveryAssetConfig';
 import defaultRecoveryApi from './proofApi';
 import {
   forgetRecoveryDestination,
@@ -482,21 +482,28 @@ export default function WalletRecoveryModule({
     setBusy(true);
     try {
       const originalWallet = targetWallet.trim();
-      const isActivated = await isStellarWalletActivated(originalWallet);
-      if (!isActivated) {
+      const originalReadiness = await getRecoveryWalletReadiness(
+        originalWallet,
+      );
+      if (!originalReadiness.isActivated) {
         setError(
           'This Stellar wallet is not activated. Fund it with XLM before starting recovery.',
         );
         return;
       }
-      const destinationReadiness = await getRecoveryDestinationReadiness(
+      const destinationReadiness = await getRecoveryWalletReadiness(
         destinationAddress,
       );
       if (!destinationReadiness.isActivated) {
         setError('Activate the destination wallet with XLM before continuing.');
         return;
       }
-      if (!destinationReadiness.hasUsdcTrustline) {
+      if (
+        !isRecoveryDestinationUsdcReady(
+          originalReadiness.hasUsdcTrustline,
+          destinationReadiness.hasUsdcTrustline,
+        )
+      ) {
         setError(
           'Add the required USDC trustline for issuer GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5 before continuing.',
         );

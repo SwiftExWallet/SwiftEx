@@ -222,7 +222,7 @@ stateDiagram-v2
 | `POST /v1/recovery/cancel/confirm` | Confirm cancellation after signing | *Adapter only, no screen action* |
 
 ### 3. Stellar Horizon & Soroban RPC
-* **Horizon:** Used to read account activation and balance data for the original wallet.
+* **Horizon:** Used to read account activation and USDC trustline data for both the original and destination wallets. The destination must always be activated; its configured USDC trustline is required only when the original wallet has that same trustline.
 * **Soroban RPC:** Used to submit the locally signed registration transaction and poll for completion.
 * Both are configured by the parent app deployment.
 
@@ -296,7 +296,7 @@ Items this directory cannot confirm and that should be verified against the real
 ## ⚠️ Known Limitations
 
 * Proof verification, timelock enforcement, and asset movement happen in the external backend/contracts.
-* The screen has **no destination-wallet input**; the destination is returned by the recovery API.
+* The screen validates the user-entered destination wallet against Horizon, but destination ownership verification remains an external deployment responsibility.
 * The mail action uses the wallet passed to the screen, even if the original-wallet field was edited.
 * No cancellation action is exposed on the screen.
 * Tests use mocks and do not validate a real on-chain sweep.

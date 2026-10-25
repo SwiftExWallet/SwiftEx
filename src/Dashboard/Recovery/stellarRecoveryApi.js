@@ -30,7 +30,7 @@ export async function isStellarWalletActivated(address) {
   }
 }
 
-export async function getRecoveryDestinationReadiness(address) {
+export async function getRecoveryWalletReadiness(address) {
   const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
   try {
     const account = await server.loadAccount(String(address || '').trim());

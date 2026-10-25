@@ -10,6 +10,13 @@ export function hasRecoveryUsdcTrustline(balances) {
   );
 }
 
+export function isRecoveryDestinationUsdcReady(
+  originalHasUsdcTrustline,
+  destinationHasUsdcTrustline,
+) {
+  return !originalHasUsdcTrustline || Boolean(destinationHasUsdcTrustline);
+}
+
 export function isApprovedRecoveryClassicAsset(asset) {
   return (
     asset?.type === 'classic' &&
