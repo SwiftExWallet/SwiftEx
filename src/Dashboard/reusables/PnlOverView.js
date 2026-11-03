@@ -33,6 +33,7 @@ import {
 } from "react-native-responsive-screen";
 import { buildXlsxZip } from "../../utilities/PnlGenrate";
 import PnlShareCard from "./PnlShareCard";
+import { getPnlEmptyDisplay } from "./pnlEmptyState";
 
 if (
     Platform.OS === "android" &&
@@ -101,11 +102,12 @@ const TIMELINES = [
     { label: "3M", value: "3month" },
 ];
 
-const EmptyState = ({ styles, theme, message = "No data available" }) => (
+const PNL_EMPTY_DISPLAY = getPnlEmptyDisplay();
+
+const EmptyState = ({ styles, theme }) => (
     <View style={styles.emptyState}>
         <Icon name="bar-chart-outline" size={32} color={theme.dim} type="ionicon" />
-        <Text style={styles.emptyStateText}>{message}</Text>
-        <Text style={styles.emptyStateSub}>No trades found for this period</Text>
+        <Text style={styles.emptyStateText}>{PNL_EMPTY_DISPLAY.guidance}</Text>
     </View>
 );
 
@@ -644,11 +646,31 @@ const TradeDetailView = ({
         showsVerticalScrollIndicator={false}
     >
         {!hasData ? (
-            <EmptyState
-                styles={styles}
-                theme={theme}
-                message="No trade data available"
-            />
+            <>
+                <View style={styles.statsRow}>
+                    <StatCell
+                        value={PNL_EMPTY_DISPLAY.trade.totalTrades}
+                        label="Total Trades"
+                        styles={styles}
+                    />
+                    <StatCell
+                        value={PNL_EMPTY_DISPLAY.trade.winningTrades}
+                        label="Winning"
+                        styles={styles}
+                    />
+                    <StatCell
+                        value={PNL_EMPTY_DISPLAY.trade.losingTrades}
+                        label="Losing"
+                        styles={styles}
+                    />
+                    <StatCell
+                        value={PNL_EMPTY_DISPLAY.trade.breakevenTrades}
+                        label="Breakeven"
+                        styles={styles}
+                    />
+                </View>
+                <EmptyState styles={styles} theme={theme} />
+            </>
         ) : (
             <>
                 <View style={styles.detailHeroRow}>
@@ -855,11 +877,49 @@ const MetricsDetailView = ({
             showsVerticalScrollIndicator={false}
         >
             {!hasData ? (
-                <EmptyState
-                    styles={styles}
-                    theme={theme}
-                    message="No metrics available"
-                />
+                <>
+                    <View style={styles.detailListCard}>
+                        <Text style={styles.detailSectionLabel}>USDC FLOW</Text>
+                        <View style={styles.metricCardsRow}>
+                            <MetricCard
+                                theme={theme}
+                                label="USDC SPENT"
+                                value={PNL_EMPTY_DISPLAY.metrics.usdcSpent}
+                                styles={styles}
+                            />
+                            <MetricCard
+                                theme={theme}
+                                label="USDC RECEIVED"
+                                value={PNL_EMPTY_DISPLAY.metrics.usdcReceived}
+                                styles={styles}
+                            />
+                            <MetricCard
+                                theme={theme}
+                                label="NET USDC FLOW"
+                                value={PNL_EMPTY_DISPLAY.metrics.netUsdcFlow}
+                                styles={styles}
+                            />
+                        </View>
+                    </View>
+                    <View style={styles.statsRow}>
+                        <StatCell
+                            value={PNL_EMPTY_DISPLAY.metrics.totalTrades}
+                            label="Total Trades"
+                            styles={styles}
+                        />
+                        <StatCell
+                            value={PNL_EMPTY_DISPLAY.metrics.winRate}
+                            label="Win Rate"
+                            styles={styles}
+                        />
+                        <StatCell
+                            value={PNL_EMPTY_DISPLAY.metrics.activeDays}
+                            label="Active Days"
+                            styles={styles}
+                        />
+                    </View>
+                    <EmptyState styles={styles} theme={theme} />
+                </>
             ) : (
                 <>
                     <View style={styles.detailListCard}>
@@ -977,11 +1037,32 @@ const DiagnosticsDetailView = ({
         showsVerticalScrollIndicator={false}
     >
         {!hasData ? (
-            <EmptyState
-                styles={styles}
-                theme={theme}
-                message="No diagnostics available"
-            />
+            <>
+                <Text style={styles.detailSectionLabel}>POSITION SUMMARY</Text>
+                <View style={styles.statsRow}>
+                    <StatCell
+                        value={PNL_EMPTY_DISPLAY.diagnostics.rawCount}
+                        label="Raw Trades"
+                        styles={styles}
+                    />
+                    <StatCell
+                        value={PNL_EMPTY_DISPLAY.diagnostics.collapsedCount}
+                        label="Collapsed"
+                        styles={styles}
+                    />
+                    <StatCell
+                        value={PNL_EMPTY_DISPLAY.diagnostics.activeDays}
+                        label="Active Days"
+                        styles={styles}
+                    />
+                    <StatCell
+                        value={PNL_EMPTY_DISPLAY.diagnostics.positions}
+                        label="Positions"
+                        styles={styles}
+                    />
+                </View>
+                <EmptyState styles={styles} theme={theme} />
+            </>
         ) : (
             <>
                 {costBasisWarning && (
@@ -1459,21 +1540,21 @@ const PnlOverView = ({
                                     <MetricCard
                                         theme={theme}
                                         label="TOTAL P&L"
-                                        value="—"
+                                        value={PNL_EMPTY_DISPLAY.hero.totalPnl}
                                         styles={styles}
                                         borderColor={theme.purple}
                                     />
                                     <MetricCard
                                         theme={theme}
                                         label="UNREALIZED"
-                                        value="—"
+                                        value={PNL_EMPTY_DISPLAY.hero.unrealized}
                                         styles={styles}
                                         borderColor={theme.border}
                                     />
                                     <MetricCard
                                         theme={theme}
                                         label="REALIZED"
-                                        value="—"
+                                        value={PNL_EMPTY_DISPLAY.hero.realized}
                                         styles={styles}
                                         borderColor={theme.border}
                                     />
@@ -1486,10 +1567,7 @@ const PnlOverView = ({
                                         type="ionicon"
                                     />
                                     <Text style={styles.noChartText}>
-                                        No trading data for this period
-                                    </Text>
-                                    <Text style={styles.noChartSub}>
-                                        Try selecting a different time range
+                                        {PNL_EMPTY_DISPLAY.guidance}
                                     </Text>
                                 </View>
                             </>
@@ -1549,7 +1627,7 @@ const PnlOverView = ({
                         summary={
                             hasData
                                 ? `${Math.round(winRate || 0)}% win rate · ${totalTrades} trades`
-                                : "No data for this period"
+                                : PNL_EMPTY_DISPLAY.trade.summary
                         }
                         icon="pie-chart-outline"
                         expanded={expandedSection === "trade"}
@@ -1560,11 +1638,31 @@ const PnlOverView = ({
                     {expandedSection === "trade" && (
                         <View style={styles.expandedCard}>
                             {!hasData ? (
-                                <EmptyListState
-                                    styles={styles}
-                                    theme={theme}
-                                    message="No trade data for this period"
-                                />
+                                <>
+                                    <View style={styles.statsRow}>
+                                        <StatCell
+                                            value={PNL_EMPTY_DISPLAY.trade.totalTrades}
+                                            label="Total Trades"
+                                            styles={styles}
+                                        />
+                                        <StatCell
+                                            value={PNL_EMPTY_DISPLAY.trade.winningTrades}
+                                            label="Winning"
+                                            styles={styles}
+                                        />
+                                        <StatCell
+                                            value={PNL_EMPTY_DISPLAY.trade.losingTrades}
+                                            label="Losing"
+                                            styles={styles}
+                                        />
+                                        <StatCell
+                                            value={PNL_EMPTY_DISPLAY.trade.breakevenTrades}
+                                            label="Breakeven"
+                                            styles={styles}
+                                        />
+                                    </View>
+                                    <EmptyState styles={styles} theme={theme} />
+                                </>
                             ) : (
                                 <>
                                     <View style={styles.tradeTop}>
@@ -1647,7 +1745,7 @@ const PnlOverView = ({
                         summary={
                             hasData
                                 ? `$${fmtNum(data.usdcSpent ?? 0, 2)} spent · ${fmtUSD(data.netUSDCFlow ?? 0, 2)} net flow`
-                                : "No data for this period"
+                                : PNL_EMPTY_DISPLAY.metrics.summary
                         }
                         icon="stats-chart-outline"
                         expanded={expandedSection === "metrics"}
@@ -1658,11 +1756,50 @@ const PnlOverView = ({
                     {expandedSection === "metrics" && (
                         <View style={styles.expandedCard}>
                             {!hasData ? (
-                                <EmptyListState
-                                    styles={styles}
-                                    theme={theme}
-                                    message="No metrics for this period"
-                                />
+                                <>
+                                    <Text style={styles.detailSectionLabel}>USDC FLOW</Text>
+                                    <View style={styles.metricCardsRow}>
+                                        <MetricCard
+                                            theme={theme}
+                                            label="USDC SPENT"
+                                            value={PNL_EMPTY_DISPLAY.metrics.usdcSpent}
+                                            styles={styles}
+                                        />
+                                        <MetricCard
+                                            theme={theme}
+                                            label="USDC RECEIVED"
+                                            value={PNL_EMPTY_DISPLAY.metrics.usdcReceived}
+                                            styles={styles}
+                                        />
+                                        <MetricCard
+                                            theme={theme}
+                                            label="NET USDC FLOW"
+                                            value={PNL_EMPTY_DISPLAY.metrics.netUsdcFlow}
+                                            styles={styles}
+                                        />
+                                    </View>
+                                    <Text style={[styles.detailSectionLabel, { marginTop: 18 }]}>
+                                        TRADING STATS
+                                    </Text>
+                                    <View style={styles.statsRow}>
+                                        <StatCell
+                                            value={PNL_EMPTY_DISPLAY.metrics.totalTrades}
+                                            label="Total Trades"
+                                            styles={styles}
+                                        />
+                                        <StatCell
+                                            value={PNL_EMPTY_DISPLAY.metrics.winRate}
+                                            label="Win Rate"
+                                            styles={styles}
+                                        />
+                                        <StatCell
+                                            value={PNL_EMPTY_DISPLAY.metrics.activeDays}
+                                            label="Active Days"
+                                            styles={styles}
+                                        />
+                                    </View>
+                                    <EmptyState styles={styles} theme={theme} />
+                                </>
                             ) : (
                                 <>
                                     <Text style={styles.detailSectionLabel}>USDC FLOW</Text>
@@ -1742,7 +1879,7 @@ const PnlOverView = ({
                         summary={
                             hasData
                                 ? `${data.rawCount ?? 0} raw · ${data.collapsedCount ?? 0} collapsed · ${data.activeDays ?? 0} days`
-                                : "No data for this period"
+                                : PNL_EMPTY_DISPLAY.diagnostics.summary
                         }
                         icon="warning-outline"
                         iconColor={theme.warn}
@@ -1754,11 +1891,31 @@ const PnlOverView = ({
                     {expandedSection === "diagnostics" && (
                         <View style={styles.expandedCard}>
                             {!hasData ? (
-                                <EmptyListState
-                                    styles={styles}
-                                    theme={theme}
-                                    message="No diagnostics for this period"
-                                />
+                                <>
+                                    <View style={styles.statsRow}>
+                                        <StatCell
+                                            value={PNL_EMPTY_DISPLAY.diagnostics.rawCount}
+                                            label="Raw Trades"
+                                            styles={styles}
+                                        />
+                                        <StatCell
+                                            value={PNL_EMPTY_DISPLAY.diagnostics.collapsedCount}
+                                            label="Collapsed"
+                                            styles={styles}
+                                        />
+                                        <StatCell
+                                            value={PNL_EMPTY_DISPLAY.diagnostics.activeDays}
+                                            label="Active Days"
+                                            styles={styles}
+                                        />
+                                        <StatCell
+                                            value={PNL_EMPTY_DISPLAY.diagnostics.positions}
+                                            label="Positions"
+                                            styles={styles}
+                                        />
+                                    </View>
+                                    <EmptyState styles={styles} theme={theme} />
+                                </>
                             ) : (
                                 <>
                                     {costBasisWarning && (
@@ -1909,7 +2066,7 @@ const PnlOverView = ({
                         ref={pnlCardRef}
                         brandName="SwiftEx Wallet"
                         days={selectedTimeline}
-                        totalPnlPercent={data.totalPortfolioValue}
+                        totalPnlPercent={data.totalPnL}
                         totalPnlDollar={data.totalUnrealized}
                         winRate={data.winRate}
                         trades={data.rawCount}

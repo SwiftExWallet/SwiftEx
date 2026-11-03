@@ -1,12 +1,56 @@
 import Foundation
 import stellarsdk
+import LocalAuthentication
 
 @objc(StellarSigner)
 class StellarSigner: NSObject {
   
-  let sdk = StellarSDK(withHorizonUrl: "https://horizon-testnet.stellar.org")
-  let serviceName = "com.appSwiftEx.appStorage.v3"
+  let sdk = StellarSDK(withHorizonUrl: "https://horizon.stellar.org")
+  let serviceName = "com.appSwiftEx.appStorage.v2"
 
+  private func authenticateForSigning(_ completion: @escaping (Result<Void, Error>) -> Void) {
+    let context = LAContext()
+    let reason = "Authenticate to sign transaction"
+    var error: NSError?
+
+    guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+      DispatchQueue.main.async {
+        NativePinBottomSheet.show { pin in
+          guard let pin, AppPinVerifierIOS.validate(pin) else {
+            completion(.failure(NSError(domain: "AUTH", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid app PIN"])))
+            return
+          }
+          completion(.success(()))
+        }
+      }
+      return
+    }
+
+    context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
+      if success {
+        completion(.success(()))
+      } else {
+        completion(.failure(authError ?? NSError(domain: "AUTH", code: -2, userInfo: [NSLocalizedDescriptionKey: "Authentication failed"])))
+      }
+    }
+  }
+
+  private func signerAuthCode(_ error: Error) -> String {
+    let nsError = error as NSError
+    if nsError.domain == LAError.errorDomain {
+      switch LAError.Code(rawValue: nsError.code) {
+      case .userCancel, .systemCancel, .appCancel, .userFallback:
+        return "AUTH_CANCELLED"
+      default:
+        return "AUTH_FAILED"
+      }
+    }
+    if nsError.domain == "AUTH", nsError.code == -1 {
+      return "AUTH_UNAVAILABLE"
+    }
+    return "AUTH_FAILED"
+  }
+  
   private func getPrivateKey(chain: String) throws -> String? {
     guard let walletJson = retrieveFromKeychain(key: "activeUserWallet", service: serviceName) else {
       throw NSError(domain: "KEYCHAIN", code: -1, userInfo: [NSLocalizedDescriptionKey: "No wallet found"])
@@ -103,11 +147,18 @@ class StellarSigner: NSObject {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    signTransactionAfterAuthentication(
-      transactionXDR,
-      resolver: resolve,
-      rejecter: reject
-    )
+    authenticateForSigning { authResult in
+      do {
+        try authResult.get()
+        self.signTransactionAfterAuthentication(
+          transactionXDR,
+          resolver: resolve,
+          rejecter: reject
+        )
+      } catch {
+        reject(self.signerAuthCode(error), error.localizedDescription, error)
+      }
+    }
   }
 
   private func signTransactionAfterAuthentication(
@@ -120,7 +171,7 @@ class StellarSigner: NSObject {
         let secretKey = try getPrivateKey(chain: "stellar")!
         let sourceKeyPair = try KeyPair(secretSeed: secretKey)
         let envelopeXDR = try TransactionEnvelopeXDR(xdr: transactionXDR)
-        let network = Network.testnet
+        let network = Network.public
         let hash = try envelopeXDR.txHash(network: network)
         let signature = sourceKeyPair.sign([UInt8](hash))
         let signatureBase64 = Data(signature).base64EncodedString()

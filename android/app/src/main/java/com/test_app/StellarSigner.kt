@@ -2,6 +2,10 @@ package org.app.swiftEx.wallet
 
 import com.facebook.react.bridge.*
 import android.util.Log
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import org.json.JSONObject
 import org.stellar.sdk.*
 import java.security.MessageDigest
@@ -11,11 +15,64 @@ class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJav
     private val TAG = "StellarSigner"
     private val PREF_NAME = SecureWalletStore.PREF_NAME
     private val KEY_WALLET = "activeUserWallet"
-    private val stellarServer = Server("https://horizon-testnet.stellar.org")
+    private val stellarServer = Server("https://horizon.stellar.org")
 
     private val prefs by lazy { SecureWalletStore.open(reactApplicationContext) }
 
     override fun getName() = "StellarSigner"
+
+    private fun authenticateForSigning(promise: Promise, onAuthenticated: () -> Unit) {
+        val activity = reactApplicationContext.currentActivity as? FragmentActivity
+            ?: return promise.reject("ACTIVITY_UNAVAILABLE", "No active activity")
+
+        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        val canAuthenticate = BiometricManager.from(activity).canAuthenticate(authenticators)
+        if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
+            return NativePinBottomSheet.show(
+                activity,
+                onSubmit = { pin ->
+                    if (AppPinVerifier.validate(prefs, pin)) onAuthenticated()
+                    else promise.reject("PIN_INVALID", "Invalid app PIN")
+                },
+                onCancel = { promise.reject("AUTH_CANCELLED", "Authentication cancelled") },
+            )
+        }
+
+        val executor = ContextCompat.getMainExecutor(activity)
+        val prompt = BiometricPrompt(
+            activity,
+            executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    onAuthenticated()
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    val code = if (
+                        errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
+                        errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
+                        errorCode == BiometricPrompt.ERROR_CANCELED
+                    ) "AUTH_CANCELLED" else "AUTH_FAILED"
+                    promise.reject(code, errString.toString())
+                }
+
+                override fun onAuthenticationFailed() {
+                    Log.w(TAG, "Biometric authentication attempt failed")
+                }
+            }
+        )
+
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Authenticate to sign transaction")
+            .setSubtitle("Confirm it is you before this wallet signs.")
+            .setAllowedAuthenticators(authenticators)
+            .build()
+
+        activity.runOnUiThread {
+            prompt.authenticate(promptInfo)
+        }
+    }
 
     @ReactMethod
     fun getAssets(publicKey: String, promise: Promise) {
@@ -51,6 +108,7 @@ class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJav
 
     @ReactMethod
     fun signTransaction(transactionXDR: String, promise: Promise) {
+    authenticateForSigning(promise) {
         Thread {
             try {
                 val secretKey = getPrivateKey() ?: run {
@@ -59,7 +117,7 @@ class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJav
                 }
 
                 val sourceKeyPair = KeyPair.fromSecretSeed(secretKey)
-                val network = Network.TESTNET
+                val network = Network.PUBLIC
                 val envelope = Transaction.fromEnvelopeXdr(
                     transactionXDR,
                     network
@@ -92,6 +150,7 @@ class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJav
                 promise.reject("SIGN_ERROR", "${e.message} | ${e.stackTraceToString()}")
             }
         }.start()
+        }
     }
 
     private fun ByteArray.toHexString(): String =

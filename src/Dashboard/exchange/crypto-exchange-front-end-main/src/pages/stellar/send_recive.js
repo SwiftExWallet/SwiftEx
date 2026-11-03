@@ -38,7 +38,7 @@ const send_recive = ({route}) => {
       assetContract,
       assetDecimals = 7,
     } = route?.params || {};
-    const contractId = assetContract || (assetIssuer?.startsWith?.("C") ? assetIssuer : null);
+    const contractId = typeof assetContract === "string" && assetContract.startsWith("C") ? assetContract : assetIssuer?.startsWith?.("C") ? assetIssuer : null;
     const isSorobanContract = Boolean(contractId);
     console.log("----------------usdtAsse-----------------",bala,asset_name,assetIssuer)
   const cameraRef = useRef(null);

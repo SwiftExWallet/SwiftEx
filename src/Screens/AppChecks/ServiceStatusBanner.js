@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { View, Text, StyleSheet, Animated } from "react-native";
+import { View, Text, StyleSheet, Animated, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { getServiceStatusForScreen } from "./AppCheckService";
@@ -177,7 +177,7 @@ const GlobalServiceBanner = ({ currentRoute }) => {
 const styles = StyleSheet.create({
   banner: {
     position: "absolute",
-    top: hp(1),
+    top: Platform.OS==="android"?hp(1):hp(4.6),
     left: wp(3),
     right: wp(3),
     zIndex: 9999,
