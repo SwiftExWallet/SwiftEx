@@ -63,6 +63,7 @@ enum NativePinBottomSheet {
             controller.dismiss(animated: true) { completion(pin) }
         }, for: .touchUpInside)
         controller.modalPresentationStyle = .pageSheet
+        controller.isModalInPresentation = true
         presenter.present(controller, animated: true) {
             if #available(iOS 15.0, *) {
                 controller.sheetPresentationController?.detents = [.medium()]
@@ -103,5 +104,67 @@ enum AppPinVerifierIOS {
             }
         }
         return actual == expected
+    }
+}
+
+enum TransactionAuthPolicyIOS {
+    private static let service = "com.appSwiftEx.transactionAuth.v1"
+    private static let account = "enabled"
+
+    static func isEnabled() -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let value = String(data: data, encoding: .utf8) else {
+            return true
+        }
+        return value != "false"
+    }
+
+    @discardableResult
+    static func setEnabled(_ enabled: Bool) throws -> Bool {
+        let lookup: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: Data(String(enabled).utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ]
+
+        let status: OSStatus
+        if SecItemCopyMatching(lookup as CFDictionary, nil) == errSecSuccess {
+            status = SecItemUpdate(lookup as CFDictionary, attributes as CFDictionary)
+        } else {
+            status = SecItemAdd(lookup.merging(attributes) { _, new in new } as CFDictionary, nil)
+        }
+        guard status == errSecSuccess else {
+            throw NSError(
+                domain: NSOSStatusErrorDomain,
+                code: Int(status),
+                userInfo: [NSLocalizedDescriptionKey: "Unable to persist transaction authentication setting"]
+            )
+        }
+        return enabled
+    }
+
+    static func resetToDefault() throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+        }
     }
 }

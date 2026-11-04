@@ -23,3 +23,58 @@ object AppPinVerifier {
         }
     }
 }
+
+object TransactionAuthPolicy {
+    private const val KEY = "transactionAuthEnabled"
+    @Volatile private var forceEnabledAfterWriteFailure = false
+
+    @Synchronized
+    fun isEnabled(prefs: android.content.SharedPreferences): Boolean {
+        if (forceEnabledAfterWriteFailure) return true
+        return try {
+            if (!prefs.contains(KEY)) true else prefs.getBoolean(KEY, true)
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    @Synchronized
+    fun setEnabled(prefs: android.content.SharedPreferences, enabled: Boolean): Boolean {
+        val hadStoredValue = prefs.contains(KEY)
+        val previousValue = isEnabled(prefs)
+
+        val committed = try {
+            prefs.edit().putBoolean(KEY, enabled).commit()
+        } catch (error: Exception) {
+            forceEnabledAfterWriteFailure = true
+            if (restorePreviousValue(prefs, hadStoredValue, previousValue)) {
+                forceEnabledAfterWriteFailure = false
+            }
+            throw error
+        }
+        if (!committed) {
+            forceEnabledAfterWriteFailure = true
+            if (restorePreviousValue(prefs, hadStoredValue, previousValue)) {
+                forceEnabledAfterWriteFailure = false
+            }
+            error("Unable to persist transaction authentication setting")
+        }
+
+        forceEnabledAfterWriteFailure = false
+        return enabled
+    }
+
+    private fun restorePreviousValue(
+        prefs: android.content.SharedPreferences,
+        hadStoredValue: Boolean,
+        previousValue: Boolean,
+    ): Boolean {
+        return try {
+            val editor = prefs.edit()
+            if (hadStoredValue) editor.putBoolean(KEY, previousValue) else editor.remove(KEY)
+            editor.commit()
+        } catch (_: Exception) {
+            false
+        }
+    }
+}

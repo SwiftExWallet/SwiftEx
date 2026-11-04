@@ -216,6 +216,34 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
         }
     }
 
+    @ReactMethod
+    fun getTransactionAuthEnabled(promise: Promise) {
+        promise.resolve(TransactionAuthPolicy.isEnabled(prefs))
+    }
+
+    @ReactMethod
+    fun setTransactionAuthEnabled(enabled: Boolean, promise: Promise) {
+        if (enabled) {
+            return try {
+                promise.resolve(TransactionAuthPolicy.setEnabled(prefs, true))
+            } catch (e: Exception) {
+                promise.reject("TRANSACTION_AUTH_STORAGE_ERROR", e.message, e)
+            }
+        }
+
+        authenticate(
+            title = "Authenticate to change transaction security",
+            subtitle = "Confirm it is you before signing protection is disabled.",
+            promise = promise,
+        ) {
+            try {
+                promise.resolve(TransactionAuthPolicy.setEnabled(prefs, false))
+            } catch (e: Exception) {
+                promise.reject("TRANSACTION_AUTH_STORAGE_ERROR", e.message, e)
+            }
+        }
+    }
+
     private fun publicWalletMap(w: JSONObject): WritableMap {
         return Arguments.createMap().apply {
             putString("address",          w.optString("address"))
@@ -243,7 +271,12 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
         return (value * reactApplicationContext.resources.displayMetrics.density).toInt()
     }
 
-    private fun authenticateForSecretView(promise: Promise, onAuthenticated: () -> Unit) {
+    private fun authenticate(
+        title: String,
+        subtitle: String,
+        promise: Promise,
+        onAuthenticated: () -> Unit,
+    ) {
         val activity = reactApplicationContext.currentActivity as? FragmentActivity
             ?: return promise.reject("ACTIVITY_UNAVAILABLE", "No active activity")
 
@@ -285,14 +318,23 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
         )
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Authenticate to view secret backup")
-            .setSubtitle("Confirm it is you before this wallet shows recovery details.")
+            .setTitle(title)
+            .setSubtitle(subtitle)
             .setAllowedAuthenticators(authenticators)
             .build()
 
         activity.runOnUiThread {
             prompt.authenticate(promptInfo)
         }
+    }
+
+    private fun authenticateForSecretView(promise: Promise, onAuthenticated: () -> Unit) {
+        authenticate(
+            title = "Authenticate to view secret backup",
+            subtitle = "Confirm it is you before this wallet shows recovery details.",
+            promise = promise,
+            onAuthenticated = onAuthenticated,
+        )
     }
 
     private fun showBackupScreen(backupText: String) {

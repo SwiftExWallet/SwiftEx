@@ -22,6 +22,11 @@ class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJav
     override fun getName() = "StellarSigner"
 
     private fun authenticateForSigning(promise: Promise, onAuthenticated: () -> Unit) {
+        if (!TransactionAuthPolicy.isEnabled(prefs)) {
+            onAuthenticated()
+            return
+        }
+
         val activity = reactApplicationContext.currentActivity as? FragmentActivity
             ?: return promise.reject("ACTIVITY_UNAVAILABLE", "No active activity")
 

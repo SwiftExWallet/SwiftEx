@@ -18,6 +18,11 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
     override fun getName() = "TransactionSigner"
 
     private fun authenticateForSigning(promise: Promise, onAuthenticated: () -> Unit) {
+        if (!TransactionAuthPolicy.isEnabled(prefs)) {
+            onAuthenticated()
+            return
+        }
+
         val activity = reactApplicationContext.currentActivity as? FragmentActivity
             ?: return promise.reject("ACTIVITY_UNAVAILABLE", "No active activity")
 

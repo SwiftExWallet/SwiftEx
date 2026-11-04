@@ -71,6 +71,43 @@ class StorageModule: NSObject {
         }
     }
 
+    @objc(getTransactionAuthEnabled:rejecter:)
+    func getTransactionAuthEnabled(
+        _ resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        resolve(TransactionAuthPolicyIOS.isEnabled())
+    }
+
+    @objc(setTransactionAuthEnabled:resolver:rejecter:)
+    func setTransactionAuthEnabled(
+        _ enabled: Bool,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        let persist: () -> Void = {
+            do {
+                resolve(try TransactionAuthPolicyIOS.setEnabled(enabled))
+            } catch {
+                reject("TRANSACTION_AUTH_STORAGE_ERROR", error.localizedDescription, error)
+            }
+        }
+
+        guard !enabled else {
+            persist()
+            return
+        }
+
+        authenticate(reason: "Authenticate to disable transaction signing protection") { result in
+            do {
+                try result.get()
+                persist()
+            } catch {
+                reject(self.storageAuthCode(error), error.localizedDescription, error)
+            }
+        }
+    }
+
     private func publicWallet(_ w: [String: Any]) -> [String: Any] {
         return [
             "address":          w["address"]          ?? NSNull(),
@@ -111,9 +148,11 @@ class StorageModule: NSObject {
         return top
     }
 
-    private func authenticateForSecretView(_ completion: @escaping (Result<Void, Error>) -> Void) {
+    private func authenticate(
+        reason: String,
+        _ completion: @escaping (Result<Void, Error>) -> Void
+    ) {
         let context = LAContext()
-        let reason = "Authenticate to view secret backup"
         var error: NSError?
 
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
@@ -136,6 +175,10 @@ class StorageModule: NSObject {
                 completion(.failure(authError ?? SecureStorageError.authenticationFailed))
             }
         }
+    }
+
+    private func authenticateForSecretView(_ completion: @escaping (Result<Void, Error>) -> Void) {
+        authenticate(reason: "Authenticate to view secret backup", completion)
     }
 
     private func storageAuthCode(_ error: Error) -> String {
@@ -821,6 +864,7 @@ class StorageModule: NSObject {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 try self.clearAllFromKeychain()
+                try TransactionAuthPolicyIOS.resetToDefault()
                 DispatchQueue.main.async { resolve(["success": true]) }
             } catch { DispatchQueue.main.async { reject("CLEAR_ALL_ERROR", error.localizedDescription, error) } }
         }

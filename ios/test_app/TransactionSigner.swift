@@ -13,6 +13,11 @@ class TransactionSigner: NSObject {
     }
 
   private func authenticateForSigning(_ completion: @escaping (Result<Void, Error>) -> Void) {
+      guard TransactionAuthPolicyIOS.isEnabled() else {
+          completion(.success(()))
+          return
+      }
+
       let context = LAContext()
       let reason = "Authenticate to sign transaction"
       var error: NSError?

@@ -25,6 +25,7 @@ import { PPOST, proxyRequest } from "./exchange/crypto-exchange-front-end-main/s
 import ShortTermStorage from "../utilities/ShortTermStorage";
 import { colors } from "../Screens/ThemeColorsConfig";
 import { ethers } from "ethers";
+import { getTransactionAuthEnabled } from "../utilities/transactionAuth";
 
 const ConfirmTransaction = (props) => {
   const state = useSelector((state) => state);
@@ -184,6 +185,12 @@ const ConfirmTransaction = (props) => {
         style={style.doneBtn}
         disabled={disable ? true : false}
         onPress={async () => {
+          const transactionAuthEnabled = await getTransactionAuthEnabled();
+          if (!transactionAuthEnabled) {
+            await sendTx();
+            return;
+          }
+
           const biometric = await AsyncStorageLib.getItem("Biometric");
           if (biometric === "SET") {
             try {
