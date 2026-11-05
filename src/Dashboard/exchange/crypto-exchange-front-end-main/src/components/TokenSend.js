@@ -66,13 +66,17 @@ const TokenSend = ({ route }) => {
 
 
   const sendERCTokens = async (
-    chain,
+    tokenChain,
     tokenAddress,
     tokenDecimals,
     toAddress,
     amount,
   ) => {
     try {
+      const chain =
+        tokenChain === "BAS" ? "BASE" :
+        tokenChain === "AVA" ? "AVAX" :
+        tokenChain;
       const activeWalletAddress=state && state.wallet && state.wallet.address
       const activeChain = CHAINS[chain];
       if (!activeChain) {

@@ -33,8 +33,13 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
             return NativePinBottomSheet.show(
                 activity,
                 onSubmit = { pin ->
-                    if (AppPinVerifier.validate(prefs, pin)) onAuthenticated()
-                    else promise.reject("PIN_INVALID", "Invalid app PIN")
+                    try {
+                        val result = AppPinVerifier.authenticate(prefs, pin)
+                        if (result.status == PinAttemptStatus.SUCCESS) onAuthenticated()
+                        else promise.rejectPinAttempt(result)
+                    } catch (e: Exception) {
+                        promise.reject("PIN_AUTH_ERROR", "Unable to validate app PIN", e)
+                    }
                 },
                 onCancel = { promise.reject("AUTH_CANCELLED", "Authentication cancelled") },
             )
@@ -46,7 +51,12 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
             executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    onAuthenticated()
+                    try {
+                        AppPinVerifier.recordDeviceSuccess(prefs)
+                        onAuthenticated()
+                    } catch (e: Exception) {
+                        promise.reject("PIN_AUTH_ERROR", "Unable to reset PIN lock", e)
+                    }
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
@@ -71,7 +81,9 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
             .build()
 
         activity.runOnUiThread {
-            prompt.authenticate(promptInfo)
+            try { prompt.authenticate(promptInfo) } catch (error: RuntimeException) {
+                promise.reject("AUTH_FAILED", error.message, error)
+            }
         }
     }
 

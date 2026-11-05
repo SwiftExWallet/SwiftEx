@@ -30,7 +30,8 @@ import { PPOST, proxyRequest } from "../exchange/crypto-exchange-front-end-main/
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import ShortTermStorage from "../../utilities/ShortTermStorage";
 import { ethers } from "ethers";
-import { CheckPasscode } from "../../biometrics/utils";
+import { usePinThrottle } from "../../biometrics/usePinThrottle";
+import { formatPinAuthMessage } from "../../utilities/pinAuth";
 import { colors } from "../../Screens/ThemeColorsConfig";
 
 const TransactionPinModal = ({
@@ -54,6 +55,7 @@ const TransactionPinModal = ({
   const pinView = useRef(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const dispatch = useDispatch();
+  const { blocked, message: pinAuthMessage, verifyPin, verifyDevice } = usePinThrottle(pinViewVisible);
   const Navigate = () => {
     navigation.dispatch((state) => {
       const routes = state.routes.filter((r) => r.name !== "Confirm Tx");
@@ -127,8 +129,9 @@ const TransactionPinModal = ({
     const check_pin_len=async()=>{
      try {
       if (enteredPin.length===6) {
-        const validPin=await CheckPasscode(enteredPin);
-        setPinViewVisible(false);
+        if (blocked) return;
+        const pinResult = await verifyPin(enteredPin);
+        const validPin = pinResult.status === "success";
         if (validPin) {
           if (type === "Eth") {
 
@@ -239,12 +242,11 @@ const TransactionPinModal = ({
             }
           }
         } else {
-          setPinViewVisible(false);
           setLoading(false);
           setLoader(false);
           setDisable(false);
           pinView.current.clearAll();
-          alert("error", "Incorrect pin try again.");
+          alert("error", pinResult.status === "invalid" ? "Incorrect pin try again." : formatPinAuthMessage(pinResult));
         }
       }
      } catch (error) {
@@ -304,7 +306,7 @@ const TransactionPinModal = ({
              pinLength={6}
              buttonSize={60}
              // customLeftButtonViewStyle={{backgroundColor:'gray'}}
-             onValueChange={(value) => setEnteredPin(value)}
+             onValueChange={(value) => { if (!blocked) setEnteredPin(value); }}
              buttonAreaStyle={{
                marginTop: 24,
              }}
@@ -326,6 +328,11 @@ const TransactionPinModal = ({
                 if (key === "custom_left") {
                   pinView.current.clear();
                 }
+                if (key === "custom_right" && blocked) {
+                  await verifyDevice();
+                  pinView.current.clearAll();
+                  setEnteredPin("");
+                }
               }}
               customLeftButton={
                 showRemoveButton ? (
@@ -333,7 +340,7 @@ const TransactionPinModal = ({
                 ) : undefined
               }
               customRightButton={
-                showCompletedButton ? (
+                (showCompletedButton || blocked) ? (
                   <Icon name={"chevron-forward-circle"} size={36} color={theme.inactiveTx} />
                 ) : undefined
               }
@@ -350,6 +357,7 @@ const TransactionPinModal = ({
                 zero: '0',
               }}
             />
+            {blocked && <Text style={[style.Text, { color: "red", textAlign: "center" }]}>{pinAuthMessage}</Text>}
           </View>
         </View>
       </Animated.View>

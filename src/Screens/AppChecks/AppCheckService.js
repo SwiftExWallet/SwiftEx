@@ -68,13 +68,44 @@ export const CheckAppAvailable = async () => {
     }
 };
 
-export const AppNavigation = async (props, user = null) => {
+const hasPersistedUser = user => {
+    return Boolean(user && user !== "null" && user !== "undefined");
+};
+
+export const runBiometricStartup = async ({
+    inFlightRef,
+    verifyDevice,
+    onAuthenticated,
+}) => {
+    if (inFlightRef.current) return false;
+
+    inFlightRef.current = true;
+    let completed = false;
     try {
-        const storedStatus = await AsyncStorage.getItem("AppStatusChecks");
+        const biometric = await AsyncStorage.getItem("Biometric");
+        if (biometric !== "SET") return false;
+
+        const authenticated = await verifyDevice();
+        if (!authenticated) return false;
+
+        await onAuthenticated();
+        completed = true;
+        return true;
+    } finally {
+        if (!completed) inFlightRef.current = false;
+    }
+};
+
+export const AppNavigation = async (props) => {
+    let destination = "Welcome";
+    try {
+        const [storedStatus, user] = await Promise.all([
+            AsyncStorage.getItem("AppStatusChecks"),
+            AsyncStorage.getItem("user"),
+        ]);
+        destination = hasPersistedUser(user) ? "HomeScreen" : "Welcome";
         if (!storedStatus) {
-            props.navigation.navigate(
-                user ? "HomeScreen" : "Welcome"
-            );
+            props.navigation.navigate(destination);
             return;
         }
         const response = JSON.parse(storedStatus);
@@ -82,10 +113,10 @@ export const AppNavigation = async (props, user = null) => {
             props.navigation.navigate("AppCheck", { info: response?.isRestricted ? 0 : 1, });
             return;
         }
-        props.navigation.navigate(user ? "HomeScreen" : "Welcome");
+        props.navigation.navigate(destination);
     } catch (error) {
         console.error("AppNavigation error:", error);
-        props.navigation.navigate(user ? "HomeScreen" : "Welcome");
+        props.navigation.navigate(destination);
     }
 };
 

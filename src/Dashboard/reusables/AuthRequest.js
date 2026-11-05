@@ -10,8 +10,8 @@ import { useNavigation } from "@react-navigation/native";
 import { useSelector } from "react-redux";
 import { colors } from "../../Screens/ThemeColorsConfig";
 import Snackbar from "react-native-snackbar";
-import { useBiometrics_run } from "../../biometrics/biometric";
-import { CheckPasscode } from "../../biometrics/utils";
+import { usePinThrottle } from "../../biometrics/usePinThrottle";
+import { formatPinAuthMessage } from "../../utilities/pinAuth";
 
 const AuthRequest = ({ visible, heading, subHeading, proccedNextStep, onPasscodeVerified }) => {
     const state = useSelector((state) => state);
@@ -19,11 +19,12 @@ const AuthRequest = ({ visible, heading, subHeading, proccedNextStep, onPasscode
     const navigation = useNavigation();
     const [enteredPin, setEnteredPin] = useState("");
     const pinView = useRef(null);
+    const { blocked, message: pinAuthMessage, verifyPin, verifyDevice } = usePinThrottle(visible);
 
     const useBiometricOrFaceID = async () => {
         const biometric = await AsyncStorage.getItem("Biometric");
         if (biometric === "SET") {
-            const getAccess = await useBiometrics_run();
+            const getAccess = await verifyDevice();
             if (getAccess) {
                 proccedNextStep()
             } else {
@@ -45,7 +46,9 @@ const AuthRequest = ({ visible, heading, subHeading, proccedNextStep, onPasscode
         const verifyPasscode = async () => {
             try {
                 if (enteredPin.length === 6) {
-                    const validPin=await CheckPasscode(enteredPin);
+                    if (blocked) return;
+                    const pinResult = await verifyPin(enteredPin);
+                    const validPin = pinResult.status === "success";
                     if (validPin) {
                         pinView.current.clearAll();
                         if (onPasscodeVerified) {
@@ -57,7 +60,7 @@ const AuthRequest = ({ visible, heading, subHeading, proccedNextStep, onPasscode
                     else {
                         pinView.current.clearAll();
                         Snackbar.show({
-                            text: "Wrong Password.",
+                            text: pinResult.status === "invalid" ? "Wrong Password." : formatPinAuthMessage(pinResult),
                             duration: Snackbar.LENGTH_SHORT,
                             backgroundColor: 'red',
                         });
@@ -94,7 +97,7 @@ const AuthRequest = ({ visible, heading, subHeading, proccedNextStep, onPasscode
                     ref={pinView}
                     pinLength={6}
                     buttonSize={50}
-                    onValueChange={(value) => setEnteredPin(value)}
+                    onValueChange={(value) => { if (!blocked) setEnteredPin(value); }}
                     inputViewEmptyStyle={{ backgroundColor: "transparent", borderWidth: 1, borderColor: theme.inactiveTx }}
                     inputViewFilledStyle={{ backgroundColor: theme.inactiveTx }}
                     buttonTextStyle={{ color: theme.headingTx }}
@@ -125,6 +128,7 @@ const AuthRequest = ({ visible, heading, subHeading, proccedNextStep, onPasscode
                         zero: '0',
                     }}
                 />
+                {blocked && <Text style={[style.subHeadinTxt, { color: "red", textAlign: "center", paddingBottom: 12 }]}>{pinAuthMessage}</Text>}
             </View>
         </Modal>
     );

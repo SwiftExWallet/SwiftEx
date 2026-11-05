@@ -83,8 +83,8 @@ android {
         applicationId "org.app.swiftEx.wallet"
         minSdkVersion = rootProject.ext.minSdkVersion
         targetSdkVersion = rootProject.ext.targetSdkVersion
-        versionCode 130
-        versionName "1.1.120"
+        versionCode 139
+        versionName "1.1.129"
     }
     externalNativeBuild {
         cmake {
@@ -134,6 +134,8 @@ dependencies {
     }
     implementation("com.google.android.play:app-update:2.1.0")
     implementation("com.google.android.play:app-update-ktx:2.1.0")
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
 }
 
 configurations.all {

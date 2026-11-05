@@ -11,6 +11,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.ViewGroup
 import android.view.Window
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -24,6 +25,7 @@ import androidx.security.crypto.MasterKey
 import androidx.security.crypto.MasterKeys
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
 import javax.crypto.Cipher
@@ -36,7 +38,9 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     private val PREF_NAME = "com_swiftEx_app_secure"
     private val PREF_NAME_V2 = "com_swiftEx_app_secure_v2"
     private val PREF_NAME_V3 = "com_swiftEx_app_secure_v3"
-    private val MIGRATION_FLAG = "swiftex_h4_migrated_v1"
+    // V1 could mark an unreadable authenticated source as a fresh install.
+    // A new flag forces one fail-safe revalidation after users update.
+    private val MIGRATION_FLAG = "swiftex_h4_migrated_v2_safe"
     private val BACKUP_VIEWED_AT = "lastWalletBackupViewedAt"
     private val PIN_BACKUP_PREFS = "com_swiftEx_app_pin_recovery_v1"
     private val PIN_BACKUP_KEY = "recoveryEnvelope"
@@ -161,17 +165,78 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
         )
     }
 
-    private fun readMigrationValue(
-        key: String,
-        oldV2AuthPrefs: android.content.SharedPreferences?,
-        oldV2LegacyPrefs: android.content.SharedPreferences?,
-        oldV3Prefs: android.content.SharedPreferences?,
-        oldPlainPrefs: android.content.SharedPreferences?
-    ): String? {
-        return runCatching { oldV2AuthPrefs?.getString(key, null) }.getOrNull()
-            ?: runCatching { oldV2LegacyPrefs?.getString(key, null) }.getOrNull()
-            ?: runCatching { oldV3Prefs?.getString(key, null) }.getOrNull()
-            ?: runCatching { oldPlainPrefs?.getString(key, null) }.getOrNull()
+    private data class OpenedLegacySource(
+        val result: LegacyWalletSourceResult,
+        val preferences: android.content.SharedPreferences? = null,
+    )
+
+    private fun legacyPreferenceFileExists(name: String): Boolean {
+        val directory = File(reactApplicationContext.applicationInfo.dataDir, "shared_prefs")
+        return File(directory, "$name.xml").exists() || File(directory, "$name.xml.bak").exists()
+    }
+
+    private fun anyLegacyCandidateExists(): Boolean =
+        listOf(PREF_NAME_V2, PREF_NAME, PREF_NAME_V3).any(::legacyPreferenceFileExists)
+
+    private fun readLegacySource(
+        source: String,
+        preferenceName: String,
+        open: () -> android.content.SharedPreferences,
+        allowPlainFallback: Boolean = false,
+    ): OpenedLegacySource {
+        if (!legacyPreferenceFileExists(preferenceName)) {
+            return OpenedLegacySource(LegacyWalletSourceResult.Absent(source))
+        }
+
+        return try {
+            val sourcePrefs = open()
+            val wallets = sourcePrefs.getString("appAllWallet", null)
+            val active = sourcePrefs.getString("activeUserWallet", null)
+            if (wallets == null && active == null) {
+                if (allowPlainFallback) {
+                    try {
+                        val plain = reactApplicationContext.getSharedPreferences(preferenceName, Context.MODE_PRIVATE)
+                        val plainWallets = plain.getString("appAllWallet", null)
+                        val plainActive = plain.getString("activeUserWallet", null)
+                        if (plainWallets != null || plainActive != null) {
+                            return OpenedLegacySource(
+                                LegacyWalletSourceResult.Readable(source, plainWallets, plainActive),
+                                plain,
+                            )
+                        }
+                    } catch (plainError: Exception) {
+                        return OpenedLegacySource(
+                            LegacyWalletSourceResult.Unreadable(source, describeError(plainError)),
+                        )
+                    }
+                }
+                OpenedLegacySource(LegacyWalletSourceResult.Absent(source), sourcePrefs)
+            } else {
+                OpenedLegacySource(
+                    LegacyWalletSourceResult.Readable(source, wallets, active),
+                    sourcePrefs,
+                )
+            }
+        } catch (encryptedError: Exception) {
+            if (allowPlainFallback) {
+                try {
+                    val plain = reactApplicationContext.getSharedPreferences(preferenceName, Context.MODE_PRIVATE)
+                    val wallets = plain.getString("appAllWallet", null)
+                    val active = plain.getString("activeUserWallet", null)
+                    if (wallets != null || active != null) {
+                        return OpenedLegacySource(
+                            LegacyWalletSourceResult.Readable(source, wallets, active),
+                            plain,
+                        )
+                    }
+                } catch (_: Exception) {
+                    // The encrypted error below is the authoritative reason this source is unreadable.
+                }
+            }
+            OpenedLegacySource(
+                LegacyWalletSourceResult.Unreadable(source, describeError(encryptedError)),
+            )
+        }
     }
 
     private fun describeError(error: Throwable): String {
@@ -186,11 +251,14 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     }
 
     private fun hasHealthyMigrationState(): Boolean {
-        if (!prefs.getBoolean(MIGRATION_FLAG, false)) return false
-        // Read both wallet records so a corrupt value cannot be hidden behind a valid flag.
-        prefs.getString("appAllWallet", null)
-        prefs.getString("activeUserWallet", null)
-        return true
+        val state = WalletMigrationPolicy.currentState(
+            markerSet = prefs.getBoolean(MIGRATION_FLAG, false),
+            destinationWallets = prefs.getString("appAllWallet", null),
+            destinationActiveWallet = prefs.getString("activeUserWallet", null),
+            legacyCandidatePresent = anyLegacyCandidateExists(),
+        )
+        return state == WalletMigrationCurrentState.AlreadyMigrated ||
+            state == WalletMigrationCurrentState.FreshInstallComplete
     }
 
     override fun getName() = "StorageModule"
@@ -198,8 +266,14 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     @ReactMethod
     fun setAppPin(pin: String, promise: Promise) {
         try {
+            if (prefs.contains(APP_PIN_VERIFIER_KEY)) {
+                return promise.reject("PIN_ALREADY_SET", "Existing app PIN requires device authentication to replace")
+            }
             derivePinKey(pin, ByteArray(16))
-            prefs.edit().putString(APP_PIN_VERIFIER_KEY, appPinVerifier(pin)).apply()
+            check(prefs.edit().putString(APP_PIN_VERIFIER_KEY, appPinVerifier(pin)).commit()) {
+                "Unable to persist app PIN verifier"
+            }
+            AppPinVerifier.guard(prefs).recordDeviceSuccess()
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("PIN_STORAGE_ERROR", "Unable to store app PIN verifier", e)
@@ -209,10 +283,68 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     @ReactMethod
     fun validateAppPin(pin: String, promise: Promise) {
         try {
-            val verifier = prefs.getString(APP_PIN_VERIFIER_KEY, null)
-            promise.resolve(verifier != null && validateAppPinValue(pin, verifier))
+            promise.resolve(AppPinVerifier.authenticate(prefs, pin).toWritableMap())
         } catch (e: Exception) {
-            promise.resolve(false)
+            promise.reject("PIN_AUTH_ERROR", "Unable to validate app PIN", e)
+        }
+    }
+
+    @ReactMethod
+    fun getPinAuthState(promise: Promise) {
+        try {
+            val current = AppPinVerifier.guard(prefs).current()
+            val status = if (!AppPinVerifier.isConfigured(prefs) &&
+                current.status != PinAttemptStatus.BACKOFF &&
+                current.status != PinAttemptStatus.DEVICE_CREDENTIAL_REQUIRED
+            ) current.copy(status = PinAttemptStatus.NOT_CONFIGURED) else current
+            promise.resolve(status.toWritableMap())
+        } catch (e: Exception) {
+            promise.reject("PIN_AUTH_ERROR", "Unable to read PIN authentication state", e)
+        }
+    }
+
+    @ReactMethod
+    fun authenticateDeviceOwner(promise: Promise) {
+        val activity = reactApplicationContext.currentActivity as? FragmentActivity
+            ?: return promise.reject("ACTIVITY_UNAVAILABLE", "No active activity")
+        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        if (BiometricManager.from(activity).canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
+            return promise.reject(
+                "DEVICE_CREDENTIAL_UNAVAILABLE",
+                "Set up a device screen lock to continue",
+            )
+        }
+        val prompt = BiometricPrompt(
+            activity,
+            ContextCompat.getMainExecutor(activity),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    try {
+                        AppPinVerifier.recordDeviceSuccess(prefs)
+                        promise.resolve(Arguments.createMap().apply { putBoolean("success", true) })
+                    } catch (e: Exception) {
+                        promise.reject("PIN_AUTH_ERROR", "Unable to reset PIN lock", e)
+                    }
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    promise.reject("AUTH_CANCELLED", errString.toString())
+                }
+            },
+        )
+        activity.runOnUiThread {
+            try {
+                prompt.authenticate(
+                BiometricPrompt.PromptInfo.Builder()
+                    .setTitle("Verify device screen lock")
+                    .setSubtitle("Confirm it is you to unlock PIN-protected actions.")
+                    .setAllowedAuthenticators(authenticators)
+                    .build()
+                )
+            } catch (error: RuntimeException) {
+                promise.reject("AUTH_FAILED", error.message, error)
+            }
         }
     }
 
@@ -287,8 +419,13 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
             return NativePinBottomSheet.show(
                 activity,
                 onSubmit = { pin ->
-                    if (AppPinVerifier.validate(prefs, pin)) onAuthenticated()
-                    else promise.reject("PIN_INVALID", "Invalid app PIN")
+                    try {
+                        val result = AppPinVerifier.authenticate(prefs, pin)
+                        if (result.status == PinAttemptStatus.SUCCESS) onAuthenticated()
+                        else promise.rejectPinAttempt(result)
+                    } catch (e: Exception) {
+                        promise.reject("PIN_AUTH_ERROR", "Unable to validate app PIN", e)
+                    }
                 },
                 onCancel = { promise.reject("AUTH_CANCELLED", "Authentication cancelled") },
             )
@@ -299,7 +436,12 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
             ContextCompat.getMainExecutor(activity),
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    onAuthenticated()
+                    try {
+                        AppPinVerifier.recordDeviceSuccess(prefs)
+                        onAuthenticated()
+                    } catch (e: Exception) {
+                        promise.reject("PIN_AUTH_ERROR", "Unable to reset PIN lock", e)
+                    }
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
@@ -324,7 +466,9 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
             .build()
 
         activity.runOnUiThread {
-            prompt.authenticate(promptInfo)
+            try { prompt.authenticate(promptInfo) } catch (error: RuntimeException) {
+                promise.reject("AUTH_FAILED", error.message, error)
+            }
         }
     }
 
@@ -405,6 +549,7 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
             root.addView(scroll)
 
             dialog.setContentView(root)
+            dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
             dialog.window?.setLayout(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -433,58 +578,90 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
                     putString("status", "already_migrated")
                 })
             }
-            performSecureStorageMigration(promise)
+            if (!anyLegacyCandidateExists()) {
+                return completeMigrationWithoutLegacySource(promise)
+            }
+            authenticateForSecretView(promise) {
+                performSecureStorageMigration(promise)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Secure storage unavailable before migration", e)
             promise.reject("SECURE_STORAGE_UNAVAILABLE", describeError(e), e)
         }
     }
 
-    private fun performSecureStorageMigration(promise: Promise) {
+    private fun completeMigrationWithoutLegacySource(promise: Promise) {
         try {
-            val oldV2Auth = runCatching { oldV2AuthPrefs() }
-                .onFailure { Log.w(TAG, "Old v2 auth storage unavailable during migration", it) }
-                .getOrNull()
-            val oldV2Legacy = runCatching { oldV2LegacyPrefs() }
-                .onFailure { Log.w(TAG, "Old encrypted legacy storage unavailable during migration", it) }
-                .getOrNull()
-            val oldV3 = runCatching { oldV3Prefs() }
-                .onFailure { Log.w(TAG, "Previous v3 storage unavailable during migration", it) }
-                .getOrNull()
-            val oldPlain = runCatching {
-                reactApplicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            }.getOrNull()?.takeIf { it.all.isNotEmpty() }
-            if (oldV2Auth == null && oldV2Legacy == null && oldV3 == null && oldPlain == null) {
-                return promise.reject("MIGRATION_ERROR", "No readable legacy wallet storage found")
-            }
-            val legacyWallets = readMigrationValue("appAllWallet", oldV2Auth, oldV2Legacy, oldV3, oldPlain)
-            val legacyActive = readMigrationValue("activeUserWallet", oldV2Auth, oldV2Legacy, oldV3, oldPlain)
-
-            if (legacyWallets.isNullOrEmpty() && legacyActive.isNullOrEmpty()) {
-                if (runtimeStoreCorrupt) {
+            val wallets = prefs.getString("appAllWallet", null)
+            val active = prefs.getString("activeUserWallet", null)
+            if (wallets != null || active != null) {
+                if (wallets == null || active == null || !WalletMigrationPolicy.validate(wallets, active)) {
                     return promise.reject(
-                        "SECURE_STORAGE_UNAVAILABLE",
-                        "Encrypted v3 storage is unreadable and no legacy wallet was found"
+                        "MIGRATION_DESTINATION_INVALID",
+                        "Existing wallet storage is incomplete; no data was changed",
                     )
                 }
                 if (!prefs.edit().putBoolean(MIGRATION_FLAG, true).commit()) {
-                    return promise.reject("MIGRATION_ERROR", "Could not mark migration complete")
+                    return promise.reject("MIGRATION_ERROR", "Could not finalize verified wallet storage")
                 }
                 return promise.resolve(Arguments.createMap().apply {
                     putBoolean("success", true)
-                    putString("status", "fresh_install")
+                    putString("status", "migrated")
                 })
             }
 
-            authenticateForSecretView(promise) {
-                completeSecureStorageMigration(
-                    promise,
-                    legacyWallets,
-                    legacyActive,
-                    oldV2Auth,
-                    oldV2Legacy,
-                    oldV3,
-                    oldPlain,
+            if (runtimeStoreCorrupt) {
+                return promise.reject(
+                    "SECURE_STORAGE_UNAVAILABLE",
+                    "Wallet storage is unreadable; no data was changed",
+                )
+            }
+            if (!prefs.edit().putBoolean(MIGRATION_FLAG, true).commit()) {
+                return promise.reject("MIGRATION_ERROR", "Could not mark fresh installation")
+            }
+            promise.resolve(Arguments.createMap().apply {
+                putBoolean("success", true)
+                putString("status", "fresh_install")
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not safely classify installation", e)
+            promise.reject("MIGRATION_ERROR", describeError(e), e)
+        }
+    }
+
+    private fun performSecureStorageMigration(promise: Promise) {
+        try {
+            val destination = if (runtimeStoreCorrupt) {
+                LegacyWalletSourceResult.Absent("v4_destination")
+            } else {
+                val wallets = prefs.getString("appAllWallet", null)
+                val active = prefs.getString("activeUserWallet", null)
+                if (wallets == null && active == null) {
+                    LegacyWalletSourceResult.Absent("v4_destination")
+                } else {
+                    LegacyWalletSourceResult.Readable("v4_destination", wallets, active)
+                }
+            }
+            val legacySources = listOf(
+                readLegacySource("v2_biometric", PREF_NAME_V2, ::oldV2AuthPrefs),
+                readLegacySource(
+                    "legacy",
+                    PREF_NAME,
+                    ::oldV2LegacyPrefs,
+                    allowPlainFallback = true,
+                ),
+                readLegacySource("v3", PREF_NAME_V3, ::oldV3Prefs),
+            )
+            when (val decision = WalletMigrationPolicy.decide(listOf(destination) + legacySources.map { it.result })) {
+                is WalletMigrationDecision.Blocked -> promise.reject(
+                    "MIGRATION_SOURCE_UNREADABLE",
+                    "${decision.source}: ${decision.reason}; no wallet data was changed",
+                )
+                WalletMigrationDecision.FreshInstall -> completeConfirmedFreshInstall(promise)
+                is WalletMigrationDecision.Migrate -> completeSecureStorageMigration(
+                    promise = promise,
+                    decision = decision,
+                    sources = legacySources,
                 )
             }
         } catch (e: Exception) {
@@ -493,44 +670,72 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
         }
     }
 
+    private fun completeConfirmedFreshInstall(promise: Promise) {
+        if (runtimeStoreCorrupt) {
+            return promise.reject(
+                "SECURE_STORAGE_UNAVAILABLE",
+                "Wallet storage is unreadable; no data was changed",
+            )
+        }
+        if (!prefs.edit().putBoolean(MIGRATION_FLAG, true).commit()) {
+            return promise.reject("MIGRATION_ERROR", "Could not mark fresh installation")
+        }
+        promise.resolve(Arguments.createMap().apply {
+            putBoolean("success", true)
+            putString("status", "fresh_install")
+        })
+    }
+
     private fun completeSecureStorageMigration(
         promise: Promise,
-        legacyWallets: String?,
-        legacyActive: String?,
-        oldV2Auth: android.content.SharedPreferences?,
-        oldV2Legacy: android.content.SharedPreferences?,
-        oldV3: android.content.SharedPreferences?,
-        oldPlain: android.content.SharedPreferences?,
+        decision: WalletMigrationDecision.Migrate,
+        sources: List<OpenedLegacySource>,
     ) {
         try {
             if (runtimeStoreCorrupt) {
                 resetRuntimeStoreFromVerifiedLegacyData()
             }
 
-            val editor = prefs.edit()
-            if (!legacyWallets.isNullOrEmpty()) editor.putString("appAllWallet", legacyWallets)
-            if (!legacyActive.isNullOrEmpty()) editor.putString("activeUserWallet", legacyActive)
-            editor.putBoolean(MIGRATION_FLAG, true)
-            if (!editor.commit()) {
-                return promise.reject("MIGRATION_ERROR", "Could not write v3 wallet storage")
-            }
-
-            if ((!legacyWallets.isNullOrEmpty() && prefs.getString("appAllWallet", null) != legacyWallets) ||
-                (!legacyActive.isNullOrEmpty() && prefs.getString("activeUserWallet", null) != legacyActive) ||
-                !prefs.getBoolean(MIGRATION_FLAG, false)
+            if (!prefs.edit()
+                    .putString("appAllWallet", decision.wallets)
+                    .putString("activeUserWallet", decision.activeWallet)
+                    .remove(MIGRATION_FLAG)
+                    .commit()
             ) {
-                return promise.reject("MIGRATION_ERROR", "Could not verify v3 wallet storage")
+                return promise.reject("MIGRATION_ERROR", "Could not write wallet storage")
             }
 
-            listOfNotNull(oldV2Auth, oldV2Legacy, oldV3, oldPlain).forEach { source ->
+            val storedWallets = prefs.getString("appAllWallet", null)
+            val storedActive = prefs.getString("activeUserWallet", null)
+            val destinationVerified = storedWallets == decision.wallets &&
+                storedActive == decision.activeWallet &&
+                WalletMigrationPolicy.validate(storedWallets, storedActive)
+            if (!destinationVerified) {
+                return promise.reject("MIGRATION_ERROR", "Could not verify wallet storage; legacy data retained")
+            }
+
+            val markerCommitted = prefs.edit().putBoolean(MIGRATION_FLAG, true).commit() &&
+                prefs.getBoolean(MIGRATION_FLAG, false)
+            if (!markerCommitted) {
+                return promise.reject("MIGRATION_ERROR", "Could not finalize migration; legacy data retained")
+            }
+
+            if (!WalletMigrationPolicy.canCleanup(destinationVerified, markerCommitted)) {
+                return promise.reject("MIGRATION_ERROR", "Migration verification failed; legacy data retained")
+            }
+
+            sources.filter { it.result is LegacyWalletSourceResult.Readable }.forEach { source ->
                 try {
-                    source.edit().clear().commit()
+                    val cleaned = source.preferences?.edit()
+                        ?.remove("appAllWallet")
+                        ?.remove("activeUserWallet")
+                        ?.commit() ?: false
+                    if (!cleaned) Log.w(TAG, "Could not clean ${source.result.source}; retaining it")
                 } catch (cleanupError: Exception) {
-                    // Keep verified v3 data usable; an unreadable old source is retained for recovery.
-                    Log.w(TAG, "Could not clear old migration source; retaining it", cleanupError)
+                    Log.w(TAG, "Could not clean ${source.result.source}; retaining it", cleanupError)
                 }
             }
-            Log.i(TAG, "H-4 migration: wallet data moved to encrypted v3 store")
+            Log.i(TAG, "H-4 migration: wallet data moved to encrypted v4 store")
             promise.resolve(Arguments.createMap().apply {
                 putBoolean("success", true)
                 putString("status", "migrated")
@@ -585,21 +790,30 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     @ReactMethod
     fun restoreFromPinRecoveryBackup(pin: String, promise: Promise) {
         try {
+            val pinResult = AppPinVerifier.authenticate(prefs, pin)
+            if (pinResult.status != PinAttemptStatus.SUCCESS) return promise.rejectPinAttempt(pinResult)
             val envelope = pinBackupPrefs().getString(PIN_BACKUP_KEY, null)
                 ?: return promise.reject("RECOVERY_BACKUP_MISSING", "No PIN recovery backup found")
             val payload = JSONObject(decryptPinBackup(pin, envelope))
             val wallets = payload.getString("appAllWallet")
             val active = payload.getString("activeUserWallet")
-            JSONArray(wallets)
-            JSONObject(active)
+            require(WalletMigrationPolicy.validate(wallets, active)) {
+                "Recovery backup contains invalid wallet data"
+            }
 
-            prefs.edit()
+            val restored = prefs.edit()
                 .putString("appAllWallet", wallets)
                 .putString("activeUserWallet", active)
-                .putBoolean(MIGRATION_FLAG, true)
-                .apply()
-            require(prefs.getString("activeUserWallet", null) == active) {
+                .remove(MIGRATION_FLAG)
+                .commit()
+            require(restored &&
+                prefs.getString("appAllWallet", null) == wallets &&
+                prefs.getString("activeUserWallet", null) == active
+            ) {
                 "Recovery storage verification failed"
+            }
+            require(prefs.edit().putBoolean(MIGRATION_FLAG, true).commit()) {
+                "Recovery migration marker could not be committed"
             }
             promise.resolve(Arguments.createMap().apply {
                 putBoolean("success", true)
@@ -743,6 +957,8 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     @ReactMethod
     fun openWalletBackupScreenWithPin(pin: String, promise: Promise) {
         try {
+            val pinResult = AppPinVerifier.authenticate(prefs, pin)
+            if (pinResult.status != PinAttemptStatus.SUCCESS) return promise.rejectPinAttempt(pinResult)
             val envelope = pinBackupPrefs().getString(PIN_BACKUP_KEY, null)
                 ?: return promise.reject("RECOVERY_BACKUP_MISSING", "No PIN recovery backup found")
             val payload = JSONObject(decryptPinBackup(pin, envelope))

@@ -86,7 +86,6 @@ const Welcome = (props) => {
         const appReset=await NativeModules.StorageModule.clearAll();
         crashlytics().setCrashlyticsCollectionEnabled(true);
         const userStatus=await createGuestUser(referralCode);
-        console.log("userStatus:-",userStatus.status,appReset)
         if(userStatus.status)
         {
           await clearReferralCode();

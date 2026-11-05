@@ -21,11 +21,15 @@ class StellarSigner: NSObject {
     guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
       DispatchQueue.main.async {
         NativePinBottomSheet.show { pin in
-          guard let pin, AppPinVerifierIOS.validate(pin) else {
+          guard let pin else {
             completion(.failure(NSError(domain: "AUTH", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid app PIN"])))
             return
           }
-          completion(.success(()))
+          do {
+            let result = try AppPinVerifierIOS.authenticate(pin)
+            if result.status == .success { completion(.success(())) }
+            else { completion(.failure(result.authenticationError)) }
+          } catch { completion(.failure(error)) }
         }
       }
       return
@@ -33,7 +37,10 @@ class StellarSigner: NSObject {
 
     context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
       if success {
-        completion(.success(()))
+        do {
+          _ = try AppPinVerifierIOS.recordDeviceSuccess()
+          completion(.success(()))
+        } catch { completion(.failure(error)) }
       } else {
         completion(.failure(authError ?? NSError(domain: "AUTH", code: -2, userInfo: [NSLocalizedDescriptionKey: "Authentication failed"])))
       }
@@ -42,6 +49,7 @@ class StellarSigner: NSObject {
 
   private func signerAuthCode(_ error: Error) -> String {
     let nsError = error as NSError
+    if nsError.domain.hasPrefix("PIN_") { return nsError.domain }
     if nsError.domain == LAError.errorDomain {
       switch LAError.Code(rawValue: nsError.code) {
       case .userCancel, .systemCancel, .appCancel, .userFallback:

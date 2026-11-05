@@ -77,7 +77,33 @@ enum NativePinBottomSheet {
 enum AppPinVerifierIOS {
     private static let service = "com.appSwiftEx.appPinVerifier.v1"
     private static let account = "verifier"
-    static func validate(_ pin: String) -> Bool {
+    static func isConfigured() -> Bool {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                    kSecAttrService as String: service,
+                                    kSecAttrAccount as String: account,
+                                    kSecMatchLimit as String: kSecMatchLimitOne]
+        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
+    }
+
+    static func authenticate(_ pin: String) throws -> PinAttemptResult {
+        let gate = try PinAttemptGuardIOS.shared.current()
+        if gate.status == .backoff || gate.status == .deviceCredentialRequired { return gate }
+        guard pin.count == 6, pin.allSatisfy({ $0.isNumber }) else {
+            return PinAttemptResult(status: .invalid, state: gate.state)
+        }
+        guard isConfigured() else {
+            return PinAttemptResult(status: .notConfigured, state: gate.state)
+        }
+        return try validate(pin)
+            ? PinAttemptGuardIOS.shared.recordPinSuccess()
+            : PinAttemptGuardIOS.shared.recordFailure()
+    }
+
+    static func recordDeviceSuccess() throws -> PinAttemptResult {
+        try PinAttemptGuardIOS.shared.recordDeviceSuccess()
+    }
+
+    static func validate(_ pin: String) throws -> Bool {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
                                     kSecAttrService as String: service,
                                     kSecAttrAccount as String: account,
@@ -91,7 +117,9 @@ enum AppPinVerifierIOS {
               let saltText = value["salt"] as? String,
               let salt = Data(base64Encoded: saltText),
               let expectedText = value["verifier"] as? String,
-              let expected = Data(base64Encoded: expectedText) else { return false }
+              let expected = Data(base64Encoded: expectedText),
+              salt.count == 16,
+              expected.count == 32 else { throw PinVerifierError.corruptRecord }
         var actual = Data(repeating: 0, count: 32)
         actual.withUnsafeMutableBytes { output in
             salt.withUnsafeBytes { saltBytes in
@@ -104,6 +132,37 @@ enum AppPinVerifierIOS {
             }
         }
         return actual == expected
+    }
+
+    private enum PinVerifierError: Error {
+        case corruptRecord
+    }
+}
+
+extension PinAttemptResult {
+    var authenticationError: NSError {
+        switch status {
+        case .backoff:
+            let seconds = (retryAfterMs + 999) / 1000
+            return NSError(
+                domain: "PIN_BACKOFF",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Too many PIN attempts. Try again in \(seconds) seconds.",
+                           "retryAfterMs": retryAfterMs]
+            )
+        case .deviceCredentialRequired:
+            return NSError(
+                domain: "PIN_DEVICE_CREDENTIAL_REQUIRED",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Verify your device screen lock to continue."]
+            )
+        case .notConfigured:
+            return NSError(domain: "PIN_NOT_CONFIGURED", code: 1,
+                           userInfo: [NSLocalizedDescriptionKey: "App PIN is not configured"])
+        default:
+            return NSError(domain: "PIN_INVALID", code: 1,
+                           userInfo: [NSLocalizedDescriptionKey: "Invalid app PIN"])
+        }
     }
 }
 

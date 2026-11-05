@@ -11,7 +11,7 @@ class StorageModule: NSObject {
     private let serviceName   = "com.appSwiftEx.appStorage"
     private let serviceNameV2 = "com.appSwiftEx.appStorage.v3"
     private let legacySecureServiceV2 = "com.appSwiftEx.appStorage.v2"
-    private let migrationKey  = "swiftex_h4_migrated_v1"
+    private let migrationKey  = "swiftex_h4_migrated_v2_safe"
     private let backupViewedAtKey = "lastWalletBackupViewedAt"
     private let pinRecoveryService = "com.appSwiftEx.pinRecovery.v1"
     private let pinRecoveryAccount = "recoveryEnvelope"
@@ -26,6 +26,10 @@ class StorageModule: NSObject {
     func setAppPin(_ pin: String, resolver resolve: @escaping RCTPromiseResolveBlock,
                    rejecter reject: @escaping RCTPromiseRejectBlock) {
         do {
+            guard !AppPinVerifierIOS.isConfigured() else {
+                reject("PIN_ALREADY_SET", "Existing app PIN requires device authentication to replace", nil)
+                return
+            }
             guard pin.count == 6, pin.allSatisfy({ $0.isNumber }) else {
                 throw SecureStorageError.invalidPin
             }
@@ -40,6 +44,7 @@ class StorageModule: NSObject {
                 "verifier": key.withUnsafeBytes { Data($0).base64EncodedString() },
             ]).base64EncodedString()
             try saveToKeychain(key: appPinVerifierAccount, value: verifier, service: appPinVerifierService)
+            _ = try AppPinVerifierIOS.recordDeviceSuccess()
             resolve(true)
         } catch {
             reject("PIN_STORAGE_ERROR", error.localizedDescription, error)
@@ -50,24 +55,50 @@ class StorageModule: NSObject {
     func validateAppPin(_ pin: String, resolver resolve: @escaping RCTPromiseResolveBlock,
                         rejecter reject: @escaping RCTPromiseRejectBlock) {
         do {
-            guard let encoded = try getFromKeychain(key: appPinVerifierAccount, service: appPinVerifierService),
-                  let data = Data(base64Encoded: encoded),
-                  let value = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let saltText = value["salt"] as? String,
-                  let salt = Data(base64Encoded: saltText),
-                  let expectedText = value["verifier"] as? String,
-                  let expected = Data(base64Encoded: expectedText) else {
-                resolve(false)
+            resolve(try AppPinVerifierIOS.authenticate(pin).bridgeValue)
+        } catch {
+            reject("PIN_AUTH_ERROR", "Unable to validate app PIN", error)
+        }
+    }
+
+    @objc(getPinAuthState:rejecter:)
+    func getPinAuthState(_ resolve: @escaping RCTPromiseResolveBlock,
+                         rejecter reject: @escaping RCTPromiseRejectBlock) {
+        do {
+            var current = try PinAttemptGuardIOS.shared.current()
+            if !AppPinVerifierIOS.isConfigured(),
+               current.status != .backoff,
+               current.status != .deviceCredentialRequired {
+                current = PinAttemptResult(status: .notConfigured, state: current.state)
+            }
+            resolve(current.bridgeValue)
+        } catch {
+            reject("PIN_AUTH_ERROR", "Unable to read PIN authentication state", error)
+        }
+    }
+
+    @objc(authenticateDeviceOwner:rejecter:)
+    func authenticateDeviceOwner(_ resolve: @escaping RCTPromiseResolveBlock,
+                                 rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let context = LAContext()
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            reject("DEVICE_CREDENTIAL_UNAVAILABLE", "Set up a device screen lock to continue", error)
+            return
+        }
+        context.evaluatePolicy(.deviceOwnerAuthentication,
+                               localizedReason: "Verify your device screen lock to unlock PIN-protected actions") {
+            success, authError in
+            guard success else {
+                reject("AUTH_CANCELLED", authError?.localizedDescription ?? "Authentication cancelled", authError)
                 return
             }
-            let actual = try derivePinKey(pin, salt: salt)
-            resolve(actual.withUnsafeBytes { actualBytes in
-                expected.withUnsafeBytes { expectedBytes in
-                    actualBytes.elementsEqual(expectedBytes)
-                }
-            })
-        } catch {
-            resolve(false)
+            do {
+                _ = try AppPinVerifierIOS.recordDeviceSuccess()
+                resolve(["success": true])
+            } catch {
+                reject("PIN_AUTH_ERROR", "Unable to reset PIN lock", error)
+            }
         }
     }
 
@@ -158,11 +189,15 @@ class StorageModule: NSObject {
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             DispatchQueue.main.async {
                 NativePinBottomSheet.show { pin in
-                    guard let pin, AppPinVerifierIOS.validate(pin) else {
+                    guard let pin else {
                         completion(.failure(SecureStorageError.authenticationFailed))
                         return
                     }
-                    completion(.success(()))
+                    do {
+                        let result = try AppPinVerifierIOS.authenticate(pin)
+                        if result.status == .success { completion(.success(())) }
+                        else { completion(.failure(result.authenticationError)) }
+                    } catch { completion(.failure(error)) }
                 }
             }
             return
@@ -170,7 +205,10 @@ class StorageModule: NSObject {
 
         context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
             if success {
-                completion(.success(()))
+                do {
+                    _ = try AppPinVerifierIOS.recordDeviceSuccess()
+                    completion(.success(()))
+                } catch { completion(.failure(error)) }
             } else {
                 completion(.failure(authError ?? SecureStorageError.authenticationFailed))
             }
@@ -183,6 +221,7 @@ class StorageModule: NSObject {
 
     private func storageAuthCode(_ error: Error) -> String {
         let nsError = error as NSError
+        if nsError.domain.hasPrefix("PIN_") { return nsError.domain }
         if nsError.domain == LAError.errorDomain {
             switch LAError.Code(rawValue: nsError.code) {
             case .userCancel, .systemCancel, .appCancel, .userFallback:
@@ -264,8 +303,11 @@ class StorageModule: NSObject {
     @objc
     func isMigrated(_ resolve: @escaping RCTPromiseResolveBlock,
         rejecter reject: @escaping RCTPromiseRejectBlock) {
-        let done = (try? getFromKeychain(key: migrationKey, service: serviceNameV2)) != nil
-        resolve(done)
+        do {
+            resolve(try getFromKeychain(key: migrationKey, service: serviceNameV2) != nil)
+        } catch {
+            resolve(false)
+        }
     }
 
     @objc
@@ -278,40 +320,16 @@ class StorageModule: NSObject {
                                                reject: @escaping RCTPromiseRejectBlock,
                                                isAuthenticated: Bool) {
         DispatchQueue.global(qos: .userInitiated).async {
-            if (try? self.getFromKeychain(key: self.migrationKey, service: self.serviceNameV2)) != nil {
-                DispatchQueue.main.async {
-                    resolve(["success": true, "status": "already_migrated"])
+            do {
+                if try self.getFromKeychain(key: self.migrationKey, service: self.serviceNameV2) != nil {
+                    DispatchQueue.main.async {
+                        resolve(["success": true, "status": "already_migrated"])
+                    }
+                    return
                 }
-                return
-            }
-
-            let oldSecureWallets = try? self.getFromKeychain(
-                key: "appAllWallet",
-                service: self.legacySecureServiceV2
-            )
-            let oldSecureActive = try? self.getFromKeychain(
-                key: "activeUserWallet",
-                service: self.legacySecureServiceV2
-            )
-            let legacyWallets = oldSecureWallets ?? (try? self.getFromKeychain(
-                key: "appAllWallet",
-                service: self.serviceName
-            ))
-            let legacyActive = oldSecureActive ?? (try? self.getFromKeychain(
-                key: "activeUserWallet",
-                service: self.serviceName
-            ))
-
-            if legacyWallets == nil && legacyActive == nil {
-                do {
-                    try self.saveToKeychainSecure(key: self.migrationKey, value: "1")
-                    DispatchQueue.main.async {
-                        resolve(["success": true, "status": "fresh_install"])
-                    }
-                } catch {
-                    DispatchQueue.main.async {
-                        reject("MIGRATION_ERROR", error.localizedDescription, error)
-                    }
+            } catch {
+                DispatchQueue.main.async {
+                    reject("MIGRATION_SOURCE_UNREADABLE", error.localizedDescription, error)
                 }
                 return
             }
@@ -334,38 +352,109 @@ class StorageModule: NSObject {
                 return
             }
 
-            do {
-                if let w = legacyWallets { try self.saveToKeychainSecure(key: "appAllWallet",     value: w) }
-                if let a = legacyActive  { try self.saveToKeychainSecure(key: "activeUserWallet", value: a) }
-                try self.saveToKeychainSecure(key: self.migrationKey, value: "1")
-                try? self.deleteFromKeychain(key: "appAllWallet",     service: self.serviceName)
-                try? self.deleteFromKeychain(key: "activeUserWallet", service: self.serviceName)
-                try? self.deleteFromKeychain(key: "appAllWallet",     service: self.legacySecureServiceV2)
-                try? self.deleteFromKeychain(key: "activeUserWallet", service: self.legacySecureServiceV2)
+            let destination = self.readWalletSource(source: "v3_destination", service: self.serviceNameV2)
+            let secureV2 = self.readWalletSource(source: "secure_v2", service: self.legacySecureServiceV2)
+            let legacy = self.readWalletSource(source: "legacy", service: self.serviceName)
 
+            switch WalletMigrationPolicy.decide([destination, secureV2, legacy]) {
+            case let .blocked(source, reason):
                 DispatchQueue.main.async {
-                    resolve(["success": true, "status": "migrated"])
+                    reject("MIGRATION_SOURCE_UNREADABLE", "\(source): \(reason)", nil)
                 }
-            } catch {
-                DispatchQueue.main.async {
-                    reject("MIGRATION_ERROR", error.localizedDescription, error)
+            case .freshInstall:
+                do {
+                    try self.commitMigrationMarker(value: "fresh")
+                    DispatchQueue.main.async {
+                        resolve(["success": true, "status": "fresh_install"])
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        reject("MIGRATION_ERROR", error.localizedDescription, error)
+                    }
+                }
+            case let .migrate(wallets, activeWallet):
+                do {
+                    let destinationAlreadyMatches: Bool
+                    if case let .readable(_, currentWallets, currentActive) = destination {
+                        destinationAlreadyMatches = currentWallets == wallets && currentActive == activeWallet
+                    } else {
+                        destinationAlreadyMatches = false
+                    }
+
+                    if !destinationAlreadyMatches {
+                        try self.saveToKeychainSecure(key: "appAllWallet", value: wallets)
+                        try self.saveToKeychainSecure(key: "activeUserWallet", value: activeWallet)
+                    }
+
+                    let verifiedWallets = try self.getFromKeychain(key: "appAllWallet", service: self.serviceNameV2)
+                    let verifiedActive = try self.getFromKeychain(key: "activeUserWallet", service: self.serviceNameV2)
+                    guard verifiedWallets == wallets,
+                          verifiedActive == activeWallet,
+                          WalletMigrationPolicy.validate(wallets: wallets, activeWallet: activeWallet) else {
+                        throw SecureStorageError.migrationVerificationFailed
+                    }
+
+                    try self.commitMigrationMarker(value: "wallets")
+                    guard WalletMigrationPolicy.canCleanup(destinationVerified: true, markerCommitted: true) else {
+                        throw SecureStorageError.migrationVerificationFailed
+                    }
+
+                    try? self.deleteFromKeychain(key: "appAllWallet", service: self.serviceName)
+                    try? self.deleteFromKeychain(key: "activeUserWallet", service: self.serviceName)
+                    try? self.deleteFromKeychain(key: "appAllWallet", service: self.legacySecureServiceV2)
+                    try? self.deleteFromKeychain(key: "activeUserWallet", service: self.legacySecureServiceV2)
+
+                    DispatchQueue.main.async {
+                        resolve(["success": true, "status": "migrated"])
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        reject("MIGRATION_ERROR", error.localizedDescription, error)
+                    }
                 }
             }
         }
     }
 
+    private func readWalletSource(source: String, service: String) -> LegacyWalletRead {
+        do {
+            let wallets = try getFromKeychain(key: "appAllWallet", service: service)
+            let active = try getFromKeychain(key: "activeUserWallet", service: service)
+            if wallets == nil && active == nil { return .absent(source: source) }
+            return .readable(source: source, wallets: wallets, activeWallet: active)
+        } catch {
+            return .unreadable(source: source, reason: error.localizedDescription)
+        }
+    }
+
+    private func commitMigrationMarker(value: String) throws {
+        try saveToKeychainSecure(key: migrationKey, value: value)
+        guard try getFromKeychain(key: migrationKey, service: serviceNameV2) == value else {
+            throw SecureStorageError.migrationVerificationFailed
+        }
+    }
+
     private func saveToKeychainSecure(key: String, value: String) throws {
         guard let data = value.data(using: .utf8) else { throw SecureStorageError.encodingError }
-
-        try? deleteFromKeychain(key: key, service: serviceNameV2)
-
-        let query: [String: Any] = [
+        let lookup: [String: Any] = [
             kSecClass           as String: kSecClassGenericPassword,
             kSecAttrAccount     as String: key,
             kSecAttrService     as String: serviceNameV2,
+        ]
+        let updateStatus = SecItemUpdate(
+            lookup as CFDictionary,
+            [kSecValueData as String: data] as CFDictionary
+        )
+        if updateStatus == errSecSuccess { return }
+        guard updateStatus == errSecItemNotFound else {
+            throw SecureStorageError.keychainError(status: updateStatus)
+        }
+
+        var query = lookup
+        query.merge([
             kSecValueData       as String: data,
             kSecAttrAccessible  as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        ]
+        ]) { _, new in new }
 
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else { throw SecureStorageError.keychainError(status: status) }
@@ -374,15 +463,25 @@ class StorageModule: NSObject {
     private func saveToKeychain(key: String, value: String, service: String? = nil) throws {
         guard let data = value.data(using: .utf8) else { throw SecureStorageError.encodingError }
         let svc = service ?? serviceNameV2
-        try? deleteFromKeychain(key: key, service: svc)
-
-        let query: [String: Any] = [
+        let lookup: [String: Any] = [
             kSecClass       as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
             kSecAttrService as String: svc,
+        ]
+        let updateStatus = SecItemUpdate(
+            lookup as CFDictionary,
+            [kSecValueData as String: data] as CFDictionary
+        )
+        if updateStatus == errSecSuccess { return }
+        guard updateStatus == errSecItemNotFound else {
+            throw SecureStorageError.keychainError(status: updateStatus)
+        }
+
+        var query = lookup
+        query.merge([
             kSecValueData   as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        ]
+        ]) { _, new in new }
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else { throw SecureStorageError.keychainError(status: status) }
     }
@@ -585,6 +684,8 @@ class StorageModule: NSObject {
                                       rejecter reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
+                let pinResult = try AppPinVerifierIOS.authenticate(pin)
+                guard pinResult.status == .success else { throw pinResult.authenticationError }
                 guard let envelope = try self.pinRecoveryValue() else {
                     throw SecureStorageError.recoveryBackupMissing
                 }
@@ -594,19 +695,22 @@ class StorageModule: NSObject {
                       let active = payload["activeUserWallet"] else {
                     throw SecureStorageError.invalidRecoveryBackup
                 }
-                guard let walletData = wallets.data(using: .utf8),
-                      let activeData = active.data(using: .utf8),
-                      (try JSONSerialization.jsonObject(with: walletData)) is [[String: Any]],
-                      (try JSONSerialization.jsonObject(with: activeData)) is [String: Any] else {
+                guard WalletMigrationPolicy.validate(wallets: wallets, activeWallet: active) else {
                     throw SecureStorageError.invalidRecoveryBackup
                 }
                 // This fallback service is device-unlock protected and app-PIN gated by JS.
                 try self.saveToKeychain(key: "appAllWallet", value: wallets)
                 try self.saveToKeychain(key: "activeUserWallet", value: active)
-                try self.saveToKeychain(key: self.migrationKey, value: "1")
+                guard try self.getFromKeychain(key: "appAllWallet") == wallets,
+                      try self.getFromKeychain(key: "activeUserWallet") == active else {
+                    throw SecureStorageError.migrationVerificationFailed
+                }
+                try self.commitMigrationMarker(value: "wallets")
                 DispatchQueue.main.async { resolve(["success": true, "status": "restored"]) }
             } catch {
-                DispatchQueue.main.async { reject("RECOVERY_RESTORE_ERROR", "PIN recovery failed", error) }
+                let nsError = error as NSError
+                let code = nsError.domain.hasPrefix("PIN_") ? nsError.domain : "RECOVERY_RESTORE_ERROR"
+                DispatchQueue.main.async { reject(code, "PIN recovery failed", error) }
             }
         }
     }
@@ -769,6 +873,8 @@ class StorageModule: NSObject {
                                        rejecter reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
+                let pinResult = try AppPinVerifierIOS.authenticate(pin)
+                guard pinResult.status == .success else { throw pinResult.authenticationError }
                 guard let envelope = try self.pinRecoveryValue(),
                       let payloadData = try self.decryptPinBackup(pin: pin, envelope: envelope).data(using: .utf8),
                       let payload = try JSONSerialization.jsonObject(with: payloadData) as? [String: String],
@@ -796,7 +902,9 @@ class StorageModule: NSObject {
                     resolve(["success": true])
                 }
             } catch {
-                DispatchQueue.main.async { reject("OPEN_BACKUP_ERROR", "PIN backup authentication failed", error) }
+                let nsError = error as NSError
+                let code = nsError.domain.hasPrefix("PIN_") ? nsError.domain : "OPEN_BACKUP_ERROR"
+                DispatchQueue.main.async { reject(code, "PIN backup authentication failed", error) }
             }
         }
     }
@@ -864,6 +972,9 @@ class StorageModule: NSObject {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 try self.clearAllFromKeychain()
+                try self.deleteFromKeychain(key: self.appPinVerifierAccount, service: self.appPinVerifierService)
+                try self.deleteFromKeychain(key: self.pinRecoveryAccount, service: self.pinRecoveryService)
+                try PinAttemptGuardIOS.shared.clear()
                 try TransactionAuthPolicyIOS.resetToDefault()
                 DispatchQueue.main.async { resolve(["success": true]) }
             } catch { DispatchQueue.main.async { reject("CLEAR_ALL_ERROR", error.localizedDescription, error) } }
@@ -883,6 +994,7 @@ enum SecureStorageError: Error, LocalizedError {
     case invalidRecoveryBackup
     case recoveryBackupMissing
     case recoveryVerificationFailed
+    case migrationVerificationFailed
 
     var errorDescription: String? {
         switch self {
@@ -897,6 +1009,7 @@ enum SecureStorageError: Error, LocalizedError {
         case .invalidRecoveryBackup: return "Invalid recovery backup"
         case .recoveryBackupMissing: return "No PIN recovery backup found"
         case .recoveryVerificationFailed: return "Recovery backup verification failed"
+        case .migrationVerificationFailed: return "Wallet migration verification failed"
         }
     }
 }

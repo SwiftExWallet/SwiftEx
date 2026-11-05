@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { proxyRequest, PPOST } from '../api';
+import {
+  createRampLink,
+  fetchRampAssets,
+  fetchRampQuote,
+} from "./onOffRampApi";
 import { Exchange_screen_header } from "../../../../reusables/ExchangeHeader";
 import { useSelector } from "react-redux";
 import { debounce } from "lodash";
-import apiHelper from "../apiHelper";
 import CustomInfoProvider from "./CustomInfoProvider";
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
 import {
@@ -48,7 +51,7 @@ const RampProvider = () => {
   const fetchCurrencies = async () => {
     try {
       const side = operationType === "BUY" ? "buy" : "sell";
-      const result = await proxyRequest('/v1/moonpay/currencies', PPOST, { side: side });
+      const result = await fetchRampAssets("moonpay", side);
       if (result.success) {
         const groups = result.data.groups || [];
         const flat = groups.flatMap((g) => g.currencies) || [];
@@ -68,9 +71,7 @@ const RampProvider = () => {
   const fetchQuote = async (amount, side, cryptoCode) => {
     try {
       setQuoteLoading(true);
-      const result =
-        await proxyRequest('/v1/moonpay/quote', PPOST, {
-          side: side.toLowerCase(),
+      const result = await fetchRampQuote("moonpay", side, {
           code: cryptoCode,
           amount: Number(amount),
           fiat: "usd"
@@ -111,9 +112,7 @@ const RampProvider = () => {
     async () => {
       try {
         setOpeningWidget(true);
-        const result =
-          await proxyRequest('/v1/moonpay/link', PPOST, {
-            side: operationType.toLowerCase(),
+        const result = await createRampLink("moonpay", operationType, {
             amount: Number(amountSend),
             code: selectedCrypto.code,
             fiat: "usd",

@@ -8,10 +8,10 @@ import { useFocusEffect, useIsFocused, useNavigation } from "@react-navigation/n
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SET_APP_THEME } from "../../components/Redux/actions/type";
 import { alert } from "../reusables/Toasts";
-import { useBiometrics_run } from "../../biometrics/biometric";
 import Icon from "../../icon";
 import { colors } from "../../Screens/ThemeColorsConfig";
-import { CheckPasscode } from "../../biometrics/utils";
+import { usePinThrottle } from "../../biometrics/usePinThrottle";
+import { formatPinAuthMessage } from "../../utilities/pinAuth";
 
 const LockAppModal = ({ pinViewVisible, setPinViewVisible }) => {
   const [pin, setPin] = useState("");
@@ -23,13 +23,16 @@ const LockAppModal = ({ pinViewVisible, setPinViewVisible }) => {
   const [status, setStatus] = useState("pinset");
   const [tempPin, setTempPin] = useState("");
   const FOCUSED=useIsFocused();
+  const { blocked, message: pinAuthMessage, verifyPin, verifyDevice } = usePinThrottle(pinViewVisible);
   const handlePress = async (value) => {
+    if (blocked) return;
     if (pin.length < 6) {
       const newPin = pin + value;
       setPin(newPin);
       if (newPin.length === 6) {
         if (status === "pinset") {
-          const validPin=await CheckPasscode(newPin);
+          const pinResult = await verifyPin(newPin);
+          const validPin = pinResult.status === "success";
           if (validPin) {
             setIsSuccess(true);
             setTimeout(() => {
@@ -39,6 +42,9 @@ const LockAppModal = ({ pinViewVisible, setPinViewVisible }) => {
           } else {
             triggerShake();
             setIsError(true);
+            if (pinResult.status === "backoff" || pinResult.status === "deviceCredentialRequired") {
+              alert("error", formatPinAuthMessage(pinResult));
+            }
             setTimeout(() => {
               resetInput();
             }, 1000);
@@ -90,8 +96,8 @@ const LockAppModal = ({ pinViewVisible, setPinViewVisible }) => {
       if (pinViewVisible === true && nextAppState === "active") {
         const biometric = await AsyncStorage.getItem("Biometric");
         if (biometric === "SET") {
-          const data=await useBiometrics_run();
-          if (data === true) 
+          const data=await verifyDevice();
+          if (data === true)
           {
             setPinViewVisible(false)
           }
@@ -124,7 +130,7 @@ const LockAppModal = ({ pinViewVisible, setPinViewVisible }) => {
   const handleBiometrics = async () => {
     const biometric = await AsyncStorage.getItem("Biometric");
     if (biometric === "SET") {
-      const data=await useBiometrics_run()
+      const data=await verifyDevice()
       if(data)
       {
         setPinViewVisible(false)
@@ -190,6 +196,7 @@ const LockAppModal = ({ pinViewVisible, setPinViewVisible }) => {
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((key) => (
             <TouchableOpacity
               key={key}
+              disabled={blocked}
               onPress={() => handlePress(key.toString())}
               style={styles.key}
             >
@@ -204,7 +211,7 @@ const LockAppModal = ({ pinViewVisible, setPinViewVisible }) => {
              color={theme.inactiveTx}
             />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => handlePress("0")} style={styles.key}>
+          <TouchableOpacity disabled={blocked} onPress={() => handlePress("0")} style={styles.key}>
             <Text style={[styles.keyText,{color:theme.headingTx}]}>0</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleDelete} style={styles.key}>
@@ -217,6 +224,7 @@ const LockAppModal = ({ pinViewVisible, setPinViewVisible }) => {
           </TouchableOpacity>
         </View>
         <View style={styles.text_con}>
+          {blocked && <Text style={[styles.text_style, { fontSize: 13, color: "red" }]}>{pinAuthMessage}</Text>}
           <Text style={[styles.text_style, { fontSize: 13, color: theme.inactiveTx }]}>Passcode adds an extra layer of security</Text>
           <Text style={[styles.text_style, { fontSize: 13, color: theme.inactiveTx }]}>when using the app</Text>
         </View>

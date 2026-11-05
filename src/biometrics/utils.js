@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeModules } from "react-native";
 import * as bcrypt from 'bcryptjs';
 import { POSTFIX, SALTS } from "../Dashboard/constants";
+import { verifyAppPin } from "../utilities/pinAuth";
 
 let recoveryPin = null;
 
@@ -27,23 +28,29 @@ export async function AddPassCode(passcode) {
 }
 
 export async function CheckPasscode(passcode) {
-    if (NativeModules.StorageModule?.validateAppPin) {
-        const nativeValid = await NativeModules.StorageModule.validateAppPin(passcode);
-        if (nativeValid) {
-            recoveryPin = passcode;
-            return true;
-        }
+    const result = await CheckPasscodeResult(passcode);
+    return result.status === "success";
+}
+
+export async function CheckPasscodeResult(passcode) {
+    const nativeResult = await verifyAppPin(passcode);
+    if (nativeResult.status === "success") {
+        recoveryPin = passcode;
+        return nativeResult;
     }
+    if (nativeResult.status !== "notConfigured") return nativeResult;
+
     const getPass = await AsyncStorage.getItem("pin");
-    if (!getPass) return false;
+    if (!getPass) return nativeResult;
     const valid = bcrypt.compareSync(passcode + POSTFIX, JSON.parse(getPass));
     if (valid) {
         recoveryPin = passcode;
         if (NativeModules.StorageModule?.setAppPin) {
             await NativeModules.StorageModule.setAppPin(passcode);
         }
+        return { status: "success", failureCount: 0, retryAfterMs: 0 };
     }
-    return valid;
+    return { status: "invalid", failureCount: 0, retryAfterMs: 0 };
 }
 
 export function consumeRecoveryPin() {

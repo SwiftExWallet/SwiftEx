@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A10000052F90000100000001 /* PinAttemptSecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000062F90000100000001 /* PinAttemptSecurity.swift */; };
+		A10000012F90000100000001 /* PinAttemptPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000022F90000100000001 /* PinAttemptPolicyTests.swift */; };
+		A20000012F90000100000001 /* WalletMigrationPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000022F90000100000001 /* WalletMigrationPolicyTests.swift */; };
+		A20000032F90000100000001 /* WalletMigrationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000042F90000100000001 /* WalletMigrationPolicy.swift */; };
 		040F243A2F32279F00B0D0D0 /* TransactionSigner.m in Sources */ = {isa = PBXBuildFile; fileRef = 040F24392F32279F00B0D0D0 /* TransactionSigner.m */; };
 		04234AEA2F3314F900B97E49 /* StellarSigner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04234AE92F3314F900B97E49 /* StellarSigner.swift */; };
 		04234AEC2F33152200B97E49 /* StellarSigner.m in Sources */ = {isa = PBXBuildFile; fileRef = 04234AEB2F33152200B97E49 /* StellarSigner.m */; };
@@ -36,6 +40,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A10000062F90000100000001 /* PinAttemptSecurity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PinAttemptSecurity.swift; path = test_app/PinAttemptSecurity.swift; sourceTree = "<group>"; };
+		A10000022F90000100000001 /* PinAttemptPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinAttemptPolicyTests.swift; sourceTree = "<group>"; };
+		A20000022F90000100000001 /* WalletMigrationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletMigrationPolicyTests.swift; sourceTree = "<group>"; };
+		A20000042F90000100000001 /* WalletMigrationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WalletMigrationPolicy.swift; path = test_app/WalletMigrationPolicy.swift; sourceTree = "<group>"; };
+		A10000032F90000100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		00E356EE1AD99517003FC87E /* test_appTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = test_appTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		040F24392F32279F00B0D0D0 /* TransactionSigner.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = TransactionSigner.m; path = test_app/TransactionSigner.m; sourceTree = "<group>"; };
 		04234AE92F3314F900B97E49 /* StellarSigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StellarSigner.swift; path = test_app/StellarSigner.swift; sourceTree = "<group>"; };
@@ -83,9 +92,21 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		A10000042F90000100000001 /* test_appTests */ = {
+			isa = PBXGroup;
+			children = (
+				A10000022F90000100000001 /* PinAttemptPolicyTests.swift */,
+				A20000022F90000100000001 /* WalletMigrationPolicyTests.swift */,
+				A10000032F90000100000001 /* Info.plist */,
+			);
+			path = test_appTests;
+			sourceTree = "<group>";
+		};
 		13B07FAE1A68108700A75B9A /* test_app */ = {
 			isa = PBXGroup;
 			children = (
+				A10000062F90000100000001 /* PinAttemptSecurity.swift */,
+				A20000042F90000100000001 /* WalletMigrationPolicy.swift */,
 				04E3139D2FEFF7C900CAC0EB /* test_app.entitlements */,
 				04D696EE2F643C3700E809CD /* AppDelegate.swift */,
 				180F48902CFDA388003A044B /* test_appRelease.entitlements */,
@@ -128,6 +149,7 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
+				A10000042F90000100000001 /* test_appTests */,
 				13B07FAE1A68108700A75B9A /* test_app */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
@@ -368,6 +390,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000012F90000100000001 /* PinAttemptPolicyTests.swift in Sources */,
+				A20000012F90000100000001 /* WalletMigrationPolicyTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -375,6 +399,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000052F90000100000001 /* PinAttemptSecurity.swift in Sources */,
+				A20000032F90000100000001 /* WalletMigrationPolicy.swift in Sources */,
 				040F243A2F32279F00B0D0D0 /* TransactionSigner.m in Sources */,
 				0439A4D62F31D84000E16E61 /* TransactionSigner.swift in Sources */,
 				04234AEC2F33152200B97E49 /* StellarSigner.m in Sources */,
@@ -401,6 +427,7 @@
 /* Begin XCBuildConfiguration section */
 		00E356F61AD99517003FC87E /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = D8D96DACDD82A418408C64CD /* Pods-test_app.debug.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -408,7 +435,7 @@
 					"$(inherited)",
 				);
 				INFOPLIST_FILE = test_appTests/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -421,17 +448,19 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/test_app.app/test_app";
 			};
 			name = Debug;
 		};
 		00E356F71AD99517003FC87E /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5DE2FF48A43B396E0CB9243E /* Pods-test_app.release.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COPY_PHASE_STRIP = NO;
 				INFOPLIST_FILE = test_appTests/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -444,6 +473,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/test_app.app/test_app";
 			};
 			name = Release;

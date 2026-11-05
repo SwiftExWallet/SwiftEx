@@ -4,15 +4,16 @@ import darkBlue from "../../assets/darkBlue.png";
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from "react-native-responsive-screen";
 import { useDispatch } from "react-redux";
 import { useFocusEffect, useIsFocused, useNavigation } from "@react-navigation/native";
-import { useBiometrics } from "../biometrics/biometric";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SET_APP_THEME } from "../components/Redux/actions/type";
 import { alert } from "./reusables/Toasts";
 import Icon from "../icon";
 import { setPlatform } from "../components/Redux/actions/auth";
 import { colors } from "../Screens/ThemeColorsConfig";
-import { AppNavigation } from "../Screens/AppChecks/AppCheckService";
-import { AddPassCode, CheckPasscode, createPinRecoveryBackup } from "../biometrics/utils";
+import { AppNavigation, runBiometricStartup } from "../Screens/AppChecks/AppCheckService";
+import { AddPassCode, createPinRecoveryBackup } from "../biometrics/utils";
+import { usePinThrottle } from "../biometrics/usePinThrottle";
+import { formatPinAuthMessage } from "../utilities/pinAuth";
 
 const Passcode = (props) => {
   const [pin, setPin] = useState("");
@@ -24,7 +25,15 @@ const Passcode = (props) => {
   const [status, setStatus] = useState("");
   const [tempPin, setTempPin] = useState("");
   const isFocused=useIsFocused();
+  const biometricAuthInFlight = useRef(false);
+  const { blocked, message: pinAuthMessage, verifyPin, verifyDevice } = usePinThrottle(status === "pinset");
+  const authenticateWithBiometrics = () => runBiometricStartup({
+    inFlightRef: biometricAuthInFlight,
+    verifyDevice,
+    onAuthenticated: () => AppNavigation(props),
+  });
   const handlePress = async (value) => {
+  if (status === "pinset" && blocked) return;
   if (pin.length < 6) {
     const newPin = pin + value; 
     setPin(newPin);
@@ -47,19 +56,21 @@ const Passcode = (props) => {
           }, 200);
         }
       } else if (status === "pinset") {
-        const validPin=await CheckPasscode(newPin);
-        const user = await AsyncStorage.getItem("user");
-
+        const pinResult = await verifyPin(newPin);
+        const validPin = pinResult.status === "success";
         if (validPin) {
           await createPinRecoveryBackup(newPin);
           setIsSuccess(true);
           setTimeout(() => {
             resetInput();
-            AppNavigation(props,user)
+            AppNavigation(props)
           }, 500);
         } else {
           triggerShake();
           setIsError(true);
+          if (pinResult.status === "backoff" || pinResult.status === "deviceCredentialRequired") {
+            alert("error", formatPinAuthMessage(pinResult));
+          }
           setTimeout(() => {
             resetInput();
           }, 1000);
@@ -111,13 +122,7 @@ const Passcode = (props) => {
   };
   useFocusEffect(
     React.useCallback(() => {
-      const checkBioMetric = async () => {
-        const biometric = await AsyncStorage.getItem("Biometric");
-        if (biometric === "SET") {
-          useBiometrics(props.navigation);
-        }
-      };
-      checkBioMetric();
+      authenticateWithBiometrics();
     }, [])
   );
   useEffect(() => {
@@ -135,10 +140,6 @@ const Passcode = (props) => {
   useEffect(() => {
     const initializeApp = async () => {
       const Check = await AsyncStorage.getItem("pin");
-      const biometric = await AsyncStorage.getItem("Biometric");
-      if (biometric === "SET") {
-        useBiometrics(props.navigation);
-      }
       if (Check) {
         setStatus("pinset");
       }
@@ -152,8 +153,9 @@ const Passcode = (props) => {
   const handleBiometrics = async () => {
     const biometric = await AsyncStorage.getItem("Biometric");
     if (biometric === "SET") {
-      useBiometrics(props.navigation);
-    } else {
+      await authenticateWithBiometrics();
+    }
+    else {
       alert('error', Platform.OS === "android"
         ? 'Enable biometrics in SwiftEx app settings.'
         : 'Enable face Id in SwiftEx app settings.'
@@ -213,6 +215,7 @@ const Passcode = (props) => {
         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((key) => (
           <TouchableOpacity
             key={key}
+            disabled={status === "pinset" && blocked}
             onPress={() => handlePress(key.toString())}
             style={styles.key}
           >
@@ -227,7 +230,7 @@ const Passcode = (props) => {
                 color={theme.inactiveTx}
               />}
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => handlePress("0")} style={styles.key}>
+        <TouchableOpacity disabled={status === "pinset" && blocked} onPress={() => handlePress("0")} style={styles.key}>
           <Text style={[styles.keyText,{color:theme.headingTx}]}>0</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={handleDelete} style={styles.key}>
@@ -240,6 +243,7 @@ const Passcode = (props) => {
         </TouchableOpacity>
       </View>
       <View style={styles.text_con}>
+        {status === "pinset" && blocked && <Text style={[styles.text_style, { fontSize: 13, color: "red" }]}>{pinAuthMessage}</Text>}
         <Text style={[styles.text_style, { fontSize: 13, color: theme.inactiveTx }]}>Passcode adds an extra layer of security</Text>
         <Text style={[styles.text_style, { fontSize: 13, color: theme.inactiveTx }]}>when using the app</Text>
       </View>
