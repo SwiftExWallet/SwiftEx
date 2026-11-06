@@ -85,4 +85,14 @@ final class WalletMigrationPolicyTests: XCTestCase {
         XCTAssertFalse(WalletMigrationPolicy.canCleanup(destinationVerified: true, markerCommitted: false))
         XCTAssertTrue(WalletMigrationPolicy.canCleanup(destinationVerified: true, markerCommitted: true))
     }
+
+    func testSignerFindsActiveWalletInMigratedStorage() {
+        let wallet = #"{"walletId":"1001","privatekey":"abc123"}"#
+
+        let result = WalletKeychainPolicy.activeWallet { service in
+            service == "com.appSwiftEx.appStorage.v3" ? wallet : nil
+        }
+
+        XCTAssertEqual(result, wallet)
+    }
 }

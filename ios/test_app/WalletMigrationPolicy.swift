@@ -1,5 +1,19 @@
 import Foundation
 
+enum WalletKeychainPolicy {
+    static let currentService = "com.appSwiftEx.appStorage.v3"
+    static let legacyServices = ["com.appSwiftEx.appStorage.v2", "com.appSwiftEx.appStorage"]
+
+    static func activeWallet(read: (String) -> String?) -> String? {
+        for service in [currentService] + legacyServices {
+            if let wallet = read(service), !wallet.isEmpty {
+                return wallet
+            }
+        }
+        return nil
+    }
+}
+
 enum LegacyWalletRead {
     case absent(source: String)
     case readable(source: String, wallets: String?, activeWallet: String?)

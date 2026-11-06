@@ -6,7 +6,6 @@ import LocalAuthentication
 class StellarSigner: NSObject {
   
   let sdk = StellarSDK(withHorizonUrl: "https://horizon.stellar.org")
-  let serviceName = "com.appSwiftEx.appStorage.v2"
 
   private func authenticateForSigning(_ completion: @escaping (Result<Void, Error>) -> Void) {
     guard TransactionAuthPolicyIOS.isEnabled() else {
@@ -65,7 +64,9 @@ class StellarSigner: NSObject {
   }
   
   private func getPrivateKey(chain: String) throws -> String? {
-    guard let walletJson = retrieveFromKeychain(key: "activeUserWallet", service: serviceName) else {
+    guard let walletJson = WalletKeychainPolicy.activeWallet(read: { service in
+      self.retrieveFromKeychain(key: "activeUserWallet", service: service)
+    }) else {
       throw NSError(domain: "KEYCHAIN", code: -1, userInfo: [NSLocalizedDescriptionKey: "No wallet found"])
     }
     
