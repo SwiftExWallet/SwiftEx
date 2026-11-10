@@ -5,12 +5,12 @@ const unavailableError = () =>
 
 export const getTransactionAuthEnabled = async () => {
   const getter = NativeModules.StorageModule?.getTransactionAuthEnabled;
-  if (typeof getter !== "function") return true;
+  if (typeof getter !== "function") return false;
 
   try {
     return (await getter()) !== false;
   } catch (_error) {
-    return true;
+    return false;
   }
 };
 

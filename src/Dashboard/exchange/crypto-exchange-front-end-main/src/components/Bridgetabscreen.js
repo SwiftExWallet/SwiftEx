@@ -58,7 +58,7 @@ export default function BridgeTabScreen({ route, ...props }) {
   };
   return (
     <View style={[s.root, { backgroundColor: theme.bg }]}>
-      <Exchange_screen_header title={title} onLeftIconPress={() => navigation.goBack()} onRightIconPress={() => { }} />
+      {/* <Exchange_screen_header title={title} onLeftIconPress={() => navigation.goBack()} onRightIconPress={() => { }} /> */}
       {tabs.length > 1 && <View style={[s.tabBar, { backgroundColor: theme.cardBg }]}>
         {tabs.map(
           (tab, index) => {

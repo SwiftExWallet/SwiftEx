@@ -79,9 +79,9 @@ object TransactionAuthPolicy {
     fun isEnabled(prefs: android.content.SharedPreferences): Boolean {
         if (forceEnabledAfterWriteFailure) return true
         return try {
-            if (!prefs.contains(KEY)) true else prefs.getBoolean(KEY, true)
+            if (!prefs.contains(KEY)) false else prefs.getBoolean(KEY, false)
         } catch (_: Exception) {
-            true
+            false
         }
     }
 

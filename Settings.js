@@ -50,7 +50,7 @@ const Settings = (props) => {
   const state = useSelector((state) => state);
   const theme = state.THEME.THEME ? colors.dark : colors.light;
   const [notificationLoading,setNotificationLoading] = useState(false);
-  const [transactionAuthEnabled, setTransactionAuthState] = useState(true);
+  const [transactionAuthEnabled, setTransactionAuthState] = useState(false);
   const [transactionAuthLoading, setTransactionAuthLoading] = useState(false);
 
   const notificationPermissionStatus = async () => {

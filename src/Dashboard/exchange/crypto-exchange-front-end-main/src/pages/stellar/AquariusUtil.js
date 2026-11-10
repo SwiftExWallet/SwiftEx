@@ -137,6 +137,57 @@ async function ExecuteAquariusSwap({
         const outMinValue = calcMinimumReceived(route.amount, slippageBps);
         let account = await horizon.loadAccount(publicKey);
 
+        function isTrusted(asset, acct) {
+            if (asset.isNative()) return true;
+            return acct.balances.some(
+                (b) => b.asset_code === asset.code && b.asset_issuer === asset.issuer
+            );
+        }
+
+        if (!isTrusted(assetIn, account)) {
+            throw new Error(
+                `Trustline missing for ${assetIn.code}:${assetIn.issuer}.`
+            );
+        }
+
+        let available;
+        if (assetIn.isNative()) {
+            const nativeLine = account.balances.find((b) => b.asset_type === 'native');
+            available = nativeLine ? parseFloat(nativeLine.balance) : 0;
+        } else {
+            const balanceLine = account.balances.find(
+                (b) => b.asset_code === assetIn.code && b.asset_issuer === assetIn.issuer
+            );
+            if (!balanceLine) {
+                throw new Error(`No balance line found for ${assetIn.code}:${assetIn.issuer}.`);
+            }
+            available = parseFloat(balanceLine.balance);
+        }
+        const required = Number(amountStr) / 1e7;
+        if (available < required) {
+            throw new Error(
+                `Insufficient ${assetIn.code} balance: available ${available}, required ${required}.`
+            );
+        }
+
+        if (!isTrusted(assetOut, account)) {
+            const trustTx = new StellarSdk.TransactionBuilder(account, {
+                fee: baseFeeStroops,
+                networkPassphrase
+                })
+                .addOperation(StellarSdk.Operation.changeTrust({asset: assetOut}))
+                .setTimeout(300)
+                .build();
+
+            const signedTrust =await NativeModules.StellarSigner.signTransaction(trustTx.toXdr());
+            const signedXDR = signedTrust?.signedXDR;
+            if (!signedXDR || typeof signedXDR !== "string") {
+                throw new Error("Invalid signed XDR");
+            }
+            const signedTransaction =StellarSdk.TransactionBuilder.fromXdr(signedXDR,networkPassphrase);
+            await submitWithTimeoutRecovery(horizon,signedTransaction);
+            account = await horizon.loadAccount(publicKey);
+        }
 
         const swapTxBuilder = new StellarSdk.TransactionBuilder(account, {
             fee: baseFeeStroops,

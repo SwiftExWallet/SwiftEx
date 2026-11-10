@@ -182,9 +182,9 @@ enum TransactionAuthPolicyIOS {
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
               let data = result as? Data,
               let value = String(data: data, encoding: .utf8) else {
-            return true
+            return false
         }
-        return value != "false"
+        return value == "true"
     }
 
     @discardableResult

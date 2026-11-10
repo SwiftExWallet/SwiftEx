@@ -138,10 +138,10 @@ export const HomeView = () => {
   useEffect(() => { if (focused) fetchOrders(); }, [focused, fetchOrders]);
   const nav = (i) => { [() => navigation.navigate("newOffer_modal"), () =>
       navigation.navigate("Bridge", {
-        tabs: ENVIRONMENT==="TESTNET"?["depositCCTP"]:["deposit", "depositCCTP"],
+        tabs: ENVIRONMENT==="TESTNET"?["depositCCTP"]:["deposit"],
         title: "Bridge",
       }), () => navigation.navigate("Bridge", {
-        tabs: ENVIRONMENT==="TESTNET"?["withdrawCCTP"]:["withdraw", "withdrawCCTP"],
+        tabs: ENVIRONMENT==="TESTNET"?["withdrawCCTP"]:["withdraw"],
         title: "Bridge",
       })][i]?.(); };
   const toolNav = (i) => { [() => navigation.navigate("Assets_manage"), () => navigation.navigate("payout"), () => navigation.navigate("StellarOffers"), () => navigation.navigate("StellarTransactions"), () => navigation.navigate("WalletNetworkSelection", { selectionType: "importForSetupedApp", backScreenName: "ExchangeHome" }),][i]?.(); };
