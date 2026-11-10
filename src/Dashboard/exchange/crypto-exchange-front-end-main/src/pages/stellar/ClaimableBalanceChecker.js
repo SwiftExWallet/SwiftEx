@@ -125,7 +125,7 @@ const ClaimableBalanceChecker = ({
         throw new Error("Invalid signed XDR");
       }
       const networkPassphrase = ENVIRONMENT === "TESTNET" ? Networks.TESTNET : Networks.PUBLIC;
-      const signedTransaction = TransactionBuilder.fromXDR(signedXDR, networkPassphrase);
+      const signedTransaction = TransactionBuilder.fromXdr(signedXDR, networkPassphrase);
       const txResponse = await server.submitTransaction(signedTransaction);
       CustomInfoProvider.show("success", "Hurray", `${assetCode} has been successfully claimed!`);
       fetchClaimableBalances();

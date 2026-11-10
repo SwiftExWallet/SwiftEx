@@ -216,7 +216,7 @@ async function ExecuteAquariusSwap({
         if (!signedXDR || typeof signedXDR !== "string") {
             throw new Error("Invalid signed XDR");
         }
-        const signedTransaction =StellarSdk.TransactionBuilder.fromXDR(signedXDR,networkPassphrase);
+        const signedTransaction =StellarSdk.TransactionBuilder.fromXdr(signedXDR,networkPassphrase);
         const { id: submittedId, hash: txHash } = await submitWithTimeoutRecovery(horizon,signedTransaction);
         let txResult;
         const maxAttempts = 10; 

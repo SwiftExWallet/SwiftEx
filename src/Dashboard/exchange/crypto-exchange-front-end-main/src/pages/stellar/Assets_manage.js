@@ -127,7 +127,7 @@ const Assets_manage = ({ route }) => {
                 throw new Error("Invalid signed XDR");
             }
             const networkPassphrase = ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
-            const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR, networkPassphrase);
+            const signedTransaction = StellarSdk.TransactionBuilder.fromXdr(signedXDR, networkPassphrase);
             await server.submitTransaction(signedTransaction);
             
             Snackbar.show({
@@ -173,7 +173,7 @@ const Assets_manage = ({ route }) => {
                 throw new Error("Invalid signed XDR");
             }
             const networkPassphrase = ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
-            const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR, networkPassphrase);
+            const signedTransaction = StellarSdk.TransactionBuilder.fromXdr(signedXDR, networkPassphrase);
             await server.submitTransaction(signedTransaction);
             
             Snackbar.show({

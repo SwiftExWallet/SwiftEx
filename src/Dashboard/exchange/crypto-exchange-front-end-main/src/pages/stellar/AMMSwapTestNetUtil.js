@@ -99,7 +99,7 @@ async function AMMSWAPTESTNET(
       throw new Error("Invalid signed XDR");
     }
     const networkPassphrase = ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
-    const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR, networkPassphrase);
+    const signedTransaction = StellarSdk.TransactionBuilder.fromXdr(signedXDR, networkPassphrase);
     if (signedTx.publicKey !== sourcePublic) {
       throw new Error("Signer public key mismatch");
     }

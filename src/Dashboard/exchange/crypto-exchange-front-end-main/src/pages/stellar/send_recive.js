@@ -412,9 +412,8 @@ const send_recive = ({route}) => {
         throw new Error("Invalid signed XDR");
       }
       const networkPassphrase = ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
-      const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR, networkPassphrase);
+      const signedTransaction = StellarSdk.TransactionBuilder.fromXdr(signedXDR, networkPassphrase);
       const transactionResult = await server.submitTransaction(signedTransaction);
-      console.log('Transaction successful!', transactionResult);
       await ShortTermStorage.syncTx({
         txHash: transactionResult.hash,
         walletAddress: sourcePublicKey,

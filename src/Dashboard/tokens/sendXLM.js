@@ -277,14 +277,13 @@ const SendXLM = (props) => {
                 throw new Error("Invalid signed XDR");
               }
               const networkPassphrase =ENVIRONMENT === "TESTNET"? StellarSdk.Networks.TESTNET: StellarSdk.Networks.PUBLIC;
-              const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR,networkPassphrase);
+              const signedTransaction = StellarSdk.TransactionBuilder.fromXdr(signedXDR,networkPassphrase);
               if (res.publicKey !== sourcePublic) {
                 throw new Error("Signer public key mismatch");
               }
               const transactionResult = await server.submitTransaction(
                 signedTransaction
               );
-              console.log('Transaction successful!', transactionResult);
               await ShortTermStorage.syncTx({
                 txHash: transactionResult.hash,
                 walletAddress: res.publicKey,

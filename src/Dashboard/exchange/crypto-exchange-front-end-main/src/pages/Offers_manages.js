@@ -188,7 +188,7 @@ const Offers_manages = () => {
         throw new Error("Invalid signed XDR");
       }
       const networkPassphrase = ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
-      const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR, networkPassphrase);
+      const signedTransaction = StellarSdk.TransactionBuilder.fromXdr(signedXDR, networkPassphrase);
       const response = await server.submitTransaction(signedTransaction);
       console.log('Offer deleted:', response);
       setloading_del(false);
@@ -284,7 +284,7 @@ const Offers_manages = () => {
         throw new Error("Invalid signed XDR");
       }
       const networkPassphrase = ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
-      const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR, networkPassphrase);
+      const signedTransaction = StellarSdk.TransactionBuilder.fromXdr(signedXDR, networkPassphrase);
       const response = await server.submitTransaction(signedTransaction);
       console.log('Offer updated:', response);
   

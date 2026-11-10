@@ -184,14 +184,16 @@ class StellarSigner: NSObject {
       do {
         let secretKey = try getPrivateKey(chain: "stellar")!
         let sourceKeyPair = try KeyPair(secretSeed: secretKey)
-        let envelopeXDR = try TransactionEnvelopeXDR(xdr: transactionXDR)
         let network = Network.public
-        let hash = try envelopeXDR.txHash(network: network)
-        let signature = sourceKeyPair.sign([UInt8](hash))
+        let transaction = try Transaction(envelopeXdr: transactionXDR)
+        try transaction.sign(keyPair: sourceKeyPair, network: network)
+        let signedXDR = try transaction.encodedEnvelope()
+        let signature = sourceKeyPair.sign([UInt8](try transaction.getTransactionHashData(network: network)))
         let signatureBase64 = Data(signature).base64EncodedString()
         
         await MainActor.run {
           resolve([
+            "signedXDR": signedXDR,
             "signature": signatureBase64,
             "publicKey": sourceKeyPair.accountId
           ])
