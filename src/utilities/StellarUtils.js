@@ -1,4 +1,4 @@
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import axios from 'axios';
 import { ENVIRONMENT, STELLAR_URL } from '../Dashboard/constants';
 const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);

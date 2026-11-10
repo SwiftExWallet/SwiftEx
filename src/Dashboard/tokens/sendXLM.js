@@ -42,7 +42,7 @@ import { GetStellarAvilabelBalance, stellarWalletStatus } from "../../utilities/
 import StellarAccountReserve from "../exchange/crypto-exchange-front-end-main/src/utils/StellarReserveComponent";
 import WalletActivationComponent from "../exchange/crypto-exchange-front-end-main/src/utils/WalletActivationComponent";
 // const StellarSdK = require('stellar-base');
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from "@stellar/stellar-sdk/axios";
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import QRScannerComponent from "../Modals/QRScannerComponent";
 import LinearGradient from "react-native-linear-gradient";
@@ -270,11 +270,20 @@ const SendXLM = (props) => {
                   .build();
               }
           
-              const txXDR = transaction.toXDR();
+              const txXDR = transaction.toXdr();
               const res = await NativeModules.StellarSigner.signTransaction(txXDR);
-              const signatureBuffer = Buffer.from(res.signature, 'base64');
-              transaction.addSignature(res.publicKey, signatureBuffer.toString('base64'));
-              const transactionResult = await server.submitTransaction(transaction);
+              const signedXDR = res?.signedXDR;
+              if (!signedXDR || typeof signedXDR !== "string") {
+                throw new Error("Invalid signed XDR");
+              }
+              const networkPassphrase =ENVIRONMENT === "TESTNET"? StellarSdk.Networks.TESTNET: StellarSdk.Networks.PUBLIC;
+              const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR,networkPassphrase);
+              if (res.publicKey !== sourcePublic) {
+                throw new Error("Signer public key mismatch");
+              }
+              const transactionResult = await server.submitTransaction(
+                signedTransaction
+              );
               console.log('Transaction successful!', transactionResult);
               await ShortTermStorage.syncTx({
                 txHash: transactionResult.hash,

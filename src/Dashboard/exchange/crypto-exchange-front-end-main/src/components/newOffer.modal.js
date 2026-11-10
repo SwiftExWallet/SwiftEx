@@ -35,7 +35,7 @@ import WalletActivationComponent from "../utils/WalletActivationComponent";
 import CustomOrderBook from "../pages/stellar/CustomOrderBook";
 import AMMSwap from "../pages/stellar/AMMSwap";
 import InstentTradeHistory from "../pages/stellar/InstentTradeHistory";
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
 import CustomInfoProvider from "./CustomInfoProvider";
 import CrossChainTx from "./CrossChainTx";
@@ -270,7 +270,7 @@ export const NewOfferModal = () => {
         offerId: stellarConfig.DEFAULT_OFFER_ID
       }))
       const tx = offerTx.setTimeout(stellarConfig.TRANSACTION_TIMEOUT).build();
-      const txXDR = tx.toXDR();
+      const txXDR = tx.toXdr();
       const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
       const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
       tx.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
@@ -347,7 +347,7 @@ export const NewOfferModal = () => {
           })
         )
         const tx=offerTx.setTimeout(stellarConfig.TRANSACTION_TIMEOUT).build();
-        const txXDR = tx.toXDR();
+        const txXDR = tx.toXdr();
         const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
         const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
         tx.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));

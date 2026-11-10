@@ -1007,7 +1007,7 @@ async function sendTrustlineTx({
             .setTimeout(180)
             .build();
 
-        const txXDR = tx.toXDR();
+        const txXDR = tx.toXdr();
         const signedTx = await StellarSigner.signTransaction(txXDR);
         assertValidSignedStellarTx(signedTx);
 
@@ -1125,7 +1125,7 @@ async function sendDepositViaStellarSigner({
         if (memo) builder = builder.addMemo(memo);
         const tx = builder.setTimeout(180).build();
 
-        const txXDR = tx.toXDR();
+        const txXDR = tx.toXdr();
         const signedTx = await StellarSigner.signTransaction(txXDR);
         assertValidSignedStellarTx(signedTx);
 

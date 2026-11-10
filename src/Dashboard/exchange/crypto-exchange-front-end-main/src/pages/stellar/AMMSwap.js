@@ -25,7 +25,7 @@ import { GetStellarAvilabelBalance, GetStellarUSDCAvilabelBalance } from '../../
 import { AMMSWAPTESTNET } from './AMMSwapTestNetUtil';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { ENVIRONMENT, STELLAR_URL } from '../../../../../constants';
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import CustomInfoProvider from '../../components/CustomInfoProvider';
 import {
   widthPercentageToDP as wp,
@@ -574,7 +574,7 @@ const AMMSwap = ({ FROM_TOKEN = null, TO_TOKEN = null }) => {
 
     const signerResult =
       await NativeModules.StellarSigner.signTransaction(
-        transaction.toXDR()
+        transaction.toXdr()
       );
 
     if (
@@ -603,7 +603,7 @@ const AMMSwap = ({ FROM_TOKEN = null, TO_TOKEN = null }) => {
       signature.toString('base64')
     );
 
-    return transaction.toXDR();
+    return transaction.toXdr();
   };
 
  const executeSoroswap = async () => {
@@ -670,7 +670,7 @@ const AMMSwap = ({ FROM_TOKEN = null, TO_TOKEN = null }) => {
 
   // 2. Reconstruct prepared transaction.
   const transaction =
-    StellarSdk.TransactionBuilder.fromXDR(
+    StellarSdk.TransactionBuilder.fromXdr(
       prepared.xdr,
       StellarSdk.Networks.TESTNET
     );
@@ -695,9 +695,7 @@ const AMMSwap = ({ FROM_TOKEN = null, TO_TOKEN = null }) => {
 
   // Ensure backend's transaction hash matches
   // the XDR we are about to sign.
-  const localHash = transaction
-    .hash()
-    .toString('hex');
+  const localHash = Buffer.from(transaction.hash()).toString('hex');
 
   if (
     prepared.transactionHash &&

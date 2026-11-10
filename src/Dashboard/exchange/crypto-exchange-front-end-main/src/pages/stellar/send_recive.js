@@ -21,7 +21,7 @@ import Snackbar from "react-native-snackbar";
 import ErrorComponet from "../../../../../../utilities/ErrorComponet";
 import { GetStellarAvilabelBalance, GetStellarUSDCAvilabelBalance, stellarWalletStatus } from "../../../../../../utilities/StellarUtils";
 import WalletActivationComponent from "../../utils/WalletActivationComponent";
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import CustomInfoProvider from "../../components/CustomInfoProvider";
 import QRScannerComponent from "../../../../../Modals/QRScannerComponent";
 import TokenQrCode from "../../../../../Modals/TokensQrCode";
@@ -241,9 +241,9 @@ const send_recive = ({route}) => {
       .build();
 
     const prepared = await rpcServer.prepareTransaction(transaction);
-    const signed = await NativeModules.StellarSigner.signTransaction(prepared.toXDR());
+    const signed = await NativeModules.StellarSigner.signTransaction(prepared.toXdr());
     if (signed?.signedXDR) {
-      return StellarSdk.TransactionBuilder.fromXDR(
+      return StellarSdk.TransactionBuilder.fromXdr(
         signed.signedXDR,
         ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC,
       );
@@ -405,13 +405,15 @@ const send_recive = ({route}) => {
         setPayment_loading(false);
         return;
       }
-      const txXDR = transaction.toXDR();
+      const txXDR = transaction.toXdr();
       const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
-      const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
-      transaction.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
-  
-      // Submit the transaction
-      const transactionResult = await server.submitTransaction(transaction);
+      const signedXDR = signedTx?.signedXDR;
+      if (!signedXDR || typeof signedXDR !== "string") {
+        throw new Error("Invalid signed XDR");
+      }
+      const networkPassphrase = ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
+      const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR, networkPassphrase);
+      const transactionResult = await server.submitTransaction(signedTransaction);
       console.log('Transaction successful!', transactionResult);
       await ShortTermStorage.syncTx({
         txHash: transactionResult.hash,

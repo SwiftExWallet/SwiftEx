@@ -11,7 +11,7 @@ import Snackbar from "react-native-snackbar";
 import { SET_ASSET_DATA } from "../../../../../../components/Redux/actions/type";
 import { ENVIRONMENT, STELLAR_URL } from "../../../../../constants";
 import { Exchange_screen_header } from "../../../../../reusables/ExchangeHeader";
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import ClaimableBalanceChecker from "./ClaimableBalanceChecker";
 import stellarTokens from "./Tokens.json";
 import { colors } from "../../../../../../Screens/ThemeColorsConfig";
@@ -120,11 +120,15 @@ const Assets_manage = ({ route }) => {
                 )
                 .setTimeout(30)
                 .build();
-            const txXDR = transaction.toXDR();
+            const txXDR = transaction.toXdr();
             const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
-            const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
-            transaction.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
-            await server.submitTransaction(transaction);
+            const signedXDR = signedTx?.signedXDR;
+            if (!signedXDR || typeof signedXDR !== "string") {
+                throw new Error("Invalid signed XDR");
+            }
+            const networkPassphrase = ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
+            const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR, networkPassphrase);
+            await server.submitTransaction(signedTransaction);
             
             Snackbar.show({
                 text: `${domainName} added successfully`,
@@ -162,11 +166,15 @@ const Assets_manage = ({ route }) => {
                 )
                 .setTimeout(30)
                 .build();
-            const txXDR = transaction.toXDR();
+            const txXDR = transaction.toXdr();
             const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
-            const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
-            transaction.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
-            await server.submitTransaction(transaction);
+            const signedXDR = signedTx?.signedXDR;
+            if (!signedXDR || typeof signedXDR !== "string") {
+                throw new Error("Invalid signed XDR");
+            }
+            const networkPassphrase = ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
+            const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(signedXDR, networkPassphrase);
+            await server.submitTransaction(signedTransaction);
             
             Snackbar.show({
                 text: `${domainName} removed successfully`,

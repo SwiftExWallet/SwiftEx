@@ -1,7 +1,7 @@
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import { AQUARIUS_BASE_API, ENVIRONMENT, SRB_MAINNET_ROUTER, SRB_RPC_URL, STELLAR_URL } from '../../../../../constants';
 import { NativeModules } from 'react-native';
-
+const networkPassphrase =ENVIRONMENT === "TESTNET"? StellarSdk.Networks.TESTNET: StellarSdk.Networks.PUBLIC;
 function assetContractId(asset, passphrase) {
     return asset.contractId(passphrase);
 }
@@ -10,22 +10,21 @@ function toStroops(humanAmount) {
     return Math.round(parseFloat(humanAmount) * 1e7).toString();
 }
 
-async function fetchRoute({ assetIn, assetOut, amount }) {
-    const networkPassphrase = ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC;
-    const amountStr = amount.toString();
-    const route = await (
-        await fetch(`${AQUARIUS_BASE_API}/find-path/`, {
+async function fetchRoute({ assetIn, assetOut, amount, networkPassphrase, }) {
+    const response = await fetch(`${AQUARIUS_BASE_API}/find-path/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                token_in_address: assetContractId(assetIn, networkPassphrase),
-                token_out_address: assetContractId(assetOut, networkPassphrase),
-                amount: amountStr,
+                token_in_address: assetIn.contractId(networkPassphrase),
+                token_out_address: assetOut.contractId(networkPassphrase),
+                amount: amount.toString(),
             }),
-        })
-    ).json();
-
-    if (!route.success) throw new Error('No swap path found');
+        }
+    );
+    const route = await response.json();
+    if (!response.ok || !route.success) {
+        throw new Error('No swap path found');
+    }
     return route;
 }
 
@@ -36,7 +35,7 @@ function calcMinimumReceived(routeAmount, slippageBps) {
 }
 
 async function submitWithTimeoutRecovery(horizon, signedTx, { attempts = 10, intervalMs = 2000 } = {}) {
-    const txHash = signedTx.hash().toString('hex');
+    const txHash = Buffer.from(signedTx.hash()).toString('hex');
 
     try {
         const response = await horizon.submitTransaction(signedTx);
@@ -82,7 +81,7 @@ async function submitWithTimeoutRecovery(horizon, signedTx, { attempts = 10, int
 async function GetAquariusSwapQuote({ assetIn, assetOut, amount, slippageBps = 100 }) {
     try {
         const amountStr = toStroops(amount);
-        const route = await fetchRoute({ assetIn, assetOut, amount: amountStr });
+        const route = await fetchRoute({ assetIn, assetOut, amount: amountStr,networkPassphrase });
 
         const inHuman = parseFloat(amount);
         const outHuman = route.amount / 1e7;
@@ -115,7 +114,6 @@ async function ExecuteAquariusSwap({
     assetOut,
     amount,
     slippageBps = 100,
-    networkPassphrase = ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
     baseFeeStroops = '600000',
 }) {
     if (!assetIn) throw new Error('assetIn is required');
@@ -135,58 +133,10 @@ async function ExecuteAquariusSwap({
         const horizon = new StellarSdk.Horizon.Server(horizonUrl);
         const soroban = new StellarSdk.rpc.Server(rpcUrl);
         const amountStr = toStroops(amount);
-        const route = await fetchRoute({ assetIn, assetOut, amount: amountStr });
+        const route = await fetchRoute({ assetIn, assetOut, amount: amountStr, networkPassphrase});
         const outMinValue = calcMinimumReceived(route.amount, slippageBps);
         let account = await horizon.loadAccount(publicKey);
 
-        function isTrusted(asset, acct) {
-            if (asset.isNative()) return true;
-            return acct.balances.some(
-                (b) => b.asset_code === asset.code && b.asset_issuer === asset.issuer
-            );
-        }
-
-        if (!isTrusted(assetIn, account)) {
-            throw new Error(
-                `Trustline missing for ${assetIn.code}:${assetIn.issuer}.`
-            );
-        }
-
-        let available;
-        if (assetIn.isNative()) {
-            const nativeLine = account.balances.find((b) => b.asset_type === 'native');
-            available = nativeLine ? parseFloat(nativeLine.balance) : 0;
-        } else {
-            const balanceLine = account.balances.find(
-                (b) => b.asset_code === assetIn.code && b.asset_issuer === assetIn.issuer
-            );
-            if (!balanceLine) {
-                throw new Error(`No balance line found for ${assetIn.code}:${assetIn.issuer}.`);
-            }
-            available = parseFloat(balanceLine.balance);
-        }
-        const required = Number(amountStr) / 1e7;
-        if (available < required) {
-            throw new Error(
-                `Insufficient ${assetIn.code} balance: available ${available}, required ${required}.`
-            );
-        }
-
-        if (!isTrusted(assetOut, account)) {
-            const trustTx = new StellarSdk.TransactionBuilder(account, {
-                fee: baseFeeStroops,
-                networkPassphrase,
-            })
-                .addOperation(StellarSdk.Operation.changeTrust({ asset: assetOut }))
-                .setTimeout(300)
-                .build();
-
-            const signedTrust = await NativeModules.StellarSigner.signTransaction(trustTx.toXDR());
-            const trustSigBuffer = Buffer.from(signedTrust.signature, 'base64');
-            trustTx.addSignature(signedTrust.publicKey, trustSigBuffer.toString('base64'));
-            await submitWithTimeoutRecovery(horizon, trustTx);
-            account = await horizon.loadAccount(publicKey);
-        }
 
         const swapTxBuilder = new StellarSdk.TransactionBuilder(account, {
             fee: baseFeeStroops,
@@ -198,7 +148,7 @@ async function ExecuteAquariusSwap({
                 new StellarSdk.Contract(router).call(
                     'swap_chained',
                     new StellarSdk.Address(publicKey).toScVal(),
-                    StellarSdk.xdr.ScVal.fromXDR(route.swap_chain_xdr, 'base64'),
+                    StellarSdk.xdr.ScVal.fromXdr(route.swap_chain_xdr, 'base64'),
                     new StellarSdk.Address(assetContractId(assetIn, networkPassphrase)).toScVal(),
                     StellarSdk.nativeToScVal(amountStr, { type: 'u128' }),
                     StellarSdk.nativeToScVal(outMinValue, { type: 'u128' }),
@@ -209,15 +159,18 @@ async function ExecuteAquariusSwap({
 
         swapTx = await soroban.prepareTransaction(swapTx);
 
-        const txXDR = swapTx.toXDR();
+        const txXDR = swapTx.toXdr();
         const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
-        const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
-        swapTx.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
-        const { id: submittedId } = await submitWithTimeoutRecovery(horizon, swapTx);
+        const signedXDR = signedTx?.signedXDR;
+        if (!signedXDR || typeof signedXDR !== "string") {
+            throw new Error("Invalid signed XDR");
+        }
+        const signedTransaction =StellarSdk.TransactionBuilder.fromXDR(signedXDR,networkPassphrase);
+        const { id: submittedId, hash: txHash } = await submitWithTimeoutRecovery(horizon,signedTransaction);
         let txResult;
         const maxAttempts = 10; 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            txResult = await soroban.getTransaction(submittedId);
+            txResult = await soroban.getTransaction(txHash);
             if (txResult.status !== 'NOT_FOUND') break;
             await new Promise((resolve) => setTimeout(resolve, 1500));
         }
@@ -231,12 +184,16 @@ async function ExecuteAquariusSwap({
             throw new Error(`Transaction failed on-chain with status: ${txResult.status}`);
         }
 
-        const returnValue = txResult.resultMetaXdr.value().sorobanMeta().returnValue();
-        const received = Number(StellarSdk.scValToNative(returnValue)) / 1e7;
+        const returnValue = txResult.returnValue;
+        let received = null;
+        if (returnValue != null) {
+            const receivedRaw = StellarSdk.scValToNative(returnValue);
+            received = Number(receivedRaw) / 1e7;
+        }
 
         return {
             status: true,
-            txHash: submittedId,
+            txHash:txHash,
             fromAsset: assetIn.code,
             toAsset: assetOut.code,
             amount: amount,

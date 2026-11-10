@@ -376,7 +376,7 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
             : "https://horizon.stellar.org";
           const server = new Horizon.Server(horizonUrl);
           const horizonResult = await server.submitTransaction(
-            TransactionBuilder.fromXDR(signed.signedXDR, networkPass)
+            TransactionBuilder.fromXdr(signed.signedXDR, networkPass)
           );
 
           await respondOk({ hash: horizonResult.hash ?? signed.hash });

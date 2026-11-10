@@ -22,7 +22,7 @@ import {
   STELLAR_URL,
 } from '../../../../constants';
 import {activateStellarAccountFlow} from '../utils/WalletActivationComponent';
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 
 const {TransactionSigner, StellarSigner} = NativeModules;
 const API_BASE_URL = REACT_APP_HOST;
@@ -1200,7 +1200,7 @@ export default function BridgeScreen({directionEnable}) {
         ENVIRONMENT === 'TESTNET'
           ? StellarSdk.Networks.TESTNET
           : StellarSdk.Networks.PUBLIC;
-      const transaction = StellarSdk.TransactionBuilder.fromXDR(
+      const transaction = StellarSdk.TransactionBuilder.fromXdr(
         signingRequest.xdr,
         networkPassphrase,
       );
@@ -1208,7 +1208,7 @@ export default function BridgeScreen({directionEnable}) {
         signedResult.publicKey,
         Buffer.from(signedResult.signature, 'base64').toString('base64'),
       );
-      signedXDR = transaction.toXDR();
+      signedXDR = transaction.toXdr();
     }
     if (!signedXDR) throw new Error('Wallet did not return signedXDR.');
     const updated = await apiRequest(

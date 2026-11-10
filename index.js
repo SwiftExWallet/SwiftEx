@@ -1,6 +1,9 @@
 /**
  * @format
  */
+import './polyfills/abortSignal';
+import 'react-native-url-polyfill/auto';
+import './polyfills/textEncoding';
 import './shim';
 import 'react-native-get-random-values';
 import { Buffer } from 'buffer';

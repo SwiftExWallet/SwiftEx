@@ -28,7 +28,7 @@ import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { alert } from "./reusables/Toasts";
 import { useNavigation } from "@react-navigation/native";
 import apiHelper from "./exchange/crypto-exchange-front-end-main/src/apiHelper";
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import crashlytics from '@react-native-firebase/crashlytics';
 import ReferralBottomSheet from "./reusables/ReferralBottomSheet";
 import { clearReferralCode, getSavedReferralCode, initReferral, subscribeReferral } from "../utilities/referralUtil";

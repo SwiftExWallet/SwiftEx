@@ -11,7 +11,7 @@ import { PORTFOLIO_CONFIG, RAPID_STELLAR, SET_ASSET_DATA, WALLET_ACTIVATION_SHOW
 import { enableBiometrics } from "../biometrics/biometric";
 import { ENVIRONMENT, STELLAR_URL } from "./constants";
 import LinearGradient from "react-native-linear-gradient";
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import Modal from "react-native-modal";
 import { colors } from '../Screens/ThemeColorsConfig';
 import { CHAINS, GetWalletTokens, TemporaryTokens } from '../utilities/TokenUtils';

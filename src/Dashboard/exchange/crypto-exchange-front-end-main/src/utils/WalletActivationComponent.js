@@ -18,7 +18,7 @@ import { REACT_APP_HOST } from '../ExchangeConstants';
 import Snackbar from 'react-native-snackbar';
 import {ENVIRONMENT, STELLAR_URL} from '../../../../constants';
 import apiHelper from '../apiHelper';
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import Icon from '../../../../../icon';
 import TokenQrCode from '../../../../Modals/TokensQrCode';
 import {
@@ -130,7 +130,7 @@ export async function activateStellarAccountFlow({
       ? StellarSdk.Networks.TESTNET
       : StellarSdk.Networks.PUBLIC;
 
-  const transaction = StellarSdk.TransactionBuilder.fromXDR(
+  const transaction = StellarSdk.TransactionBuilder.fromXdr(
     xdr,
     networkPassphrase,
   );
@@ -139,7 +139,7 @@ export async function activateStellarAccountFlow({
 
   let signedXDR = signedTx?.signedXDR;
   if (!signedXDR && signedTx?.signature && signedTx?.publicKey) {
-    const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(
+    const signedTransaction = StellarSdk.TransactionBuilder.fromXdr(
       xdr,
       networkPassphrase,
     );
@@ -147,19 +147,19 @@ export async function activateStellarAccountFlow({
       signedTx.publicKey,
       Buffer.from(signedTx.signature, 'base64').toString('base64'),
     );
-    signedXDR = signedTransaction.toXDR();
+    signedXDR = signedTransaction.toXdr();
   }
 
   if (!signedXDR) {
     throw new Error('Native signer did not return signedXDR');
   }
 
-  const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(
+  const signedTransaction = StellarSdk.TransactionBuilder.fromXdr(
     signedXDR,
     networkPassphrase,
   );
 
-  if (!signedTransaction.hash().equals(transaction.hash())) {
+  if (!Buffer.from(signedTransaction.hash()).equals(Buffer.from(transaction.hash()))) {
     throw new Error('Signer changed the activation transaction');
   }
 
@@ -169,7 +169,7 @@ export async function activateStellarAccountFlow({
     if (!address) continue;
     const keypair = StellarSdk.Keypair.fromPublicKey(address);
     const valid = signedTransaction.signatures.some(signature =>
-      keypair.verify(hash, signature.signature()),
+      keypair.verify(hash, signature.signature.toBytes()),
     );
 
     if (!valid) {

@@ -93,15 +93,13 @@ const decodeSwapParams = (operation) => {
     const params = operation.parameters || [];
 
     const decoded = params.map(p =>
-      StellarSdk.xdr.ScVal.fromXDR(
-        p.value,
-        "base64"
-      )
+      StellarSdk.xdr.ScVal.fromXdr(p.value, "base64")
     );
 
-    const functionName = decoded
-      .find(v => v.switch().name === "scvSymbol")
-      ?.sym()?.toString();
+    const symbolVal = decoded.find(v => v.type === "scvSymbol");
+    const functionName = symbolVal
+      ? String(StellarSdk.scValToNative(symbolVal))
+      : undefined;
 
     if (
       ![
@@ -115,43 +113,22 @@ const decodeSwapParams = (operation) => {
     const args = decoded.slice(2);
 
     const getInt = (v) => {
-      const type = v.switch().name;
-
-      if (type === "scvI128") {
-        const value = v.i128();
-        return (
-          (BigInt(value.hi().toString()) << 64n) +
-          BigInt(value.lo().toString())
-        ).toString();
+      if (!v) return null;
+      if (["scvI128", "scvU128", "scvI64", "scvU64"].includes(v.type)) {
+        return StellarSdk.scValToNative(v).toString();
       }
-
-      if (type === "scvU128") {
-        const value = v.u128();
-        return (
-          (BigInt(value.hi().toString()) << 64n) +
-          BigInt(value.lo().toString())
-        ).toString();
-      }
-
-      if (type === "scvI64") return v.i64().toString();
-      if (type === "scvU64") return v.u64().toString();
-
       return null;
     };
 
     const pathValue = args[2];
 
-    if (pathValue?.switch().name !== "scvVec") {
+    if (pathValue?.type !== "scvVec") {
       return null;
     }
 
-    const path = pathValue.vec().map(v => {
-      if (v.switch().name !== "scvAddress") return null;
-
-      return StellarSdk.Address.fromScAddress(
-        v.address()
-      ).toString();
-    });
+    const path = StellarSdk.scValToNative(pathValue).map(v =>
+      typeof v === "string" ? v : null
+    );
 
     if (path.length < 2 || path.some(v => !v)) {
       return null;
@@ -283,15 +260,12 @@ const decodeContractTransfer = (operation) => {
 
   try {
     const params = operation.parameters || [];
-    const decode = (param) => StellarSdk.xdr.ScVal.fromXDR(param.value, "base64");
-    const contractAddress = StellarSdk.Address.fromScAddress(decode(params[0]).address()).toString();
-    const from = StellarSdk.Address.fromScAddress(decode(params[2]).address()).toString();
-    const to = StellarSdk.Address.fromScAddress(decode(params[3]).address()).toString();
-    const amountValue = decode(params[4]).i128();
-    const amount = (
-      (BigInt(amountValue.hi().toString()) << 64n) +
-      BigInt(amountValue.lo().toString())
-    ).toString();
+    const decode = (param) =>
+      StellarSdk.scValToNative(StellarSdk.xdr.ScVal.fromXdr(param.value, "base64"));
+    const contractAddress = String(decode(params[0]));
+    const from = String(decode(params[2]));
+    const to = String(decode(params[3]));
+    const amount = decode(params[4]).toString();
 
     return {contractAddress, from, to, amount};
   } catch (error) {

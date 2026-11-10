@@ -14,7 +14,7 @@ import { AddToAllWallets, getBalance, setCurrentWallet, setToken, setUser, setWa
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { alert } from "../reusables/Toasts";
 import { checkWalletExistOrNot } from "../Wallets/WalletManagement";
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import Modal from "react-native-modal";
 const { EthereumWallet } = NativeModules;
 
