@@ -369,7 +369,7 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
           });
 
 
-          const { Horizon, TransactionBuilder, Networks } = require("@stellar/stellar-sdk");
+          const { Horizon, TransactionBuilder, Networks } = require("@stellar/stellar-sdk/axios");
           const networkPass = network === "testnet" ? Networks.TESTNET : Networks.PUBLIC;
           const horizonUrl = network === "testnet"
             ? "https://horizon-testnet.stellar.org"
