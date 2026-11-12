@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { Text } from "react-native-paper";
 import RecieveModal from "./Modals/RecieveModal";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useIsFocused } from "@react-navigation/native";
 import {
   widthPercentageToDP as wp,
   heightPercentageToDP as hp,
@@ -35,6 +35,9 @@ import { getAssetId } from "../utilities/TokenManageHook";
 import { GetWalletTokens, CHAINS } from "../utilities/TokenUtils";
 import CustomInfoProvider from "./exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import { colors } from "../Screens/ThemeColorsConfig";
+import { PERPS_ENABLED } from "../perps/config";
+import { usePerpsAvailability } from "../perps/usePerpsAvailability";
+import HomeBanner from "../perps/components/HomeBanner";
 
 if (
   Platform.OS === "android" &&
@@ -58,6 +61,8 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
   const [walletSyncShow, setWalletSyncShow] = useState(false);
   const [pull, setPull] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const isFocused = useIsFocused();
+  const { perpsVisible } = usePerpsAvailability(isFocused);
 
   if (Platform.OS === "android") {
     if (UIManager.setLayoutAnimationEnabledExperimental) {
@@ -518,6 +523,31 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
 
             </View>
             <InvestmentChart />
+            {PERPS_ENABLED && (
+              <>
+                {perpsVisible && (
+                  <HomeBanner
+                    theme={theme}
+                    highlighted
+                    title="Trade Perps"
+                    subtitle="Up to 20x leverage on BTC, ETH & more"
+                    icon="candlestick-chart"
+                    iconType="material"
+                    onPress={() => navigation.navigate("Perps")}
+                  />
+                )}
+                <HomeBanner
+                  theme={theme}
+                  title="Discover"
+                  subtitle="Explore coins, prices & market trends"
+                  icon="explore"
+                  iconType="material"
+                  onPress={() => navigation.navigate("Discover")}
+                />
+                {/* Space so nothing hides behind the floating tab bar */}
+                <View style={{ height: hp(12) }} />
+              </>
+            )}
           </View>
         )}
 

@@ -19,6 +19,9 @@ import CustomInfoProvider from './exchange/crypto-exchange-front-end-main/src/co
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import InfoComponent from './exchange/crypto-exchange-front-end-main/src/components/InfoComponent';
 import { useAssetManager } from '../utilities/TokenManageHook';
+import { PERPS_ENABLED } from '../perps/config';
+
+const COLLAPSED_ASSET_COUNT = 2;
 
 function InvestmentChart() {
   const navigation = useNavigation();
@@ -36,6 +39,7 @@ function InvestmentChart() {
   const { mergeWithApiTokens } = useAssetManager(`${wallet?.address}_${state?.STELLAR_PUBLICK_KEY}`);
   const activeRequestWalletRef = useRef(null);
   const hasLoadedOnceRef = useRef(false);
+  const [assetsExpanded, setAssetsExpanded] = useState(false);
 
   const avilableSoonAsset={
     chain: 'BTC',
@@ -340,6 +344,11 @@ function InvestmentChart() {
     [navigation, state.THEME.THEME, state.isTotalInUSDVisible, state.activeWalletPortFolio, theme],
   );
 
+  const allAssets = (ENVIRONMENT === "TESTNET"?(state && state.activeWalletPortFolio && state.activeWalletPortFolio.tokens || state && state.activeWalletPortFolio)?.filter(data => (data.active && data.contractAddress === "Native") || (data.contractAddress !== "Native" && data.active)):(state && state.activeWalletPortFolio && state.activeWalletPortFolio.tokens || state && state.activeWalletPortFolio)?.filter(data => (data.active && data.contractAddress === "Native") || (data.contractAddress !== "Native" && data.active && parseFloat(data.balance) > 0)) ?? tokenInfoList);
+  // Perps layout: home shows the top 2 assets, with a See all / Show less toggle.
+  const canCollapse = PERPS_ENABLED && Array.isArray(allAssets) && allAssets.length > COLLAPSED_ASSET_COUNT;
+  const shownAssets = canCollapse && !assetsExpanded ? allAssets.slice(0, COLLAPSED_ASSET_COUNT) : allAssets;
+
   return (
     <View style={[styles.watchlistCon, { backgroundColor: theme.bg }]}>
       <InfoComponent visible={showCustomInfo} type='' message='Direct BTC wallet support is not yet available. You can still access BTC through on-chain swaps via SDEX.' onClose={() => { setshowCustomInfo(false) }} />
@@ -351,7 +360,7 @@ function InvestmentChart() {
         ) : ( */}
           <>
           <FlatList
-              data={ENVIRONMENT === "TESTNET"?(state && state.activeWalletPortFolio && state.activeWalletPortFolio.tokens || state && state.activeWalletPortFolio)?.filter(data => (data.active && data.contractAddress === "Native") || (data.contractAddress !== "Native" && data.active)):(state && state.activeWalletPortFolio && state.activeWalletPortFolio.tokens || state && state.activeWalletPortFolio)?.filter(data => (data.active && data.contractAddress === "Native") || (data.contractAddress !== "Native" && data.active && parseFloat(data.balance) > 0)) ?? tokenInfoList}
+              data={shownAssets}
             renderItem={renderTokens}
             keyExtractor={(item, index) => index.toString()}
             initialNumToRender={39}
@@ -367,7 +376,26 @@ function InvestmentChart() {
                 }}
               />
             }
-            contentContainerStyle={{ paddingBottom: hp(10) }}
+            contentContainerStyle={{ paddingBottom: PERPS_ENABLED ? 0 : hp(10) }}
+            ListFooterComponent={
+              canCollapse ? (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  style={styles.seeAllAssetsBtn}
+                  onPress={() => setAssetsExpanded(!assetsExpanded)}
+                >
+                  <Text style={styles.seeAllAssetsTxt}>
+                    {assetsExpanded ? "Show less" : `See all (${allAssets.length})`}
+                  </Text>
+                  <Icon
+                    name={assetsExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                    type="material"
+                    size={22}
+                    color="#8B90F5"
+                  />
+                </TouchableOpacity>
+              ) : null
+            }
           />
         </>
         {/* )} */}
@@ -606,6 +634,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 13,
     paddingVertical: 7,
+  },
+  seeAllAssetsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginTop: 2,
+  },
+  seeAllAssetsTxt: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#8B90F5",
   },
   avilableSoonBtnTxt: {
     color: "#FFF",
