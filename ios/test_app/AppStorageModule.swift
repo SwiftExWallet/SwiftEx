@@ -6,6 +6,31 @@ import UIKit
 import CryptoKit
 import CommonCrypto
 
+struct SecretCopyPolicy {
+    static let mnemonic = "mnemonic"
+    static let ethereumPrivateKey = "ethereumPrivateKey"
+    static let stellarPrivateKey = "stellarPrivateKey"
+    static let clipboardClearDelay: TimeInterval = 60
+
+    static func value(for wallet: [String: Any], type: String) -> String? {
+        let key: String
+        switch type {
+        case mnemonic: key = "mnemonic"
+        case ethereumPrivateKey: key = "privatekey"
+        case stellarPrivateKey: key = "stellarPrivateKey"
+        default: return nil
+        }
+        guard let value = wallet[key] as? String, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    static func canClear(current: String?, copied: String) -> Bool {
+        current == copied
+    }
+}
+
 @objc(StorageModule)
 class StorageModule: NSObject {
     private let serviceName   = "com.appSwiftEx.appStorage"
@@ -240,7 +265,37 @@ class StorageModule: NSObject {
         return "AUTH_FAILED"
     }
 
-    private func makeBackupViewController(_ backupText: String) -> UIViewController {
+    private func copySecretToClipboard(
+        type: String,
+        wallet: [String: Any],
+        statusLabel: UILabel
+    ) {
+        guard let secret = SecretCopyPolicy.value(for: wallet, type: type) else {
+            statusLabel.text = "That secret is unavailable."
+            return
+        }
+
+        authenticate(reason: "Authenticate to copy wallet secret") { result in
+            DispatchQueue.main.async {
+                do {
+                    try result.get()
+                    let pasteboard = UIPasteboard.general
+                    pasteboard.string = secret
+                    let copyChangeCount = pasteboard.changeCount
+                    statusLabel.text = "Secret copied. It will clear in 60 seconds."
+                    DispatchQueue.main.asyncAfter(deadline: .now() + SecretCopyPolicy.clipboardClearDelay) {
+                        guard pasteboard.changeCount == copyChangeCount,
+                              SecretCopyPolicy.canClear(current: pasteboard.string, copied: secret) else { return }
+                        pasteboard.string = ""
+                    }
+                } catch {
+                    statusLabel.text = "Authentication cancelled or failed."
+                }
+            }
+        }
+    }
+
+    private func makeBackupViewController(_ backupText: String, wallet: [String: Any]) -> UIViewController {
         let controller = UIViewController()
         controller.modalPresentationStyle = .fullScreen
         controller.view.backgroundColor = .systemBackground
@@ -289,6 +344,27 @@ class StorageModule: NSObject {
         textView.isEditable = false
         textView.isSelectable = false
         root.addArrangedSubview(textView)
+
+        let statusLabel = UILabel()
+        statusLabel.font = .systemFont(ofSize: 13)
+        statusLabel.textColor = .secondaryLabel
+        statusLabel.numberOfLines = 0
+        root.addArrangedSubview(statusLabel)
+
+        let copyButtons: [(String, String)] = [
+            (SecretCopyPolicy.mnemonic, "Copy Mnemonic"),
+            (SecretCopyPolicy.ethereumPrivateKey, "Copy Ethereum Private Key"),
+            (SecretCopyPolicy.stellarPrivateKey, "Copy Stellar Private Key"),
+        ]
+        for (type, title) in copyButtons where SecretCopyPolicy.value(for: wallet, type: type) != nil {
+            let button = UIButton(type: .system)
+            button.setTitle(title, for: .normal)
+            button.addAction(UIAction { [weak self, weak statusLabel] _ in
+                guard let statusLabel else { return }
+                self?.copySecretToClipboard(type: type, wallet: wallet, statusLabel: statusLabel)
+            }, for: .touchUpInside)
+            root.addArrangedSubview(button)
+        }
 
         NSLayoutConstraint.activate([
             root.topAnchor.constraint(equalTo: controller.view.safeAreaLayoutGuide.topAnchor, constant: 20),
@@ -855,7 +931,7 @@ class StorageModule: NSObject {
                             reject("VIEW_CONTROLLER_UNAVAILABLE", "No active view controller", nil)
                             return
                         }
-                        presenter.present(self.makeBackupViewController(backupText), animated: true)
+                        presenter.present(self.makeBackupViewController(backupText, wallet: w), animated: true)
                         resolve(["success": true])
                 }
             } catch {
@@ -898,7 +974,7 @@ class StorageModule: NSObject {
                         reject("VIEW_CONTROLLER_UNAVAILABLE", "No active view controller", nil)
                         return
                     }
-                    presenter.present(self.makeBackupViewController(backupText), animated: true)
+                    presenter.present(self.makeBackupViewController(backupText, wallet: wallet), animated: true)
                     resolve(["success": true])
                 }
             } catch {

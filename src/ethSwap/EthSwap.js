@@ -987,7 +987,7 @@ const EthSwap = () => {
         CustomInfoProvider.show(
           'error',
           '!Opps',
-          getSafeErrorMessage(resuleOfAllowance.error?.message, 'Token allowance failed')
+          getSafeErrorMessage(resuleOfAllowance.error?.message, 'No gas available for token allowance.')
         );
         return;
       }

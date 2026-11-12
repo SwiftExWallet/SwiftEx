@@ -1,9 +1,13 @@
 package org.app.swiftEx.wallet
 import android.app.Dialog
 import com.facebook.react.bridge.*
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Color
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -481,7 +485,44 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
         )
     }
 
-    private fun showBackupScreen(backupText: String) {
+    private fun copySecretToClipboard(
+        activity: android.app.Activity,
+        wallet: JSONObject,
+        secretType: String,
+        statusView: TextView,
+    ) {
+        val secret = SecretCopyPolicy.valueForType(wallet, secretType)
+        if (secret == null) {
+            statusView.text = "That secret is unavailable."
+            return
+        }
+
+        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val promise = PromiseImpl(
+            Callback { _ -> statusView.text = "Secret copied. It will clear in 60 seconds." },
+            Callback { _ -> statusView.text = "Authentication cancelled or failed." },
+        )
+
+        authenticate(
+            title = "Authenticate to copy secret",
+            subtitle = "Confirm it is you before copying wallet recovery details.",
+            promise = promise,
+        ) {
+            val marker = "SwiftEx secret ${System.nanoTime()}"
+            clipboard.setPrimaryClip(ClipData.newPlainText(marker, secret))
+            statusView.text = "Secret copied. It will clear in 60 seconds."
+            Handler(Looper.getMainLooper()).postDelayed({
+                val currentMarker = clipboard.primaryClipDescription?.label?.toString()
+                val currentValue = clipboard.primaryClip?.getItemAt(0)?.coerceToText(activity)?.toString()
+                if (currentMarker == marker && SecretCopyPolicy.canClearClipboard(currentValue, secret)) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) clipboard.clearPrimaryClip()
+                    else clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+                }
+            }, SecretCopyPolicy.CLIPBOARD_CLEAR_DELAY_MS)
+        }
+    }
+
+    private fun showBackupScreen(backupText: String, wallet: JSONObject) {
         val activity = reactApplicationContext.currentActivity
             ?: throw IllegalStateException("No active activity")
 
@@ -547,6 +588,29 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
             }
             scroll.addView(secretText)
             root.addView(scroll)
+
+            val copyStatus = TextView(activity).apply {
+                textSize = 13f
+                setTextColor(Color.rgb(91, 98, 112))
+                setPadding(0, dp(10), 0, dp(4))
+            }
+            root.addView(copyStatus)
+
+            val copyButtons = listOf(
+                SecretCopyPolicy.MNEMONIC to "Copy Mnemonic",
+                SecretCopyPolicy.ETHEREUM_PRIVATE_KEY to "Copy Ethereum Private Key",
+                SecretCopyPolicy.STELLAR_PRIVATE_KEY to "Copy Stellar Private Key",
+            )
+            copyButtons.forEach { (secretType, label) ->
+                if (SecretCopyPolicy.valueForType(wallet, secretType) != null) {
+                    root.addView(Button(activity).apply {
+                        text = label
+                        setOnClickListener {
+                            copySecretToClipboard(activity, wallet, secretType, copyStatus)
+                        }
+                    })
+                }
+            }
 
             dialog.setContentView(root)
             dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -941,7 +1005,7 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
                         "GET_WALLET_ERROR", "No backup data found"
                     )
                     prefs.edit().putLong(BACKUP_VIEWED_AT, System.currentTimeMillis()).apply()
-                    showBackupScreen(backupText)
+                    showBackupScreen(backupText, JSONObject(s))
                     promise.resolve(Arguments.createMap().apply { putBoolean("success", true) })
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to open wallet backup", e)
@@ -968,7 +1032,7 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
             val backupText = formatBackupText(JSONObject(active))
             if (backupText.isBlank()) return promise.reject("GET_WALLET_ERROR", "No backup data found")
             prefs.edit().putLong(BACKUP_VIEWED_AT, System.currentTimeMillis()).apply()
-            showBackupScreen(backupText)
+            showBackupScreen(backupText, JSONObject(active))
             promise.resolve(Arguments.createMap().apply { putBoolean("success", true) })
         } catch (e: Exception) {
             Log.e(TAG, "Failed to open PIN wallet backup", e)

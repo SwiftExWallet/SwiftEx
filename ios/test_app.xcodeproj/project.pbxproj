@@ -28,6 +28,7 @@
 		A20000032F90000100000001 /* WalletMigrationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000042F90000100000001 /* WalletMigrationPolicy.swift */; };
 		A30000012F90000100000001 /* ScreenProtection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000022F90000100000001 /* ScreenProtection.swift */; };
 		A30000032F90000100000001 /* ScreenProtectionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000042F90000100000001 /* ScreenProtectionPolicyTests.swift */; };
+		A40000012F90000100000001 /* SecretCopyPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000022F90000100000001 /* SecretCopyPolicyTests.swift */; };
 		C09AD1F36A04CC9CD9860CBB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 679DD7D20FDE1C926ACDB0F0 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
@@ -72,6 +73,7 @@
 		A20000042F90000100000001 /* WalletMigrationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WalletMigrationPolicy.swift; path = test_app/WalletMigrationPolicy.swift; sourceTree = "<group>"; };
 		A30000022F90000100000001 /* ScreenProtection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenProtection.swift; sourceTree = "<group>"; };
 		A30000042F90000100000001 /* ScreenProtectionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenProtectionPolicyTests.swift; sourceTree = "<group>"; };
+		A40000022F90000100000001 /* SecretCopyPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretCopyPolicyTests.swift; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		FD2CEAD9481720774C1A6D07 /* Pods-test_app.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-test_app.debug.xcconfig"; path = "Target Support Files/Pods-test_app/Pods-test_app.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -171,6 +173,7 @@
 				A10000022F90000100000001 /* PinAttemptPolicyTests.swift */,
 				A20000022F90000100000001 /* WalletMigrationPolicyTests.swift */,
 				A30000042F90000100000001 /* ScreenProtectionPolicyTests.swift */,
+				A40000022F90000100000001 /* SecretCopyPolicyTests.swift */,
 				A10000032F90000100000001 /* Info.plist */,
 			);
 			path = test_appTests;
@@ -399,6 +402,7 @@
 				A10000012F90000100000001 /* PinAttemptPolicyTests.swift in Sources */,
 				A20000012F90000100000001 /* WalletMigrationPolicyTests.swift in Sources */,
 				A30000032F90000100000001 /* ScreenProtectionPolicyTests.swift in Sources */,
+				A40000012F90000100000001 /* SecretCopyPolicyTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
