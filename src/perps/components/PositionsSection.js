@@ -4,6 +4,7 @@ import { unrealizedPnl } from "../utils/orderMath";
 import { gt, div, isPositive, sub, toPlain } from "../utils/decimal";
 import { formatNumber, formatPrice } from "../utils/format";
 import { getCachedMarketMeta } from "../api/asterPublic";
+import CoinLogo from "./CoinLogo";
 
 const metaOf = (symbol) => (getCachedMarketMeta() || {})[symbol] || {};
 
@@ -27,6 +28,7 @@ const PositionRow = ({ p, mark, theme, onClose }) => {
   return (
     <View style={[styles.card, { backgroundColor: theme.cardBg }]}>
       <View style={styles.headRow}>
+        <CoinLogo asset={meta.baseAsset || p.symbol} size={24} theme={theme} style={styles.logo} />
         <Text style={[styles.symbol, { color: theme.headingTx }]}>{meta.baseAsset || p.symbol}</Text>
         <View style={[styles.tag, { backgroundColor: isLong ? theme.success : theme.fail }]}>
           <Text style={styles.tagTxt}>
@@ -103,6 +105,7 @@ const OrderRow = ({ o, theme, onCancel }) => {
   const trigger = isPositive(o.stopPrice) ? o.stopPrice : null;
   return (
     <View style={[styles.orderRow, { backgroundColor: theme.cardBg }]}>
+      <CoinLogo asset={meta.baseAsset || o.symbol} size={28} theme={theme} style={styles.orderLogo} />
       <View style={{ flex: 1 }}>
         <Text style={[styles.orderTitle, { color: theme.headingTx }]}>
           {meta.baseAsset || o.symbol} · {orderLabel(o)}{" "}
@@ -158,6 +161,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: "700", marginHorizontal: 19, marginTop: 14, marginBottom: 8 },
   card: { marginHorizontal: 12, marginBottom: 8, borderRadius: 16, padding: 14 },
   headRow: { flexDirection: "row", alignItems: "center" },
+  logo: { marginRight: 8 },
+  orderLogo: { marginRight: 10 },
   symbol: { fontSize: 16, fontWeight: "700" },
   tag: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1, marginLeft: 8 },
   tagTxt: { color: "#FFFFFF", fontSize: 11, fontWeight: "700" },

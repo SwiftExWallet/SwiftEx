@@ -24,6 +24,7 @@ import { getCachedMarketMeta } from "../api/asterPublic";
 import { getCachedMaxLeverage } from "../api/asterSigned";
 import PriceChart from "../components/PriceChart";
 import OrderPanel from "../components/OrderPanel";
+import CoinLogo from "../components/CoinLogo";
 import { usePerpsAgent } from "../hooks/usePerpsAgent";
 import { usePerpsAccount } from "../hooks/usePerpsAccount";
 import { DEFAULT_MAX_LEVERAGE } from "../utils/orderMath";
@@ -146,6 +147,7 @@ const PerpsMarket = ({ navigation, route }) => {
         >
           <Icon name="arrow-back" type="ionicon" size={26} color={theme.headingTx} />
         </TouchableOpacity>
+        <CoinLogo asset={baseAsset} size={36} theme={theme} style={styles.headerLogo} />
         <View style={{ flex: 1 }}>
           <View style={styles.titleLine}>
             <Text style={[styles.title, { color: theme.headingTx }]}>{baseAsset}</Text>
@@ -300,6 +302,9 @@ const styles = StyleSheet.create({
   backBtn: {
     padding: 6,
     marginRight: 6,
+  },
+  headerLogo: {
+    marginRight: 10,
   },
   titleLine: {
     flexDirection: "row",

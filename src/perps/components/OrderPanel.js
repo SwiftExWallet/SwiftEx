@@ -18,6 +18,7 @@ import {
   setMultiAssetsMode,
 } from "../api/asterTrade";
 import { formatPrice } from "../utils/format";
+import CoinLogo from "./CoinLogo";
 import CustomInfoProvider from "../../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 
 const DEFAULT_LEVERAGE = 5;
@@ -420,9 +421,12 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
       >
         {confirmOrder && confirmOrder.ok ? (
           <View style={[styles.sheet, { backgroundColor: theme.bg }]}>
-            <Text style={[styles.sheetTitle, { color: confirm === "LONG" ? theme.success : theme.fail }]}>
-              {confirm === "LONG" ? "Long" : "Short"} {baseAsset}
-            </Text>
+            <View style={styles.sheetTitleRow}>
+              <CoinLogo asset={baseAsset} size={28} theme={theme} style={styles.sheetLogo} />
+              <Text style={[styles.sheetTitle, styles.sheetTitleInRow, { color: confirm === "LONG" ? theme.success : theme.fail }]}>
+                {confirm === "LONG" ? "Long" : "Short"} {baseAsset}
+              </Text>
+            </View>
             <Row theme={theme} label="Market" value={`${symbol} perpetual`} />
             <Row theme={theme} label="Order type" value={type === "MARKET" ? "Market" : `Limit @ $${confirmOrder.price}`} />
             <Row theme={theme} label="Size" value={`${confirmOrder.qty} ${baseAsset} ($${formatNumber(confirmOrder.notional, 2)})`} />
@@ -508,6 +512,9 @@ const styles = StyleSheet.create({
   modal: { justifyContent: "flex-end", margin: 0 },
   sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 28 },
   sheetTitle: { fontSize: 20, fontWeight: "800", marginBottom: 12 },
+  sheetTitleRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  sheetTitleInRow: { marginBottom: 0, flexShrink: 1 },
+  sheetLogo: { marginRight: 10 },
   row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
   rowLabel: { fontSize: 14 },
   rowValue: { fontSize: 14, fontWeight: "600", flexShrink: 1, textAlign: "right", marginLeft: 12 },

@@ -23,6 +23,7 @@ import { useAsterMarkets } from "../hooks/useAsterMarkets";
 import { formatPrice, formatPercent, formatCompactUsd } from "../utils/format";
 import { usePerpsAgent } from "../hooks/usePerpsAgent";
 import TradingCard from "../components/TradingCard";
+import CoinLogo from "../components/CoinLogo";
 import PositionsSection from "../components/PositionsSection";
 import { DepositSheet, WithdrawSheet } from "../components/FundsSheets";
 import { usePerpsAccount } from "../hooks/usePerpsAccount";
@@ -43,9 +44,7 @@ const MarketRow = React.memo(({ item, theme, onPress }) => {
       style={[styles.row, { backgroundColor: theme.cardBg }]}
       onPress={() => onPress(item)}
     >
-      <View style={[styles.avatar, { backgroundColor: theme.buttonColor }]}>
-        <Text style={styles.avatarTxt}>{(item.baseAsset || "?").charAt(0)}</Text>
-      </View>
+      <CoinLogo asset={item.baseAsset} size={40} theme={theme} />
       <View style={styles.nameCol}>
         <View style={styles.nameLine}>
           <Text numberOfLines={1} style={[styles.symbol, { color: theme.headingTx }]}>
@@ -389,18 +388,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 16,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarTxt: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "700",
   },
   nameCol: {
     flex: 1,
