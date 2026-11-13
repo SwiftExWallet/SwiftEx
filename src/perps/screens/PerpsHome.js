@@ -24,6 +24,7 @@ import { formatPrice, formatPercent, formatCompactUsd } from "../utils/format";
 import { usePerpsAgent } from "../hooks/usePerpsAgent";
 import TradingCard from "../components/TradingCard";
 import CoinLogo from "../components/CoinLogo";
+import { useAssetLogos } from "../hooks/useAssetLogos";
 import PositionsSection from "../components/PositionsSection";
 import { DepositSheet, WithdrawSheet } from "../components/FundsSheets";
 import { usePerpsAccount } from "../hooks/usePerpsAccount";
@@ -80,7 +81,8 @@ const PerpsHome = () => {
   const theme = isDark ? colors.dark : colors.light;
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
-  const { markets, loading, refreshing, error, retry, refresh } = useAsterMarkets(isFocused);
+  const { markets, loading, refreshing, updating, error, retry, refresh } = useAsterMarkets(isFocused);
+  useAssetLogos(); // start loading coin logos as soon as the tab mounts
   const agentState = usePerpsAgent(isFocused);
   const { leverage } = agentState;
   const tradingEnabled = agentState.status === "enabled";
@@ -240,6 +242,9 @@ const PerpsHome = () => {
           />
         ) : null}
       </View>
+      {updating && !error && markets.length > 0 ? (
+        <Text style={[styles.updating, { color: theme.inactiveTx }]}>Updating…</Text>
+      ) : null}
     </View>
   );
 
@@ -458,6 +463,12 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "600",
+  },
+  updating: {
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: -2,
+    marginBottom: 6,
   },
   banner: {
     marginHorizontal: 12,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { asterFetch } from "../api/asterPublic";
+import { asterFetch, PUBLIC_TIMEOUT_MS } from "../api/asterPublic";
 
 // Coin logos for Perps, keyed by base asset (e.g. "BTC").
 // Source: Aster's public asset-logo list (covers all USDT perps). Cached in AsyncStorage for 24h
@@ -67,7 +67,7 @@ const loadLogos = () => {
     } catch (e) {
       // corrupt cache -> refetch below
     }
-    const { data, error } = await asterFetch(LOGO_URL, { method: "POST", timeoutMs: 20000 });
+    const { data, error } = await asterFetch(LOGO_URL, { method: "POST", timeoutMs: PUBLIC_TIMEOUT_MS });
     const map = error ? {} : toMap(data && data.data);
     if (Object.keys(map).length) {
       publish(map);

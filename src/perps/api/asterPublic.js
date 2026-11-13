@@ -52,9 +52,22 @@ export const asterFetch = async (
   }
 };
 
+// Public (no-auth) GET. Longer timeout than signed calls (slow DNS on first request + large
+// exchangeInfo), and one silent retry with a short backoff when there was no usable answer
+// (timeout, network error, or an HTTP error without a JSON body). Aster error codes are not retried.
+export const PUBLIC_TIMEOUT_MS = 30000;
+const PUBLIC_RETRY_DELAY_MS = 1500;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export const asterGet = async (path, opts) => {
-  const { data, error } = await asterFetch(path, { ...(opts || {}), method: "GET" });
-  return { data: error ? null : data, error };
+  const { retries = 1, ...rest } = opts || {};
+  const fetchOpts = { timeoutMs: PUBLIC_TIMEOUT_MS, ...rest, method: "GET" };
+  let res = await asterFetch(path, fetchOpts);
+  for (let i = 0; i < retries && res.error && res.data === null && res.code === null; i += 1) {
+    await sleep(PUBLIC_RETRY_DELAY_MS * (i + 1));
+    res = await asterFetch(path, fetchOpts);
+  }
+  return { data: res.error ? null : res.data, error: res.error };
 };
 
 const filterValue = (filters, type, key) => {
@@ -62,13 +75,53 @@ const filterValue = (filters, type, key) => {
   return f ? f[key] : undefined;
 };
 
-// Symbol metadata (tick/step sizes, min notional) kept in memory for later steps (order entry).
+// Symbol metadata (tick/step sizes, min notional) kept in memory for order entry.
+// `marketMetaFetchedAt` is when exchangeInfo was fetched from Aster (a saved copy keeps its
+// original time), so orders can insist on fresh rules.
 let marketMetaCache = null;
+let marketMetaFetchedAt = 0;
 export const getCachedMarketMeta = () => marketMetaCache;
+
+const indexBySymbol = (markets) =>
+  markets.reduce((acc, m) => {
+    acc[m.symbol] = m;
+    return acc;
+  }, {});
+
+// Seed the in-memory rules from the saved market list (only if nothing fresher is loaded).
+export const primeMarketMeta = (markets, fetchedAt) => {
+  if (!Array.isArray(markets) || !markets.length) return;
+  if (marketMetaCache && marketMetaFetchedAt >= fetchedAt) return;
+  marketMetaCache = indexBySymbol(markets);
+  marketMetaFetchedAt = Number(fetchedAt) || 0;
+};
+
+export const getMarketMetaFetchedAt = () => marketMetaFetchedAt;
+
+// Fields that decide whether an order is valid. If any changed, the user must re-confirm.
+export const ORDER_RULE_FIELDS = [
+  "tickSize",
+  "stepSize",
+  "minQty",
+  "marketStepSize",
+  "minNotional",
+  "priceBandDown",
+  "priceBandUp",
+];
+
+// Make sure the trading rules are at most `maxAgeMs` old (refetch exchangeInfo otherwise).
+// -> { ok, refreshed, error }
+export const ensureFreshMarketMeta = async (maxAgeMs) => {
+  if (marketMetaCache && Date.now() - marketMetaFetchedAt <= maxAgeMs) {
+    return { ok: true, refreshed: false, error: null };
+  }
+  const { error } = await fetchPerpMarkets();
+  return error ? { ok: false, refreshed: false, error } : { ok: true, refreshed: true, error: null };
+};
 
 // GET /fapi/v3/exchangeInfo -> tradable perpetual markets (PERPETUAL AND TRADING AND quoted in USDT).
 export const fetchPerpMarkets = async () => {
-  const { data, error } = await asterGet("/fapi/v3/exchangeInfo", { timeoutMs: 25000 });
+  const { data, error } = await asterGet("/fapi/v3/exchangeInfo");
   if (error) return { data: null, error };
   const symbols = Array.isArray(data?.symbols) ? data.symbols : [];
   const markets = symbols
@@ -91,10 +144,8 @@ export const fetchPerpMarkets = async () => {
       priceBandUp: filterValue(s.filters, "PERCENT_PRICE", "multiplierUp"),
       maxLeverage: null, // filled from signed leverageBrackets once trading is enabled
     }));
-  marketMetaCache = markets.reduce((acc, m) => {
-    acc[m.symbol] = m;
-    return acc;
-  }, {});
+  marketMetaCache = indexBySymbol(markets);
+  marketMetaFetchedAt = Date.now();
   return { data: markets, error: null };
 };
 
@@ -139,7 +190,8 @@ export const fetchKlines = async (symbol, interval, limit = 200) => {
 
 // GET /fapi/v3/time -> { serverTime } (ms)
 export const fetchServerTime = async () => {
-  const { data, error } = await asterGet("/fapi/v3/time", { timeoutMs: 10000 });
+  // Used right before signing: keep it short and let the signed flow handle failures.
+  const { data, error } = await asterGet("/fapi/v3/time", { timeoutMs: 10000, retries: 0 });
   if (error || !Number.isFinite(Number(data?.serverTime))) {
     return { data: null, error: error || "Bad server time" };
   }

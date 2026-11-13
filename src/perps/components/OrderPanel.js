@@ -19,6 +19,9 @@ import {
 } from "../api/asterTrade";
 import { formatPrice } from "../utils/format";
 import CoinLogo from "./CoinLogo";
+import { ensureFreshMarketMeta, getCachedMarketMeta, ORDER_RULE_FIELDS } from "../api/asterPublic";
+
+const RULES_MAX_AGE_MS = 60 * 60 * 1000; // refetch exchangeInfo before an order if older than 1h
 import CustomInfoProvider from "../../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 
 const DEFAULT_LEVERAGE = 5;
@@ -236,6 +239,35 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
   const submit = async () => {
     if (!confirmOrder || !confirmOrder.ok || submitting) return;
     setSubmitting(true);
+    // Never trade on stale rules: if the saved exchangeInfo is older than 1h, refetch it first.
+    // If the rules for this market changed, stop so the user re-checks the recalculated order.
+    const fresh = await ensureFreshMarketMeta(RULES_MAX_AGE_MS);
+    if (!fresh.ok) {
+      setSubmitting(false);
+      CustomInfoProvider.show(
+        "error",
+        "Order not placed",
+        "Couldn't refresh this market's trading rules. Check your connection and try again."
+      );
+      return;
+    }
+    if (fresh.refreshed) {
+      const latest = (getCachedMarketMeta() || {})[symbol];
+      const changed =
+        !latest || ORDER_RULE_FIELDS.some((k) => String(latest[k]) !== String(meta[k]));
+      if (changed) {
+        setSubmitting(false);
+        setConfirm(null);
+        CustomInfoProvider.show(
+          "info",
+          "Market rules updated",
+          latest
+            ? "This market's trading rules changed. Please check your order and confirm again."
+            : `${symbol} is not available for trading right now.`
+        );
+        return;
+      }
+    }
     const res = await openPosition({
       agent,
       user,
