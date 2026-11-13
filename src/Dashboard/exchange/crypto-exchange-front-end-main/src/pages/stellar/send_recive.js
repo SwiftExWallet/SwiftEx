@@ -8,32 +8,39 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { REACT_APP_LOCAL_TOKEN } from "../../ExchangeConstants";
 import { useEffect, useRef, useState } from "react";
 import Icon from "../../../../../../icon";
-import darkBlue from "../../../../../../../assets/darkBlue.png";
-import Bridge from "../../../../../../../assets/Bridge.png";
 import QRCode from "react-native-qrcode-svg";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { useSelector } from "react-redux";
 import { Camera, useCameraDevice, useCodeScanner, useCameraPermission } from "react-native-vision-camera";
 import { Exchange_screen_header } from "../../../../../reusables/ExchangeHeader";
 import { alert } from "../../../../../reusables/Toasts";
-import { STELLAR_URL } from "../../../../../constants";
-import { Paste, SaveTransaction } from "../../../../../../utilities/utilities";
+import { ENVIRONMENT, STELLAR_URL } from "../../../../../constants";
+import { SRBRPC } from "../../ExchangeConstants";
+import { Paste } from "../../../../../../utilities/utilities";
 import Snackbar from "react-native-snackbar";
 import ErrorComponet from "../../../../../../utilities/ErrorComponet";
 import { GetStellarAvilabelBalance, GetStellarUSDCAvilabelBalance, stellarWalletStatus } from "../../../../../../utilities/StellarUtils";
 import WalletActivationComponent from "../../utils/WalletActivationComponent";
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import CustomInfoProvider from "../../components/CustomInfoProvider";
 import QRScannerComponent from "../../../../../Modals/QRScannerComponent";
 import TokenQrCode from "../../../../../Modals/TokensQrCode";
 import { colors } from "../../../../../../Screens/ThemeColorsConfig";
-StellarSdk.Networks.PUBLIC
+import ShortTermStorage from "../../../../../../utilities/ShortTermStorage";
 
 const send_recive = ({route}) => {
+  ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC
   const { hasPermission, requestPermission } = useCameraPermission()
-    const {bala,asset_name,assetIssuer}=route.params;
+    const {
+      bala,
+      asset_name,
+      assetIssuer,
+      assetContract,
+      assetDecimals = 7,
+    } = route?.params || {};
+    const contractId = typeof assetContract === "string" && assetContract.startsWith("C") ? assetContract : assetIssuer?.startsWith?.("C") ? assetIssuer : null;
+    const isSorobanContract = Boolean(contractId);
     console.log("----------------usdtAsse-----------------",bala,asset_name,assetIssuer)
-    const usdtAsset = asset_name==="native"?StellarSdk.Asset.native():new StellarSdk.Asset(asset_name, assetIssuer);
   const cameraRef = useRef(null);
     const device = useCameraDevice('back');
     const state = useSelector((state) => state);
@@ -127,7 +134,35 @@ const send_recive = ({route}) => {
         setLoading(false);
       });
     }
+    if (isSorobanContract) {
+      try {
+        const response = await fetch(
+          `${STELLAR_URL.BASEROUTE}/account/${state?.STELLAR_PUBLICK_KEY}/value`,
+        );
+        const data = await response.json();
+        const contractBalance = Array.isArray(data?.balances)
+          ? data.balances.find(item => item?.asset === contractId)
+          : null;
+        setresStellarbal(
+          contractBalance?.balance !== undefined
+            ? formatContractAmount(contractBalance.balance, assetDecimals)
+            : String(bala || "0.0"),
+        );
+      } catch (error) {
+        console.log('Error loading Soroban contract balance:', error);
+        setresStellarbal(String(bala || "0.0"));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     if (asset_name !== "native") {
+      if (!assetIssuer) {
+        setresStellarbal("0.0");
+        setLoading(false);
+        return;
+      }
+      try {
       const result = await GetStellarUSDCAvilabelBalance(state?.STELLAR_PUBLICK_KEY, asset_name, assetIssuer)
       if (result.error) {
         setresStellarbal("0.0")
@@ -154,17 +189,84 @@ const send_recive = ({route}) => {
             ]
           );
         }
-      } else {
-        setresStellarbal(result?.availableBalance)
+        } else {
+          setresStellarbal(result?.availableBalance)
+          setLoading(false);
+        }
+      } catch (error) {
+        console.log('Error loading Stellar asset balance:', error);
+        setresStellarbal("0.0");
         setLoading(false);
       }
     }
   }
+  function formatContractAmount(rawAmount, decimals) {
+    const raw = BigInt(String(rawAmount));
+    const scale = 10n ** BigInt(Number(decimals) || 7);
+    const whole = raw / scale;
+    const fraction = raw % scale;
+    if (fraction === 0n) return whole.toString();
+    return `${whole}.${fraction.toString().padStart(Number(decimals) || 7, "0")}`.replace(/0+$/, "");
+  }
+  function toContractAmount(value, decimals) {
+    const precision = Number(decimals) || 7;
+    const normalized = String(value).replace(",", ".").trim();
+    if (!/^\d+(\.\d+)?$/.test(normalized)) {
+      throw new Error("Invalid contract token amount");
+    }
+    const [whole, fraction = ""] = normalized.split(".");
+    if (fraction.length > precision) {
+      throw new Error(`Amount supports up to ${precision} decimals`);
+    }
+    return BigInt(whole) * 10n ** BigInt(precision) + BigInt(fraction.padEnd(precision, "0") || "0");
+  }
+  async function sendSorobanTokens(sourcePublicKey, destinationPublic, amount) {
+    const rpcServer = new StellarSdk.rpc.Server(SRBRPC);
+    const sourceAccount = await rpcServer.getAccount(sourcePublicKey);
+    const rawAmount = toContractAmount(amount, assetDecimals);
+    const contract = new StellarSdk.Contract(contractId);
+    const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
+      fee: "100000",
+      networkPassphrase: ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC,
+    })
+      .addOperation(
+        contract.call(
+          "transfer",
+          StellarSdk.nativeToScVal(sourcePublicKey, {type: "address"}),
+          StellarSdk.nativeToScVal(destinationPublic, {type: "address"}),
+          StellarSdk.nativeToScVal(rawAmount, {type: "i128"}),
+        ),
+      )
+      .setTimeout(30)
+      .build();
+
+    const prepared = await rpcServer.prepareTransaction(transaction);
+    const signed = await NativeModules.StellarSigner.signTransaction(prepared.toXdr());
+    if (signed?.signedXDR) {
+      return StellarSdk.TransactionBuilder.fromXdr(
+        signed.signedXDR,
+        ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC,
+      );
+    }
+    if (!signed?.signature || !signed?.publicKey) {
+      throw new Error("Wallet did not return a valid Stellar signature");
+    }
+    prepared.addSignature(
+      signed.publicKey,
+      Buffer.from(signed.signature, "base64").toString("base64"),
+    );
+    return prepared;
+  }
     function validateStellarAddress(address) {
-      if (address.length !== 56 || address[0] !== 'G') {
+      if (typeof address !== "string" || !address) {
           return false;
       }
       try {
+          if (isSorobanContract) {
+            StellarSdk.Address.fromString(address);
+            return true;
+          }
+          if (address.length !== 56 || address[0] !== 'G') return false;
           StellarSdk.StrKey.decodeEd25519PublicKey(address);
           return true;
       } catch (e) {
@@ -174,6 +276,40 @@ const send_recive = ({route}) => {
   async function send_XLM(sourcePublicKey, destinationPublic, amount) {
     Keyboard.dismiss();
     try {
+    if (isSorobanContract) {
+      const prepared = await sendSorobanTokens(sourcePublicKey, destinationPublic, amount);
+      const rpcServer = new StellarSdk.rpc.Server(SRBRPC);
+      const result = await rpcServer.sendTransaction(prepared);
+      if (result?.status === "ERROR") {
+        throw new Error(result?.errorResultXdr || "Soroban transaction failed");
+      }
+      await ShortTermStorage.syncTx({
+        txHash: result.hash,
+        walletAddress: sourcePublicKey,
+        fromAddress: sourcePublicKey,
+        toAddress: destinationPublic,
+        provider: "STELLAR",
+        fromChain: "STR",
+        fromToken: asset_name,
+        toChain: "STR",
+        toToken: asset_name,
+        amountIn: amount?.toString(),
+        amountOut: amount?.toString(),
+        txType: "Token Send",
+        fromTokenMetaData: contractId,
+      });
+      Snackbar.show({
+        text: "Transaction submitted successfully!",
+        duration: Snackbar.LENGTH_LONG,
+        backgroundColor: "green",
+      });
+      setrecepi_address("");
+      setrecepi_amount("");
+      setrecepi_memo("");
+      setPayment_loading(false);
+      navigation.navigate("Transactions", {txType: "STR"});
+      return;
+    }
     const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
       // Load the source account
       const sourceAccount = await server.loadAccount(sourcePublicKey);
@@ -205,7 +341,7 @@ const send_recive = ({route}) => {
         }
         transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
           fee: await server.fetchBaseFee(),
-          networkPassphrase: StellarSdk.Networks.PUBLIC,
+          networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
         })
           .addOperation(
             StellarSdk.Operation.createAccount({
@@ -221,7 +357,7 @@ const send_recive = ({route}) => {
         if (isXLMNative) {
           transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
             fee: await server.fetchBaseFee(),
-            networkPassphrase: StellarSdk.Networks.PUBLIC,
+            networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
           })
             .addOperation(
               StellarSdk.Operation.payment({
@@ -250,7 +386,7 @@ const send_recive = ({route}) => {
 
           transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
             fee: await server.fetchBaseFee(),
-            networkPassphrase: StellarSdk.Networks.PUBLIC,
+            networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
           })
             .addOperation(
               StellarSdk.Operation.payment({
@@ -269,14 +405,30 @@ const send_recive = ({route}) => {
         setPayment_loading(false);
         return;
       }
-      const txXDR = transaction.toXDR();
+      const txXDR = transaction.toXdr();
       const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
-      const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
-      transaction.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
-  
-      // Submit the transaction
-      const transactionResult = await server.submitTransaction(transaction);
-      console.log('Transaction successful!', transactionResult);
+      const signedXDR = signedTx?.signedXDR;
+      if (!signedXDR || typeof signedXDR !== "string") {
+        throw new Error("Invalid signed XDR");
+      }
+      const networkPassphrase = ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
+      const signedTransaction = StellarSdk.TransactionBuilder.fromXdr(signedXDR, networkPassphrase);
+      const transactionResult = await server.submitTransaction(signedTransaction);
+      await ShortTermStorage.syncTx({
+        txHash: transactionResult.hash,
+        walletAddress: sourcePublicKey,
+        fromAddress: sourcePublicKey,
+        toAddress: destinationPublic,
+        provider: "STELLAR",
+        fromChain: "STR",
+        fromToken: asset_name,
+        toChain: "STR",
+        toToken: asset_name,
+        amountIn: amount?.toString(),
+        amountOut: amount?.toString(),
+        txType: "Token Send",
+        fromTokenMetaData: asset_name
+      });
       Snackbar.show({
         text: "Transaction successful!",
         duration: Snackbar.LENGTH_LONG,
@@ -287,19 +439,6 @@ const send_recive = ({route}) => {
       setrecepi_memo('');
       setPayment_loading(false);
       try {
-        const user_current = await state.user;
-        const type = "Send";
-        const chainType = "XLM";
-        const walletType=await state.walletType;
-        const saveTransaction = await SaveTransaction(
-          type,
-          transactionResult.hash,
-          user_current,
-          chainType,
-          walletType,
-          chainType
-        );
-        console.log(saveTransaction);
         navigation.navigate("Transactions",{txType:"STR"});
       } catch (e) {
         console.log(e);

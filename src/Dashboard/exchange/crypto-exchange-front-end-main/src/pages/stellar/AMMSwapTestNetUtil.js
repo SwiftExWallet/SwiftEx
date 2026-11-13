@@ -1,5 +1,5 @@
-import * as StellarSdk from '@stellar/stellar-sdk';
-import { STELLAR_URL } from '../../../../../constants';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
+import { ENVIRONMENT, STELLAR_URL } from '../../../../../constants';
 import { NativeModules } from 'react-native';
 const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
 
@@ -63,7 +63,7 @@ async function AMMSWAPTESTNET(
 
     const tx = new StellarSdk.TransactionBuilder(account, {
       fee: StellarSdk.BASE_FEE,
-      networkPassphrase: StellarSdk.Networks.PUBLIC,
+      networkPassphrase: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
     });
   
     if (Array.isArray(trustLineOpt) && trustLineOpt.length > 0) {
@@ -92,11 +92,18 @@ async function AMMSWAPTESTNET(
       );
     const transaction =tx.setTimeout(60).build();
     // Sign & submit
-    const txXDR = transaction.toXDR();
+    const txXDR = transaction.toXdr();
     const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
-    const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
-    transaction.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
-    const result = await server.submitTransaction(transaction);
+    const signedXDR = signedTx?.signedXDR;
+    if (!signedXDR || typeof signedXDR !== "string") {
+      throw new Error("Invalid signed XDR");
+    }
+    const networkPassphrase = ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
+    const signedTransaction = StellarSdk.TransactionBuilder.fromXdr(signedXDR, networkPassphrase);
+    if (signedTx.publicKey !== sourcePublic) {
+      throw new Error("Signer public key mismatch");
+    }
+    const result = await server.submitTransaction(signedTransaction);
 
     return {
       status: true,

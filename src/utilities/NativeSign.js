@@ -1,7 +1,7 @@
 import { NativeModules } from 'react-native';
 import { ethers } from 'ethers';
 import { PPOST, proxyRequest } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/api';
-
+import { TransactionBuilder, Networks, Horizon } from '@stellar/stellar-sdk/axios';
 const { TransactionSigner, StellarSigner } = NativeModules;
 
 const assertModule = (mod, name) => {
@@ -157,12 +157,11 @@ const _signStellarXDR = async ({ xdr, submit = false, network = 'public' }) => {
     let signedXDR = result?.signedXDR;
 
     if (!signedXDR && result?.signature && result?.publicKey) {
-        const { TransactionBuilder, Networks } = require('@stellar/stellar-sdk');
         const networkPass = network === 'testnet' ? Networks.TESTNET : Networks.PUBLIC;
-        const tx = TransactionBuilder.fromXDR(xdr, networkPass);
+        const tx = TransactionBuilder.fromXdr(xdr, networkPass);
         const sigBuf = Buffer.from(result.signature, 'base64');
         tx.addSignature(result.publicKey, sigBuf.toString('base64'));
-        signedXDR = tx.toXDR();
+        signedXDR = tx.toXdr();
     }
 
     if (!signedXDR) throw new Error('StellarSigner returned no signedXDR');
@@ -176,11 +175,10 @@ const _signStellarXDR = async ({ xdr, submit = false, network = 'public' }) => {
         };
     }
 
-    const { Horizon, TransactionBuilder, Networks } = require('@stellar/stellar-sdk');
     const networkPass = network === 'testnet' ? Networks.TESTNET : Networks.PUBLIC;
     const horizonUrl = network === 'testnet' ? 'https://horizon-testnet.stellar.org' : 'https://horizon.stellar.org';
     const server = new Horizon.Server(horizonUrl);
-    const horizonResult = await server.submitTransaction(TransactionBuilder.fromXDR(signedXDR, networkPass));
+    const horizonResult = await server.submitTransaction(TransactionBuilder.fromXdr(signedXDR, networkPass));
 
     return {
         signedXDR,

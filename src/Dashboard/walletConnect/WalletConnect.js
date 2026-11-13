@@ -369,14 +369,14 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
           });
 
 
-          const { Horizon, TransactionBuilder, Networks } = require("@stellar/stellar-sdk");
+          const { Horizon, TransactionBuilder, Networks } = require("@stellar/stellar-sdk/axios");
           const networkPass = network === "testnet" ? Networks.TESTNET : Networks.PUBLIC;
           const horizonUrl = network === "testnet"
             ? "https://horizon-testnet.stellar.org"
             : "https://horizon.stellar.org";
           const server = new Horizon.Server(horizonUrl);
           const horizonResult = await server.submitTransaction(
-            TransactionBuilder.fromXDR(signed.signedXDR, networkPass)
+            TransactionBuilder.fromXdr(signed.signedXDR, networkPass)
           );
 
           await respondOk({ hash: horizonResult.hash ?? signed.hash });
@@ -736,10 +736,7 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
       try {
         const raw = request.params[1];
         const d = typeof raw === "string" ? JSON.parse(raw) : raw;
-        if (JSON.stringify(d).toLowerCase().includes("dydx")) {
-          label = "Derive dYdX Wallet";
-          extra = "dYdX Chain address derivation via EIP-712";
-        } else if (d?.domain?.name) {
+        if (d?.domain?.name) {
           extra = `Domain: ${d.domain.name}`;
         }
       } catch (_) { }

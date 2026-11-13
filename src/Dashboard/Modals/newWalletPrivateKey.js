@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
+import { PPOST, proxyRequest } from '../exchange/crypto-exchange-front-end-main/src/api';
 import {
   StyleSheet,
   Text,
@@ -19,13 +20,8 @@ import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import Modal from "react-native-modal";
 import Icon from "../../icon";
 import { colors } from "../../Screens/ThemeColorsConfig";
-import { checkWalletExistOrNot } from "../Wallets/WalletManagement";
-import apiHelper from "../exchange/crypto-exchange-front-end-main/src/apiHelper";
-import { REACT_APP_HOST } from "../exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
-import AccessNativeStorage from "../Wallets/AccessNativeStorage";
 import { alert } from "../reusables/Toasts";
 import { useNavigation } from "@react-navigation/native";
-import { dydxAddressDrive } from "../../dydx/dydxAddressDrive";
 
 const NewWalletPrivateKey = ({
   props,
@@ -46,9 +42,7 @@ const NewWalletPrivateKey = ({
     const initWalletLoad=async()=>{
       try {
        setTimeout(async()=>{
-         const parsedWallets = await AccessNativeStorage.getAllWallets();
-        let wallet = Wallet;
-        wallet.accountName = `Main-Wallet ${parsedWallets.length+1}.${Math.floor(Math.random() * 10)}`;
+        Wallet.accountName = Wallet.name;
         await handleWallet();
        },0)
       } catch (error) {
@@ -63,7 +57,6 @@ const NewWalletPrivateKey = ({
   const handleWallet = async () => {
     try {
       setLoading(true);
-      const dydxAddress=await dydxAddressDrive(Wallet.privateKey);
       const user = await AsyncStorageLib.getItem("user");
       let wallets = [];
       const data = await AsyncStorageLib.getItem(
@@ -90,10 +83,6 @@ const NewWalletPrivateKey = ({
           stellarWallet: {
             publicKey: Wallet.stellarWallet.publicKey,
           },
-          dydx: {
-            dydxAddress: dydxAddress.dydxAddress,
-            dydxPublicKey: dydxAddress.publicKey,
-          },
           wallets: wallets,
         },
       ];
@@ -109,7 +98,7 @@ const NewWalletPrivateKey = ({
               setLoading(false);
               return;
             } else if (response.status === "success") {
-              const result = await apiHelper.post(REACT_APP_HOST + '/v1/wallet', {
+              const result = await proxyRequest('/v1/wallet', PPOST, {
                 "addresses": {
                   "eth": Wallet.address,
                   "xlm": Wallet.stellarWallet.publicKey,
@@ -125,20 +114,6 @@ const NewWalletPrivateKey = ({
                 console.log('Error:', result.error, 'Status:', result.status);
               }
               AsyncStorageLib.setItem("currentWallet", Wallet?.accountName)
-              await AccessNativeStorage.saveWallet({
-                name: Wallet.accountName,
-                address: Wallet.address,
-                privatekey: Wallet.privateKey,
-                stellarPublicKey: Wallet.stellarWallet.publicKey,
-                stellarPrivateKey: Wallet.stellarWallet.secretKey,
-                mnemonic: Wallet.mnemonic,
-                walletType: "Multi-coin",
-                dydxAddress: dydxAddress.dydxAddress,
-                dydxPublicKey: dydxAddress.publicKey,
-                dydxMnemonic: dydxAddress.mnemonic,
-                dydxPrivateKey: dydxAddress.privateKey,
-                dydxWalletConnectSignature: dydxAddress.walletConnectSignature,
-              })
               dispatch(
                 setCurrentWallet(
                   Wallet?.address,

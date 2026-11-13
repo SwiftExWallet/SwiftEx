@@ -11,8 +11,8 @@ import {
   NativeModules,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
-import {Asset, BASE_FEE, Horizon, Networks, Operation, TransactionBuilder} from '@stellar/stellar-sdk';
-import { STELLAR_URL } from "../../../../../constants";
+import {Asset, BASE_FEE, Horizon, Networks, Operation, TransactionBuilder} from '@stellar/stellar-sdk/axios';
+import { ENVIRONMENT, STELLAR_URL } from "../../../../../constants";
 import LinearGradient from "react-native-linear-gradient";
 import { colors } from "../../../../../../Screens/ThemeColorsConfig";
 import CustomInfoProvider from "../../components/CustomInfoProvider";
@@ -99,7 +99,7 @@ const ClaimableBalanceChecker = ({
       const account = await server.loadAccount(publicKey);
       const txBuilder = new TransactionBuilder(account, {
         fee: BASE_FEE.toString(),
-        networkPassphrase: Networks.PUBLIC,
+        networkPassphrase: ENVIRONMENT==="TESTNET"?Networks.TESTNET:Networks.PUBLIC,
       });
 
       if (balance.asset !== "native" && balance.assetIssuer) {
@@ -117,16 +117,16 @@ const ClaimableBalanceChecker = ({
       );
 
       const transaction = txBuilder.setTimeout(30).build();
-      const txXDR = transaction.toXDR();
+      const txXDR = transaction.toXdr();
 
       const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
-
-      transaction.addSignature(
-        signedTx.publicKey,
-        Buffer.from(signedTx.signature, 'base64').toString('base64')
-      );
-
-      const txResponse = await server.submitTransaction(transaction);
+      const signedXDR = signedTx?.signedXDR;
+      if (!signedXDR || typeof signedXDR !== "string") {
+        throw new Error("Invalid signed XDR");
+      }
+      const networkPassphrase = ENVIRONMENT === "TESTNET" ? Networks.TESTNET : Networks.PUBLIC;
+      const signedTransaction = TransactionBuilder.fromXdr(signedXDR, networkPassphrase);
+      const txResponse = await server.submitTransaction(signedTransaction);
       CustomInfoProvider.show("success", "Hurray", `${assetCode} has been successfully claimed!`);
       fetchClaimableBalances();
     } catch (err) {

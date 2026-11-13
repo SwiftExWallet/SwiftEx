@@ -10,7 +10,7 @@ import {
   Modal
 } from 'react-native';
 import { useSelector } from 'react-redux';
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import axios from 'axios';
 import { STELLAR_URL } from '../../../../constants';
 import { colors } from '../../../../../Screens/ThemeColorsConfig';

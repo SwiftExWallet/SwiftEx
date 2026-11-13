@@ -1,23 +1,6 @@
 import Snackbar from 'react-native-snackbar';
-import { Box, useToast } from 'native-base';
-import { View,Text } from 'react-native';
 import CustomInfoProvider from '../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 
-
-export const ShowToast = (toast,message)=>{
-  //const toast = useToast()
-  
-    return (toast.show({
-        placement: "top",
-        render: () => {
-            return <Box bg="emerald.500" px="2" py="1" rounded="sm" mb={5}>
-                    {message}
-                  </Box>;
-          }
-        })
-    )
-
-}
 
 export const ShowErrotoast = (toast,message)=>{
   Snackbar.show({

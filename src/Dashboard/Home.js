@@ -13,10 +13,7 @@ import MyHeader2 from "./MyHeader2";
 import store from "../components/Redux/Store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { REACT_APP_LOCAL_TOKEN } from "./exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
-import { ExchangeNavigation } from "./exchange/crypto-exchange-front-end-main/src/Navigation";
 import stellarImg from "../../assets/Stellar_(XLM).png";
-import { ExchangeLogin } from "./exchange/crypto-exchange-front-end-main/src/pages/auth/ExchangeLogin";
-import { AppHeader } from "./reusables/AppHeader";
 import { useIsFocused } from "@react-navigation/native";
 import { HomeView } from "./exchange/crypto-exchange-front-end-main/src/pages/home";
 import Icon from "../icon";
@@ -86,8 +83,6 @@ const Dashboard = ({ navigation }) => {
       setExtended={setExtended}
     />
   );
-
-  const Header3 = (title) => <AppHeader name={title} />;
 
   const isDarkMode = statee.THEME.THEME !== false;
   const activeColor = colors.light.buttonColor;

@@ -12,6 +12,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
   var reactNativeDelegate: ReactNativeDelegate?
   var reactNativeFactory: RCTReactNativeFactory?
+  private var screenProtection: ScreenProtectionController?
 
   func application(
     _ application: UIApplication,
@@ -28,12 +29,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     reactNativeFactory = factory
 
     window = UIWindow(frame: UIScreen.main.bounds)
+    guard let window else { return false }
 
     factory.startReactNative(
       withModuleName: "test_app",
       in: window,
       launchOptions: launchOptions
     )
+
+    screenProtection = ScreenProtectionController(window: window)
+    screenProtection?.start()
 
     return true
   }

@@ -17,7 +17,7 @@ import {
   NativeModules,
 } from 'react-native';
 import { useSelector } from 'react-redux';
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import Icon from '../../../../../icon';
 import Snackbar from 'react-native-snackbar';
 import { GetStellarAvilabelBalance, GetStellarUSDCAvilabelBalance } from '../../../../../utilities/StellarUtils';
@@ -26,11 +26,11 @@ import {
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
 import BigNumber from 'bignumber.js';
-import { STELLAR_URL } from '../../../../constants';
+import { ENVIRONMENT, STELLAR_URL } from '../../../../constants';
 import CustomInfoProvider from '../components/CustomInfoProvider';
 import { colors } from '../../../../../Screens/ThemeColorsConfig';
 
-const STELLAR_NETWORK = StellarSdk.Networks.PUBLIC;
+const STELLAR_NETWORK = ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC;
 
 const Offers_manages = () => {
   const state = useSelector((state) => state);
@@ -46,8 +46,6 @@ const Offers_manages = () => {
   const [SelectedIndex, setSelectedIndex] = useState(null);
   const [newAmount, setNewAmount] = useState('');
   const [newPrice, setNewPrice] = useState('');
-  const [STELLAR_ACCOUNT_PUBLIC,setSTELLAR_ACCOUNT_PUBLIC]=useState('');
-  const [STELLAR_ACCOUNT_SECRET,setSTELLAR_ACCOUNT_SECRET]=useState('');
   const [loading_del,setloading_del]=useState(false);
   const [loading_edi,setloading_edi]=useState(false);
   const [stellarAvalibleBalance,setstellarAvalibleBalance]=useState('');
@@ -66,8 +64,6 @@ const Offers_manages = () => {
     setSelectedIndex(null)
     setloading_del(false);
     setloading_edi(false);
-    setSTELLAR_ACCOUNT_PUBLIC(state.STELLAR_PUBLICK_KEY);
-    setSTELLAR_ACCOUNT_SECRET(state.STELLAR_SECRET_KEY);
     fetchOffers();
   }, [isFocused]);
 
@@ -185,11 +181,15 @@ const Offers_manages = () => {
         .setTimeout(30)
         .build();
 
-      const txXDR = transaction.toXDR();
+      const txXDR = transaction.toXdr();
       const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
-      const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
-      transaction.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
-      const response = await server.submitTransaction(transaction);
+      const signedXDR = signedTx?.signedXDR;
+      if (!signedXDR || typeof signedXDR !== "string") {
+        throw new Error("Invalid signed XDR");
+      }
+      const networkPassphrase = ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
+      const signedTransaction = StellarSdk.TransactionBuilder.fromXdr(signedXDR, networkPassphrase);
+      const response = await server.submitTransaction(signedTransaction);
       console.log('Offer deleted:', response);
       setloading_del(false);
       fetchOffers(); 
@@ -277,12 +277,15 @@ const Offers_manages = () => {
         .setTimeout(30)
         .build();
   
-      const txXDR = transaction.toXDR();
+      const txXDR = transaction.toXdr();
       const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
-      const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
-      transaction.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
-  
-      const response = await server.submitTransaction(transaction);
+      const signedXDR = signedTx?.signedXDR;
+      if (!signedXDR || typeof signedXDR !== "string") {
+        throw new Error("Invalid signed XDR");
+      }
+      const networkPassphrase = ENVIRONMENT === "TESTNET" ? StellarSdk.Networks.TESTNET : StellarSdk.Networks.PUBLIC;
+      const signedTransaction = StellarSdk.TransactionBuilder.fromXdr(signedXDR, networkPassphrase);
+      const response = await server.submitTransaction(signedTransaction);
       console.log('Offer updated:', response);
   
       setloading_edi(false);

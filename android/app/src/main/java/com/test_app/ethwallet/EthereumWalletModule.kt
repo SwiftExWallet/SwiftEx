@@ -1,4 +1,5 @@
 package org.app.swiftEx.wallet.ethwallet
+import org.app.swiftEx.wallet.SecureWalletStore
 import org.web3j.crypto.Credentials;
 import org.web3j.crypto.Bip32ECKeyPair;
 import org.web3j.utils.Numeric;
@@ -10,10 +11,67 @@ import com.facebook.react.bridge.Arguments;
 import java.security.SecureRandom;
 import org.stellar.sdk.KeyPair;
 import com.facebook.react.bridge.WritableMap
+import org.json.JSONArray
+import org.json.JSONObject
 
 class EthereumWalletModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
+    private val prefs by lazy { SecureWalletStore.open(reactApplicationContext) }
+
     override fun getName(): String {
         return "EthereumWallet"
+    }
+
+    private fun walletId(): String = (1000 + SecureRandom().nextInt(9000)).toString()
+
+    private fun saveWalletAndActivate(wallet: JSONObject) {
+        val usersArray = JSONArray().apply {
+            val existing = prefs.all["appAllWallet"]?.toString()
+            if (!existing.isNullOrEmpty()) {
+                val arr = JSONArray(existing)
+                for (i in 0 until arr.length()) put(arr.get(i))
+            }
+            put(wallet)
+        }
+        prefs.edit()
+            .putString("appAllWallet", usersArray.toString())
+            .putString("activeUserWallet", wallet.toString())
+            .apply()
+    }
+
+    private fun publicWalletResponse(wallet: JSONObject): WritableMap {
+        return Arguments.createMap().apply {
+            putString("walletId", wallet.optString("walletId"))
+            putString("name", wallet.optString("name"))
+            putString("address", wallet.optString("address"))
+            putString("stellarPublicKey", wallet.optString("stellarPublicKey"))
+            putString("walletType", wallet.optString("walletType"))
+            putMap("xrp", Arguments.createMap().apply {
+                putString("address", "000000000")
+            })
+            putMap("stellarWallet", Arguments.createMap().apply {
+                putString("publicKey", wallet.optString("stellarPublicKey"))
+            })
+        }
+    }
+
+    private fun buildStoredWallet(
+        name: String,
+        address: String,
+        privatekey: String,
+        stellarPublicKey: String,
+        stellarPrivateKey: String,
+        mnemonic: String
+    ): JSONObject {
+        return JSONObject().apply {
+            put("walletId", walletId())
+            put("name", name)
+            put("address", address)
+            put("privatekey", privatekey)
+            put("stellarPublicKey", stellarPublicKey)
+            put("stellarPrivateKey", stellarPrivateKey)
+            put("mnemonic", mnemonic)
+            put("walletType", "Multi-coin")
+        }
     }
 
     private fun mnemonicToSeed(mnemonic: String, passphrase: String = ""): ByteArray {
@@ -61,7 +119,7 @@ class EthereumWalletModule(reactContext: ReactApplicationContext) : ReactContext
     }
 
     @ReactMethod
-    fun createWallet(promise: Promise) {
+    fun createWallet(name: String, promise: Promise) {
         try {
             val entropy = ByteArray(16)
             SecureRandom().nextBytes(entropy)
@@ -83,25 +141,16 @@ class EthereumWalletModule(reactContext: ReactApplicationContext) : ReactContext
             val credentials = Credentials.create(ethChildKeyPair)
 
             val (stellarPublicKey, stellarSecretKey) = deriveStellarFromSeed(seed)
-
-            val result = Arguments.createMap().apply {
-                putString("mnemonic", mnemonic)
-
-                val ethKeys = Arguments.createMap().apply {
-                    putString("address", credentials.address)
-                    putString("privateKey", Numeric.toHexStringWithPrefix(ethChildKeyPair.privateKey))
-                    putString("publicKey", Numeric.toHexStringWithPrefix(ethChildKeyPair.publicKey))
-                }
-                putMap("ethereum", ethKeys)
-
-                val stellarKeys = Arguments.createMap().apply {
-                    putString("publicKey", stellarPublicKey)
-                    putString("secretKey", stellarSecretKey)
-                }
-                putMap("stellar", stellarKeys)
-            }
-
-            promise.resolve(result)
+            val wallet = buildStoredWallet(
+                name,
+                credentials.address,
+                Numeric.toHexStringWithPrefix(ethChildKeyPair.privateKey),
+                stellarPublicKey,
+                stellarSecretKey,
+                mnemonic
+            )
+            saveWalletAndActivate(wallet)
+            promise.resolve(publicWalletResponse(wallet))
         } catch (e: Exception) {
             e.printStackTrace()
             promise.reject("WALLET_CREATION_ERROR", "Error creating wallet: ${e.message}", e)
@@ -109,7 +158,7 @@ class EthereumWalletModule(reactContext: ReactApplicationContext) : ReactContext
     }
 
     @ReactMethod
-    fun recoverMultiChainWallet(mnemonic: String, promise: Promise) {
+    fun recoverMultiChainWallet(mnemonic: String, name: String, promise: Promise) {
         try {
             val seed = mnemonicToSeed(mnemonic)
             val masterKeyPair = Bip32ECKeyPair.generateKeyPair(seed)
@@ -126,25 +175,16 @@ class EthereumWalletModule(reactContext: ReactApplicationContext) : ReactContext
             val ethCredentials = Credentials.create(ethChildKeyPair)
 
             val (stellarPublicKey, stellarSecretKey) = deriveStellarFromSeed(seed)
-
-            val result = Arguments.createMap().apply {
-                putString("mnemonic", mnemonic)
-
-                val ethKeys = Arguments.createMap().apply {
-                    putString("address", ethCredentials.address)
-                    putString("privateKey", Numeric.toHexStringWithPrefix(ethChildKeyPair.privateKey))
-                    putString("publicKey", Numeric.toHexStringWithPrefix(ethChildKeyPair.publicKey))
-                }
-                putMap("ethereum", ethKeys)
-
-                val stellarKeys = Arguments.createMap().apply {
-                    putString("publicKey", stellarPublicKey)
-                    putString("secretKey", stellarSecretKey)
-                }
-                putMap("stellar", stellarKeys)
-            }
-
-            promise.resolve(result)
+            val wallet = buildStoredWallet(
+                name,
+                ethCredentials.address,
+                Numeric.toHexStringWithPrefix(ethChildKeyPair.privateKey),
+                stellarPublicKey,
+                stellarSecretKey,
+                mnemonic
+            )
+            saveWalletAndActivate(wallet)
+            promise.resolve(publicWalletResponse(wallet))
         } catch (e: Exception) {
             e.printStackTrace()
             promise.reject("WALLET_RESTORE_ERROR", "Error restoring wallet: ${e.message}", e)
@@ -152,10 +192,23 @@ class EthereumWalletModule(reactContext: ReactApplicationContext) : ReactContext
     }
 
     @ReactMethod
-    fun importEthPrivateKey(privateKey: String, promise: Promise) {
+    fun importEthPrivateKey(privateKey: String, name: String, promise: Promise) {
         try {
-            val result = importEthereumPrivateKey(privateKey)
-            promise.resolve(result)
+            val cleanKey = privateKey.removePrefix("0x")
+            if (cleanKey.length != 64) throw IllegalArgumentException("Invalid private key length")
+            val privateKeyBigInt = Numeric.toBigInt(cleanKey)
+            val credentials = Credentials.create(privateKeyBigInt.toString(16))
+            val stellarWallet = generateFreshStellarWallet()
+            val wallet = buildStoredWallet(
+                name,
+                credentials.address,
+                privateKey,
+                stellarWallet["publicKey"] ?: "",
+                stellarWallet["secretKey"] ?: "",
+                ""
+            )
+            saveWalletAndActivate(wallet)
+            promise.resolve(publicWalletResponse(wallet))
         } catch (e: Exception) {
             e.printStackTrace()
             promise.reject("IMPORT_ERROR", e.message ?: "Error importing Ethereum private key", e)
@@ -163,62 +216,24 @@ class EthereumWalletModule(reactContext: ReactApplicationContext) : ReactContext
     }
 
     @ReactMethod
-    fun importStellarPrivateKey(secretKey: String, promise: Promise) {
+    fun importStellarPrivateKey(secretKey: String, name: String, promise: Promise) {
         try {
-            val result = importStellarPrivateKeyInternal(secretKey)
-            promise.resolve(result)
+            val keyPair = KeyPair.fromSecretSeed(secretKey)
+            val ethereumWallet = generateFreshEthereumWallet()
+            val wallet = buildStoredWallet(
+                name,
+                ethereumWallet["address"] ?: "",
+                ethereumWallet["privatekey"] ?: "",
+                keyPair.accountId,
+                secretKey,
+                ""
+            )
+            saveWalletAndActivate(wallet)
+            promise.resolve(publicWalletResponse(wallet))
         } catch (e: Exception) {
             e.printStackTrace()
             promise.reject("IMPORT_ERROR", e.message ?: "Error importing Stellar private key", e)
         }
-    }
-
-    private fun importEthereumPrivateKey(privateKeyHex: String): WritableMap {
-        val cleanKey = privateKeyHex.removePrefix("0x")
-        if (cleanKey.length != 64) throw IllegalArgumentException("Invalid private key length")
-
-        val privateKeyBigInt = Numeric.toBigInt(cleanKey)
-        val credentials = Credentials.create(privateKeyBigInt.toString(16))
-        val ethAddress = credentials.address
-
-        val stellarWallet = generateFreshStellarWallet()
-
-        val result = Arguments.createMap()
-        val originalMap = Arguments.createMap().apply {
-            putString("type", "ethereum")
-            putString("privateKey", privateKeyHex)
-            putString("address", ethAddress)
-        }
-        val generatedMap = Arguments.createMap().apply {
-            putString("type", "stellar")
-            putString("publicKey", stellarWallet["publicKey"])
-            putString("secretKey", stellarWallet["secretKey"])
-        }
-        result.putMap("original", originalMap)
-        result.putMap("generated", generatedMap)
-        return result
-    }
-
-    private fun importStellarPrivateKeyInternal(secretKey: String): WritableMap {
-        val keyPair = KeyPair.fromSecretSeed(secretKey)
-        val stellarAddress = keyPair.accountId
-
-        val ethereumWallet = generateFreshEthereumWallet()
-
-        val result = Arguments.createMap()
-        val originalMap = Arguments.createMap().apply {
-            putString("type", "stellar")
-            putString("secretKey", secretKey)
-            putString("publicKey", stellarAddress)
-        }
-        val generatedMap = Arguments.createMap().apply {
-            putString("type", "ethereum")
-            putString("privateKey", ethereumWallet["privateKey"])
-            putString("address", ethereumWallet["address"])
-        }
-        result.putMap("original", originalMap)
-        result.putMap("generated", generatedMap)
-        return result
     }
 
     private fun generateFreshStellarWallet(): Map<String, String> {
@@ -253,7 +268,7 @@ class EthereumWalletModule(reactContext: ReactApplicationContext) : ReactContext
 
         return mapOf(
             "address" to ethCredentials.address,
-            "privateKey" to Numeric.toHexStringWithPrefix(ethChildKeyPair.privateKey),
+            "privatekey" to Numeric.toHexStringWithPrefix(ethChildKeyPair.privateKey),
             "publicKey" to Numeric.toHexStringWithPrefix(ethChildKeyPair.publicKey),
             "mnemonic" to mnemonic
         )

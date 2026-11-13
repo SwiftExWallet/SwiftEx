@@ -1,5 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+    createRampOrder,
+    fetchRampAssets,
+    fetchRampQuote,
+    getBanxaAssetIdentifiers,
+} from "./onOffRampApi";
+import {
     ActivityIndicator,
     FlatList,
     Image,
@@ -23,8 +29,6 @@ import { Exchange_screen_header } from "../../../../reusables/ExchangeHeader";
 import Icon from "../../../../../icon";
 import { useSelector } from "react-redux";
 import { debounce } from "lodash";
-import { REACT_APP_HOST } from "../ExchangeConstants";
-import apiHelper from "../apiHelper";
 import CustomInfoProvider from "./CustomInfoProvider";
 import {
     widthPercentageToDP as wp,
@@ -94,18 +98,18 @@ const BanxaRampProvider = () => {
                 }
 
                 const [buy, sell] = await Promise.all([
-                    apiHelper.get(REACT_APP_HOST + "/v1/banxa/fetch-assets?orderType=buy"),
-                    apiHelper.get(REACT_APP_HOST + "/v1/banxa/fetch-assets?orderType=sell"),
+                    fetchRampAssets("banxa", "buy"),
+                    fetchRampAssets("banxa", "sell"),
                 ]);
 
                 if (buy.success === true && sell.success === true) {
                     const buyData = {
-                        crypto_assets: normalizeObject(buy.data.data.crypto_assets),
-                        fiat_currencies: normalizeObject(buy.data.data.fiat_currencies),
+                        crypto_assets: normalizeObject(buy.data.crypto_assets),
+                        fiat_currencies: normalizeObject(buy.data.fiat_currencies),
                     };
                     const sellData = {
-                        crypto_assets: normalizeObject(sell.data.data.crypto_assets),
-                        payout_methods: normalizeObject(sell.data.data.payout_methods),
+                        crypto_assets: normalizeObject(sell.data.crypto_assets),
+                        payout_methods: normalizeObject(sell.data.payout_methods),
                     };
                     await AsyncStorage.setItem(
                         "BANXA_INFO_TOKENS",
@@ -281,17 +285,15 @@ const BanxaRampProvider = () => {
             blockchain: blockchainSelection?.id,
             fiatAmount: amount,
             fiat: fiatSelection?.id,
-            orderType: "buy",
         } : {
             paymentMethodId: methodSelection?.id || fiatSelection?.id,
             crypto: cryptoSelection?.id,
             blockchain: blockchainSelection?.id,
             fiat: fiatSelection?.supportedFiats?.[0],
             cryptoAmount: amount,
-            orderType: "sell",
         };
 
-        const result = await apiHelper.post(REACT_APP_HOST + "/v1/banxa/fetch-quotes", payload);
+        const result = await fetchRampQuote("banxa", actionType, payload);
         if (result.success) {
             setQoutesRes(result.data.data);
             setqoutesLoading(false);
@@ -357,16 +359,15 @@ const BanxaRampProvider = () => {
         try {
             const payload = {
                 paymentMethodId: selectedPaymentMethod?.id || selectedfiat.supportedPaymentMethods[0].id,
-                crypto: selectedBlockchain?.id,
-                blockchain: selectedCrypto.id,
+                ...getBanxaAssetIdentifiers(selectedCrypto, selectedBlockchain),
                 fiat: selectedfiat.id,
                 fiatAmount: amountSend.toString(),
                 walletAddress: selectedCrypto.id === "XLM" ? state && state.STELLAR_PUBLICK_KEY : state?.wallet?.address,
             };
-            const result = await apiHelper.post(REACT_APP_HOST + "/v1/banxa/create-buy-order", payload);
-            if (result.success && result.data.success) {
+            const result = await createRampOrder("banxa", "buy", payload);
+            if (result.success && result.data?.data?.checkoutUrl) {
                 setbtnLoading(false);
-                Linking.openURL(result.data.success.data.checkoutUrl);
+                Linking.openURL(result.data.data.checkoutUrl);
             } else {
                 setbtnLoading(false);
                 CustomInfoProvider.show("error", "Oops!", result.error || "Something went wrong.");
@@ -382,16 +383,15 @@ const BanxaRampProvider = () => {
         try {
             const payload = {
                 paymentMethodId: selectedPaymentMethod?.id || selectedfiat.id,
-                crypto: selectedBlockchain?.id,
-                blockchain: selectedCrypto.id,
+                ...getBanxaAssetIdentifiers(selectedCrypto, selectedBlockchain),
                 fiat: selectedfiat.supportedFiats[0],
                 cryptoAmount: amountSend.toString(),
                 walletAddress: selectedCrypto.id === "XLM" ? state && state.STELLAR_PUBLICK_KEY : state?.wallet?.address,
             };
-            const result = await apiHelper.post(REACT_APP_HOST + "/v1/banxa/create-sell-order", payload);
-            if (result.success && result.data.success) {
+            const result = await createRampOrder("banxa", "sell", payload);
+            if (result.success && result.data?.data?.checkoutUrl) {
                 setbtnLoading(false);
-                Linking.openURL(result.data.success.data.checkoutUrl);
+                Linking.openURL(result.data.data.checkoutUrl);
             } else {
                 setbtnLoading(false);
                 CustomInfoProvider.show("error", "Oops!", result.error || "Something went wrong.");

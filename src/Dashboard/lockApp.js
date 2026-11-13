@@ -14,7 +14,6 @@ import {
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
 import { Animated } from "react-native";
-// import title_icon from "../../assets/title_icon.png";
 import darkBlue from '../../assets/darkBlue.png'
 import ReactNativePinView from "react-native-pin-view";
 import Icon from "react-native-vector-icons/Ionicons";
@@ -23,10 +22,10 @@ import { useDispatch } from "react-redux";
 import { Platform } from "react-native";
 import { setPlatform } from "../components/Redux/actions/auth";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { useBiometricsForAppLock } from "../biometrics/biometric";
 import { alert } from "./reusables/Toasts";
 import CustomInfoProvider from "./exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
-import { CheckPasscode } from "../biometrics/utils";
+import { usePinThrottle } from "../biometrics/usePinThrottle";
+import { formatPinAuthMessage } from "../utilities/pinAuth";
 const LockApp = (props) => {
   const [pin, setPin] = useState();
   const [status, setStatus] = useState("pinset");
@@ -37,6 +36,7 @@ const LockApp = (props) => {
   const pinView = useRef(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const dispatch = useDispatch();
+  const { blocked, message: pinAuthMessage, verifyPin, verifyDevice } = usePinThrottle(true);
 
   const Spin = new Animated.Value(0);
   const SpinValue = Spin.interpolate({
@@ -74,7 +74,7 @@ const LockApp = (props) => {
 
         const biometric = await AsyncStorage.getItem('Biometric')
         if(biometric==='SET'){
-          useBiometricsForAppLock(navigation)
+          if (await verifyDevice()) navigation.goBack()
           
         }
       }
@@ -101,13 +101,15 @@ const LockApp = (props) => {
     }
     if (enteredPin.length === 6) {
       //setShowCompletedButton(true)
-      const validPin=await CheckPasscode(enteredPin)
+      if (blocked) return;
+      const pinResult = await verifyPin(enteredPin)
+      const validPin = pinResult.status === "success";
 
       if (validPin) {
         navigation.goBack();
       } else {
         
-        alert("error","Incorrect pin try again.");
+        alert("error", pinResult.status === "invalid" ? "Incorrect pin try again." : formatPinAuthMessage(pinResult));
         pinView.current.clearAll();
 
       }
@@ -147,7 +149,7 @@ const LockApp = (props) => {
             ref={pinView}
             pinLength={6}
             buttonSize={50}
-            onValueChange={(value) => setEnteredPin(value)}
+            onValueChange={(value) => { if (!blocked) setEnteredPin(value); }}
             buttonAreaStyle={{
               marginTop: 30,
             }}
@@ -176,13 +178,17 @@ const LockApp = (props) => {
                 pinView.current.clear();
               }
               if (key === "custom_right") {
-                console.log("pressed");
-                 const validPin=await CheckPasscode(enteredPin)
+                if (blocked) {
+                  if (await verifyDevice()) navigation.goBack();
+                  return;
+                }
+                const pinResult = await verifyPin(enteredPin)
+                const validPin = pinResult.status === "success";
 
                 if (validPin) {
                   navigation.goBack();
                 } else {
-                  alert("error","Incorrect pin try again.");
+                  alert("error", pinResult.status === "invalid" ? "Incorrect pin try again." : formatPinAuthMessage(pinResult));
                 }
               }
             }}
@@ -206,6 +212,7 @@ const LockApp = (props) => {
             }
           />
         </View>
+        {blocked && <Text style={[style.welcomeText, { color: "red" }]}>{pinAuthMessage}</Text>}
       </View>
     </Animated.View>
   );

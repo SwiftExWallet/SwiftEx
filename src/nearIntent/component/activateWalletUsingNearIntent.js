@@ -19,7 +19,7 @@ import {
 } from "react-native";
 import { Networks } from "@stellar/stellar-sdk";
 
-import { STELLAR_URL } from "../../Dashboard/constants";
+import { ENVIRONMENT, STELLAR_URL } from "../../Dashboard/constants";
 import {
   NearIntentSwapExecute,
   EnsureStellarTrustline,
@@ -575,7 +575,7 @@ export default function StellarSetupBottomSheet({
     () => ({
       address: stellarAcc,
       horizonUrl: STELLAR_URL.URL,
-      networkPassphrase: Networks.PUBLIC,
+      networkPassphrase: ENVIRONMENT==="TESTNET"?Networks.TESTNET:Networks.PUBLIC,
     }),
     [stellarAcc]
   );
@@ -1211,6 +1211,7 @@ export default function StellarSetupBottomSheet({
       });
 
       ShortTermStorage.syncTx({
+        quoteId: result.data.depositAddress,
         txHash: result.data.depositAddress,
         depositAddress: result.data.depositAddress,
         walletAddress: activeEvmSwapParams?.activeWalletAddress,
@@ -1445,6 +1446,7 @@ function logActivationForRecovery(data, stellarAccount, evmSwapParams) {
     timestamp: new Date().toISOString(),
   });
   ShortTermStorage.syncTx?.({
+    quoteId: data?.depositAddress,
     txHash: data?.depositAddress,
     depositAddress: data?.depositAddress,
     walletAddress: evmSwapParams?.activeWalletAddress,

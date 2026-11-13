@@ -7,7 +7,6 @@ import { getBiometrics, turnOffBiometrics } from "../biometrics/biometric"
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { StyleSheet,TouchableOpacity,Image } from "react-native"
 import Icon from "../icon";
-import darkBlue from "../../assets/Dark-Blue.png";
 import { useSelector } from "react-redux"
 import { Wallet_screen_header } from "./reusables/ExchangeHeader"
 export default function BiometricPage()

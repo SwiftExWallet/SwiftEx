@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createRampOrder,
+  fetchRampQuote,
+  parseAlchemyQuoteResult,
+} from "./onOffRampApi";
 import { 
   ActivityIndicator,
   Alert,
@@ -32,8 +37,6 @@ import AlchemyFiatSellTokens from "../../../../../utilities/AlchemyFiatSellSuppr
 import AlchemyCryptoTokens from "../../../../../utilities/AlchemyCryptoSupprort.json";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import authApi from "../authApi";
-import { REACT_APP_HOST } from "../ExchangeConstants";
-import apiHelper from "../apiHelper";
 import CustomInfoProvider from "./CustomInfoProvider";
 import {
   widthPercentageToDP as wp,
@@ -142,28 +145,31 @@ const KycComponent = ({ route }) => {
   }
 
   const fetchQoutes =async (amount,actionType,cryptoSelection,fiatSelection) => {
-    const payload = {
-      "crypto": cryptoSelection?.crypto||"USDT",
-      "network": cryptoSelection?.network||"ETH",
-      "fiat": fiatSelection?.currency||"USD",
-      "amount": amount,
-      "side": actionType
-  }
+    try {
+      const payload = {
+        "crypto": cryptoSelection?.crypto||"USDT",
+        "network": cryptoSelection?.network||"ETH",
+        "fiat": fiatSelection?.currency||"USD",
+        "amount": amount
+      }
 
-     const result = await apiHelper.post(REACT_APP_HOST + "/v1/alchemy/fetch-quotes", payload);
-     console.log("------result",result)
-     const respo = JSON.parse(result.data.data);   
-     if (result.success&&respo.data!==null) {
-      setQoutesRes(respo.data)
-      setqoutesLoading(false);
-    }
-    else{
-      console.log("alchemyQuotes Error---",respo)
-      setqoutesLoading(false);
+      const result = await fetchRampQuote("alchemy", actionType, payload);
+      console.log("------result",result)
+      const quoteResult = parseAlchemyQuoteResult(result);
+      if (quoteResult.success) {
+        setQoutesRes(quoteResult.data)
+        return;
+      }
+
+      console.log("alchemyQuotes Error---",quoteResult)
       setamountSend("");
-     CustomInfoProvider.show("info","!Opps",respo?.returnMsg==="The amount needs to be a positive integer"?"Please enter a whole number. Decimal values are not allowed.":respo?.returnMsg||"Something went wrong..");
+      CustomInfoProvider.show("info","!Opps",quoteResult.error||"Something went wrong..");
+    } catch (error) {
+      setamountSend("");
+      CustomInfoProvider.show("info", "!Opps", "Something went wrong..");
+    } finally {
+      setqoutesLoading(false);
     }
-
   };
 
   // wait and get Qoutes
@@ -249,11 +255,11 @@ const KycComponent = ({ route }) => {
         "memo": "test1"
       }
 
-      const result = await apiHelper.post(REACT_APP_HOST + "/v1/alchemy/create-buy-order", payload);
+      const result = await createRampOrder("alchemy", "buy", payload);
       console.log(result,"payload",payload)
-      if (result.success&&result.data.success) {
+      if (result.success&&result.data) {
         setbtnLoading(false);
-        Linking.openURL(result.data.success)
+        Linking.openURL(result.data)
       } else {
         setbtnLoading(false);
        CustomInfoProvider.show("Oops!", "Somthing went wrong.");
@@ -274,12 +280,12 @@ const KycComponent = ({ route }) => {
         "network": selectedCrypto?.network,
         "country": selectedfiat?.country
       }
-      const result = await apiHelper.post(REACT_APP_HOST + "/v1/alchemy/create-sell-order", payload);
-      console.log("res--",result.data.success)
-      if(result.success&&result.data.success)
+      const result = await createRampOrder("alchemy", "sell", payload);
+      console.log("res--",result.data)
+      if(result.success&&result.data)
       {
         setbtnLoading(false);
-        Linking.openURL(result.data.success)
+        Linking.openURL(result.data)
         
       }
       else{

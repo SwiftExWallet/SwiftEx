@@ -1,20 +1,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import { AppState, Platform, View } from "react-native";
+import GlobalServiceBanner from "../Screens/AppChecks/ServiceStatusBanner";
 import "react-native-gesture-handler";
 import { NavigationContainer, useNavigation } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import store from "../components/Redux/Store";
 import Dashboard from "../Dashboard/Home";
-import { Register } from "../../Register";
-import { LoginPage } from "../Login/Login";
 import MyWallet from "../Dashboard/MyWallet";
 import { useDispatch, useSelector } from "react-redux";
 import MyHeader from "../Dashboard/MyHeader";
 import MyHeader2 from "../Dashboard/MyHeader2";
 import { Extend, Collapse } from "../components/Redux/actions/auth";
 import { getFocusedRouteNameFromRoute } from "@react-navigation/native";
-import { ConfirmOtp } from "../Register/confirmOtp";
-import Generate from "../../Generate";
 import { CoinDetails } from "../Dashboard/CoinDetail";
 import { TxDetail } from "../Dashboard/TxDetail";
 import Welcome from "../Dashboard/Welcome";
@@ -23,40 +20,24 @@ import ConfirmTransaction from "../Dashboard/ConfirmTransaction";
 import SendTokens from "../Dashboard/tokens/SendTokens";
 import Transactions from "../Dashboard/Transactions";
 import AllWallets from "../Dashboard/Wallets/allWallets";
-import { ExchangeLogin } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/auth/ExchangeLogin";
-import { ExchangeRegister } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/auth/signup";
 import LockApp from "../Dashboard/lockApp";
 import { navigationRef } from "../utilities/utilities";
-import { ExchangeNavigation } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/Navigation";
 import BiometricPage from "../Dashboard/BiometricPage";
-import SplashScreen from "../Screens/splash";
 import Nfts from "../Dashboard/Nfts";
-import Token from "../Dashboard/Token";
 import Settings from "../../Settings";
 import Wallet from "../Dashboard/Wallet";
 import {
   OfferView,
 } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/offers";
-import {
-  WalletHeader,
-} from "../Dashboard/header";
 import MyPrivateKey from "../Dashboard/myPrivateKey";
 import Payout from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/payout";
-import Payment from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/Payment";
 import { NewOfferModal } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/newOffer.modal";
 import classic from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/classic";
 import Assets_manage from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/stellar/Assets_manage";
 import send_recive from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/stellar/send_recive";
 import SendXLM from "../Dashboard/tokens/sendXLM";
 import Asset_info from "../Dashboard/Asset_info";
-import Subscription from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/auth/Subscription";
-import Subscription_det from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/auth/Subscription_det";
-import Subcription_payment from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/auth/Subcription_payment";
-import Setup_password from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/auth/Setup_password";
-import Exchange_otp from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/auth/Exchange_otp";
-import { App_Update } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/App_Update";
 import EthSwap from "../ethSwap/EthSwap";
-import BnbSwap from "../ethSwap/BnbSwap";
 import KycComponent from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/KycComponent";
 import TokenSend from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/TokenSend";
 import StellarTransactionViewer from "../Dashboard/exchange/crypto-exchange-front-end-main/src/pages/StellarTransactionViewer";
@@ -73,16 +54,24 @@ import {TokensManagement} from "../Dashboard/TokensManagement";
 import { WalletNetworkSelection } from "../Dashboard/ImportWalletModule/WalletNetworkSelection";
 import RampProvider from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/RampProvider";
 import BanxaRampProvider from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/BanxaRampProvider";
+import AppStatus from "../Screens/AppChecks/AppStatus";
+import BridgeTabScreen from "../Dashboard/exchange/crypto-exchange-front-end-main/src/components/Bridgetabscreen";
 
 const Stack = createNativeStackNavigator();
 
 const AuthStack = () => {
   const [webUri, setWebUri] = useState(null);
+  const [currentRoute, setCurrentRoute] = useState(null);
+  const handleStateChange = () => {
+    const route = navigationRef?.current?.getCurrentRoute();
+    if (route?.name) setCurrentRoute(route.name);
+  };
   return(
     <GestureHandlerRootView style={{flex:1}}>
     <NavigationContainer
     theme={{ colors: { background: "black" } }}
     ref={navigationRef}
+    onStateChange={handleStateChange}
   >
     <Stack.Navigator
       mode="modal"
@@ -103,26 +92,6 @@ const AuthStack = () => {
         }}
       />
       <Stack.Screen
-        name="SplashScreen"
-        component={SplashScreen}
-        options={{ headerShown: false,gestureEnabled:false }}
-      />
-      <Stack.Screen
-        name="LoginScreen"
-        component={LoginPage}
-        options={{ headerShown: false,gestureEnabled:false }}
-      />
-      <Stack.Screen
-        name="RegisterScreen"
-        component={Register}
-        options={{ headerShown: false,gestureEnabled:false }}
-      />
-      <Stack.Screen
-        name="confirmOtp"
-        component={ConfirmOtp}
-        options={{ headerShown: false,gestureEnabled:false }}
-      />
-      <Stack.Screen
         name="HomeScreen"
         component={Dashboard}
         options={{
@@ -139,14 +108,6 @@ const AuthStack = () => {
         name="Wallet"
         component={Wallet}
         options={{headerShown:false}}
-      />
-
-       <Stack.Screen
-        name="buycrypto"
-        component={Generate}
-        options={{
-          headerShown:false
-        }}
       />
 
       <Stack.Screen
@@ -181,13 +142,6 @@ const AuthStack = () => {
             }}
           />
 
-      <Stack.Screen
-        name="Token"
-        component={Token}
-        options={{
-          headerShown: false,gestureEnabled:false,
-        }}
-      />
       <Stack.Screen
         name="Nfts"
         component={Nfts}
@@ -278,67 +232,6 @@ const AuthStack = () => {
         }}
       />
       <Stack.Screen
-        name="exchangeLogin"
-        component={ExchangeLogin}
-        options={{
-          headerShown: false,gestureEnabled:false,
-        }}
-      />
-       <Stack.Screen
-        name="Setup_password"
-        component={Setup_password}
-        options={{
-          headerShown: false,gestureEnabled:false,
-        }}
-      />
-      <Stack.Screen
-        name="Exchange_otp"
-        component={Exchange_otp}
-        options={{
-          headerShown: false,gestureEnabled:false,
-        }}
-      />
-      <Stack.Screen
-        name="exchangeRegister"
-        component={ExchangeRegister}
-        options={{
-          headerShown:false
-        }}
-      />
-      <Stack.Screen
-        name="exchange"
-        component={ExchangeNavigation}
-        options={{
-          headerShown: false,gestureEnabled:false,
-          headerTintColor: "white",
-          headerTitleStyle: {
-            fontWeight: "bold",
-            gestureEnabled: false
-          },
-        }}
-      />
-       <Stack.Screen
-        name="Subscription"
-        component={Subscription}
-        options={{
-          headerShown: false,gestureEnabled:false,
-        }}
-      />
-      <Stack.Screen
-        name="Subscription_det"
-        component={Subscription_det}
-        options={{
-          headerShown: false,gestureEnabled:false,
-        }}
-      />
-      <Stack.Screen
-        name="Subcription_payment"
-        component={Subcription_payment}
-        options={{
-          headerShown: false,gestureEnabled:false,
-        }}
-      />
-      <Stack.Screen
         name="appLock"
         component={LockApp}
         options={{
@@ -426,33 +319,9 @@ const AuthStack = () => {
           },
         }}
       /> 
-
-<Stack.Screen
-        name="Payment"
-        component={Payment}
-        options={{
-          headerShown: true,
-          headerStyle: {
-            backgroundColor: '#4CA6EA',
-          },
-          headerTitleAlign: 'center',
-          headerTintColor:'white'
-        }}
-        
-      />
-      <Stack.Screen
-        name="App_Update"
-        component={App_Update}
-        options={{headerShown:false}}
-      />
        <Stack.Screen
         name="EthSwap"
         component={EthSwap}
-        options={{headerShown:false}}
-      />
-       <Stack.Screen
-        name="BnbSwap"
-        component={BnbSwap}
         options={{headerShown:false}}
       />
        <Stack.Screen
@@ -516,6 +385,22 @@ const AuthStack = () => {
       />
 
       <Stack.Screen
+        name="AppStatus"
+        component={AppStatus}
+        options={{
+          headerShown:false
+        }}
+      />
+
+      <Stack.Screen
+        name="Bridge"
+        component={BridgeTabScreen}
+        options={{
+          headerShown:false
+        }}
+      />
+
+      <Stack.Screen
         name="TxDetails"
         options={{headerShown:false}}
         >
@@ -523,6 +408,7 @@ const AuthStack = () => {
         </Stack.Screen>
     </Stack.Navigator>
   </NavigationContainer>
+  <GlobalServiceBanner currentRoute={currentRoute} />
       <FloatingScreen
         uri={webUri}
         visible={!!webUri}

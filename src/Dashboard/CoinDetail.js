@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -9,18 +9,373 @@ import {
   Image,
   Animated,
   Dimensions,
+  PanResponder,
 } from "react-native";
 import { useSelector } from "react-redux";
 import {
   widthPercentageToDP as wp,
   heightPercentageToDP as hp,
 } from "react-native-responsive-screen";
-import { LineChart } from "react-native-gifted-charts";
+import Svg, {
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  Stop,
+  Path as SvgPath,
+  Circle,
+  Text as SvgText,
+  Rect,
+} from "react-native-svg";
 import { useNavigation } from "@react-navigation/native";
 import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import Icon from "../icon";
 import { colors } from "../Screens/ThemeColorsConfig";
+
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+const CoinSparkline = React.memo(
+  ({
+    data = [],
+    width,
+    height = 220,
+    color = "#40BF6A",
+    isDark = false,
+    timeFrame = "1d",
+    onPriceChange,
+    onDragEnd,
+  }) => {
+    const [activeIndex, setActiveIndex] = React.useState(null);
+
+    const topPad = 14;
+    const bottomPad = 25;
+    const leftPad = 4;
+    const rightPad = 56;
+
+    if (!data || data.length < 2) {
+      return null;
+    }
+
+    const chartWidth = width - leftPad - rightPad;
+    const chartHeight = height - topPad - bottomPad;
+
+    const values = data.map((item) => Number(item.value) || 0);
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+    const range = max - min || Math.max(Math.abs(max) * 0.02, 0.000001);
+    const scaleMax = max + range * 0.12;
+    const scaleMin = min - range * 0.12;
+
+    const toX = (index) =>
+      leftPad + (index / (data.length - 1)) * chartWidth;
+
+    const toY = (value) =>
+      topPad +
+      (1 - (value - scaleMin) / (scaleMax - scaleMin)) * chartHeight;
+
+    const points = data.map((item, index) => ({
+      x: toX(index),
+      y: toY(Number(item.value) || 0),
+      value: Number(item.value) || 0,
+      timestamp: item.timestamp,
+    }));
+
+    const createSmoothPath = (pts) => {
+      if (!pts.length) return "";
+
+      let path = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(i - 1, 0)];
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+        const p3 = pts[Math.min(i + 2, pts.length - 1)];
+
+        const cp1x = p1.x + (p2.x - p0.x) / 6;
+        const cp1y = p1.y + (p2.y - p0.y) / 6;
+        const cp2x = p2.x - (p3.x - p1.x) / 6;
+        const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+        path +=
+          ` C ` +
+          `${cp1x.toFixed(2)} ${cp1y.toFixed(2)} ` +
+          `${cp2x.toFixed(2)} ${cp2y.toFixed(2)} ` +
+          `${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+      }
+
+      return path;
+    };
+
+    const linePath = createSmoothPath(points);
+
+    const bottomY = topPad + chartHeight;
+
+    const areaPath =
+      `${linePath} ` +
+      `L ${points[points.length - 1].x} ${bottomY} ` +
+      `L ${leftPad} ${bottomY} Z`;
+
+    const yValues = [scaleMax, (scaleMax + scaleMin) / 2, scaleMin];
+
+    const xIndexes = [
+      0,
+      Math.floor((data.length - 1) / 2),
+      data.length - 1,
+    ];
+
+    const formatPrice = (value) => {
+      if (!Number.isFinite(value)) return "$0";
+      if (Math.abs(value) >= 1000)
+        return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+      if (Math.abs(value) >= 1) return `$${value.toFixed(2)}`;
+      if (Math.abs(value) >= 0.01) return `$${value.toFixed(3)}`;
+      return `$${value.toFixed(5)}`;
+    };
+
+    const formatBottomDate = (timestamp) => {
+      if (!timestamp) return "";
+      const date = new Date(Number(timestamp));
+      if (Number.isNaN(date.getTime())) return "";
+
+      if (timeFrame === "1h" || timeFrame === "1d") {
+        return date.toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+        });
+      }
+
+      return date.toLocaleDateString("en-US", {
+        day: "numeric",
+        month: "short",
+      });
+    };
+
+    const formatTooltipDate = (timestamp) => {
+      if (!timestamp) return "";
+      const date = new Date(Number(timestamp));
+      if (Number.isNaN(date.getTime())) return "";
+
+      return date.toLocaleString("en-US", {
+        day: "numeric",
+        month: "short",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    };
+
+    let dotIndexes = [];
+
+    if (data.length <= 12) {
+      dotIndexes = data.map((_, index) => index);
+    } else {
+      dotIndexes = [
+        0,
+        Math.floor((data.length - 1) * 0.14),
+        Math.floor((data.length - 1) * 0.29),
+        Math.floor((data.length - 1) * 0.43),
+        Math.floor((data.length - 1) * 0.57),
+        Math.floor((data.length - 1) * 0.71),
+        Math.floor((data.length - 1) * 0.86),
+        data.length - 1,
+      ];
+    }
+
+    dotIndexes = [...new Set(dotIndexes)];
+
+    const handleTouch = (x) => {
+      const boundedX = Math.max(leftPad, Math.min(x, leftPad + chartWidth));
+      const percentage = (boundedX - leftPad) / chartWidth;
+      let index = Math.round(percentage * (data.length - 1));
+      index = Math.max(0, Math.min(index, data.length - 1));
+
+      setActiveIndex(index);
+      onPriceChange?.(data[index]?.value, data[index]?.timestamp);
+    };
+
+    const panResponder = React.useMemo(
+      () =>
+        PanResponder.create({
+          onStartShouldSetPanResponder: () => true,
+          onMoveShouldSetPanResponder: () => true,
+          onPanResponderGrant: (event) => {
+            handleTouch(event.nativeEvent.locationX);
+          },
+          onPanResponderMove: (event) => {
+            handleTouch(event.nativeEvent.locationX);
+          },
+          onPanResponderRelease: () => {
+            setActiveIndex(null);
+            onDragEnd?.();
+          },
+          onPanResponderTerminate: () => {
+            setActiveIndex(null);
+            onDragEnd?.();
+          },
+        }),
+      [data, chartWidth]
+    );
+
+    const activePoint = activeIndex !== null ? points[activeIndex] : null;
+
+    const tooltipWidth = 125;
+    const tooltipHeight = 50;
+
+    let tooltipX = activePoint ? activePoint.x - tooltipWidth / 2 : 0;
+    if (tooltipX < 4) tooltipX = 4;
+    if (tooltipX + tooltipWidth > width - 4) tooltipX = width - tooltipWidth - 4;
+
+    let tooltipY = activePoint ? activePoint.y - tooltipHeight - 13 : 0;
+    if (tooltipY < 2) tooltipY = activePoint ? activePoint.y + 14 : 2;
+
+    return (
+      <View {...panResponder.panHandlers} style={{ width, height }}>
+        <Svg width={width} height={height}>
+          <Defs>
+            <SvgLinearGradient
+              id="coinChartGradient"
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
+              <Stop offset="0%" stopColor={color} stopOpacity="0.28" />
+              <Stop offset="65%" stopColor={color} stopOpacity="0.06" />
+              <Stop offset="100%" stopColor={color} stopOpacity="0" />
+            </SvgLinearGradient>
+          </Defs>
+
+          <SvgPath d={areaPath} fill="url(#coinChartGradient)" />
+
+          <SvgPath
+            d={`M ${leftPad} ${toY(yValues[1])} L ${leftPad + chartWidth} ${toY(yValues[1])}`}
+            fill="none"
+            stroke="#8D91FF"
+            strokeWidth={1.2}
+            strokeDasharray="4 5"
+            opacity={0.75}
+          />
+
+          <SvgPath
+            d={linePath}
+            fill="none"
+            stroke={color}
+            strokeWidth={2.8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {dotIndexes.map((index) => {
+            const point = points[index];
+            if (!point) return null;
+            return (
+              <Circle
+                key={`dot-${index}`}
+                cx={point.x}
+                cy={point.y}
+                r={4}
+                fill={color}
+                stroke={isDark ? "#0B0D12" : "#111827"}
+                strokeWidth={1.7}
+              />
+            );
+          })}
+
+          {activePoint && (
+            <SvgPath
+              d={`M ${activePoint.x} ${topPad} L ${activePoint.x} ${bottomY}`}
+              fill="none"
+              stroke={isDark ? "#9CA3AF" : "#747986"}
+              strokeWidth={1}
+              strokeDasharray="3 3"
+            />
+          )}
+
+          {activePoint && (
+            <>
+              <Circle
+                cx={activePoint.x}
+                cy={activePoint.y}
+                r={9}
+                fill={color}
+                opacity={0.18}
+              />
+              <Circle
+                cx={activePoint.x}
+                cy={activePoint.y}
+                r={5}
+                fill={color}
+                stroke={isDark ? "#FFFFFF" : "#111827"}
+                strokeWidth={2}
+              />
+            </>
+          )}
+
+          {activePoint && (
+            <>
+              <Rect
+                x={tooltipX}
+                y={tooltipY}
+                width={tooltipWidth}
+                height={tooltipHeight}
+                rx={8}
+                fill={isDark ? "#202127" : "#FFFFFF"}
+                stroke={isDark ? "#34363D" : "#E2E4E9"}
+                strokeWidth={1}
+              />
+              <SvgText
+                x={tooltipX + tooltipWidth / 2}
+                y={tooltipY + 20}
+                textAnchor="middle"
+                fill={isDark ? "#FFFFFF" : "#111827"}
+                fontSize="12"
+                fontWeight="600"
+              >
+                {formatPrice(activePoint.value)}
+              </SvgText>
+              <SvgText
+                x={tooltipX + tooltipWidth / 2}
+                y={tooltipY + 38}
+                textAnchor="middle"
+                fill={isDark ? "#A4A6B3" : "#858896"}
+                fontSize="9"
+              >
+                {formatTooltipDate(activePoint.timestamp)}
+              </SvgText>
+            </>
+          )}
+
+          {yValues.map((value, index) => (
+            <SvgText
+              key={`y-${index}`}
+              x={leftPad + chartWidth + 7}
+              y={toY(value) + 4}
+              fill={isDark ? "#8E919D" : "#858896"}
+              fontSize="10"
+            >
+              {formatPrice(value)}
+            </SvgText>
+          ))}
+          {xIndexes.map((index, position) => (
+            <SvgText
+              key={`x-${index}`}
+              x={points[index].x}
+              y={height - 3}
+              fill={isDark ? "#8E919D" : "#858896"}
+              fontSize="10"
+              textAnchor={
+                position === 0
+                  ? "start"
+                  : position === xIndexes.length - 1
+                  ? "end"
+                  : "middle"
+              }
+            >
+              {formatBottomDate(data[index]?.timestamp)}
+            </SvgText>
+          ))}
+        </Svg>
+      </View>
+    );
+  }
+);
 
 export const CoinDetails = (props) => {
   const navigation = useNavigation();
@@ -34,7 +389,6 @@ export const CoinDetails = (props) => {
   const [fadeAnim] = useState(new Animated.Value(0));
   const [Data, setData] = useState([]);
   const [chartError, setChartError] = useState(false);
-  const prvValue = useRef(null);
 
   const state = useSelector((state) => state);
   const isDark = state.THEME.THEME;
@@ -84,7 +438,8 @@ export const CoinDetails = (props) => {
         if (Data && Data.length > 1) {
           const last_Value = Data[Data.length - 1].value;
           const second_LastValue = Data[Data.length - 2].value;
-          const line_Color = last_Value > second_LastValue ? "#40BF6A" : "#FF6B6B";
+          const line_Color =
+            last_Value > second_LastValue ? "#40BF6A" : "#FF6B6B";
           setlineColor(line_Color);
         }
       } catch (error) {
@@ -97,51 +452,58 @@ export const CoinDetails = (props) => {
   async function getChart(name, timeFrame) {
     setload(false);
     setChartError(false);
-    const intervals = {
-      "1h": "1h",
-      "1d": "1d",
-      "1w": "1w",
-      "1M": "1M",
-    };
 
     if (name === "USDT") name = "USDC";
 
-    const interval = intervals[timeFrame] || "1d";
+    // ✅ FIX: Har timeframe ke liye sahi Binance interval + limit
+    //
+    // PEHLE (galat):
+    //   har timeframe par interval: "1h", limit: 150 tha
+    //   → 1H select karne par bhi 150 ghante (6+ din) ka data aata tha
+    //   → bottom mein "Sep 20, Sep 24, Sep 29" jaisi dates dikhti thin
+    //
+    // AB (sahi):
+    //   1H → 5m candles × 12  = exactly 1 ghanta  → time labels: "2:05 PM"
+    //   1D → 15m candles × 96 = exactly 1 din     → time labels: "9:00 AM"
+    //   1W → 4h candles × 42  = exactly 1 hafte   → date labels: "Sep 29"
+    //   1M → 1d candles × 30  = exactly 1 mahina  → date labels: "Sep 1"
+    const timeFrameConfig = {
+      "1h": { interval: "5m",  limit: 12  },
+      "1d": { interval: "15m", limit: 96  },
+      "1w": { interval: "4h",  limit: 42  },
+      "1M": { interval: "1d",  limit: 30  },
+    };
+
+    const { interval, limit } =
+      timeFrameConfig[timeFrame] || timeFrameConfig["1d"];
 
     try {
       const resp = await fetch(
-        `https://api.binance.com/api/v1/klines?symbol=${name}USDT&interval=${interval}&limit=150`,
+        `https://api.binance.com/api/v1/klines?symbol=${name}USDT&interval=${interval}&limit=${limit}`,
         { method: "GET" }
       );
-      
-      if (!resp.ok) {
-        throw new Error('Failed to fetch chart data');
-      }
-      
+
+      if (!resp.ok) throw new Error("Failed to fetch chart data");
+
       const data = await resp.json();
+      if (!data || data.length === 0)
+        throw new Error("No chart data available");
 
-      if (!data || data.length === 0) {
-        throw new Error('No chart data available');
-      }
-
-      const transformedData = data.map((item) => ({
-        x: new Date(item[0]),
-        y: parseFloat(item[4]),
-      }));
-
-      const ptData = transformedData.map((item) => ({
-        value: item.y,
-        date: new Date(item.x).toLocaleTimeString(),
+      const ptData = data.map((item) => ({
+        value: parseFloat(item[4]),
+        timestamp: Number(item[0]),
+        date: new Date(Number(item[0])).toLocaleString(),
       }));
 
       const pt_Data = data.map((item) => ({
         value: parseFloat(item[4]),
+        timestamp: Number(item[0]),
       }));
 
       setData(ptData);
       setchartData(pt_Data);
-      setpoints_data(ptData[ptData?.length - 1]?.value);
-      setpoints_data_time(ptData[ptData?.length - 1]?.date);
+      setpoints_data(ptData[ptData.length - 1]?.value);
+      setpoints_data_time(ptData[ptData.length - 1]?.date);
 
       setTimeout(() => {
         setload(true);
@@ -156,37 +518,75 @@ export const CoinDetails = (props) => {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: isDark ? colors.dark.bg : colors.light.bg}]}>
-      <Wallet_screen_header title="Coin-Detail" onLeftIconPress={() => navigation.goBack()} />
-      <ScrollView showsVerticalScrollIndicator={false} style={[styles.scrollView,{backgroundColor:isDark?colors.dark.bg:colors.light.bg}]}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: isDark ? colors.dark.bg : colors.light.bg },
+      ]}
+    >
+      <Wallet_screen_header
+        title="Coin-Detail"
+        onLeftIconPress={() => navigation.goBack()}
+      />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        style={[
+          styles.scrollView,
+          { backgroundColor: isDark ? colors.dark.bg : colors.light.bg },
+        ]}
+      >
         <Animated.View style={{ opacity: fadeAnim }}>
-          {/* Main Card */}
-          <View style={[styles.mainCard, { backgroundColor: isDark ? colors.dark.bg : colors.light.bg }]}>
-            {/* Coin Header */}
+          <View
+            style={[
+              styles.mainCard,
+              {
+                backgroundColor: isDark ? colors.dark.bg : colors.light.bg,
+              },
+            ]}
+          >
             <View style={styles.coinHeader}>
-              <Image source={{ uri: image }} style={styles.coinIcon} />
-              <Text style={[styles.coinName, { color: isDark ? "#FFF" : "#272729" }]}>
+              <Image
+                source={{ uri: image }}
+                style={styles.coinIcon}
+              />
+              <Text
+                style={[
+                  styles.coinName,
+                  { color: isDark ? "#FFF" : "#272729" },
+                ]}
+              >
                 {coinData?.symbol?.toUpperCase()}
               </Text>
             </View>
 
-            {/* Price */}
-            <Text style={[styles.mainPrice, { color: isDark ? "#FFF" : "#272729" }]}>
-              {points_data?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || coinData?.currentPrice?.toLocaleString()}
+            <Text
+              style={[
+                styles.mainPrice,
+                { color: isDark ? "#FFF" : "#272729" },
+              ]}
+            >
+              {points_data?.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              }) || coinData?.currentPrice?.toLocaleString()}
             </Text>
 
-            {/* Price Change */}
             <View style={styles.priceChangeContainer}>
-              <Icon name="trending-up" type="feather" size={16} color="#4CAF50" />
+              <Icon
+                name="trending-up"
+                type="feather"
+                size={16}
+                color="#4CAF50"
+              />
               <Text style={styles.priceChangeAmount}>
                 ${Math.abs(coinData?.priceChange24h || 294.38).toFixed(2)}
               </Text>
               <Text style={styles.priceChangePercent}>
-                (+{coinData?.priceChangePercentage24h?.toFixed(1) || "1.6"}%)
+                (+
+                {coinData?.priceChangePercentage24h?.toFixed(1) || "1.6"}%)
               </Text>
             </View>
 
-            {/* Chart */}
             <View style={styles.chartContainer}>
               {!load ? (
                 <View style={styles.loaderContainer}>
@@ -194,66 +594,58 @@ export const CoinDetails = (props) => {
                 </View>
               ) : chartError ? (
                 <View style={styles.errorContainer}>
-                  <Text style={[styles.errorText, { color: isDark ? "#8E8E93" : "#8E8E93" }]}>
+                  <Text style={[styles.errorText, { color: "#8E8E93" }]}>
                     Chart unavailable
                   </Text>
                 </View>
               ) : (
-                    <LineChart
-                      data={chartData}
-                      adjustToWidth
-                      width={SCREEN_WIDTH - wp(8)}
-                      height={hp(28)}
-                      color={lineColor}
-                      thickness={2}
-                      curved
-                      areaChart
-                      startFillColor={lineColor}
-                      startOpacity={0.3}
-                      endFillColor={lineColor}
-                      endOpacity={0}
-                      hideDataPoints
-                      hideYAxisText
-                      hideXAxisText
-                      hideAxesAndRules
-                      initialSpacing={0}
-                      endSpacing={0}
-                      pointerConfig={{
-                        pointerStripHeight: hp(26),
-                        pointerStripColor: isDark
-                          ? "rgba(255,255,255,0.15)"
-                          : "rgba(0,0,0,0.12)",
-                        pointerStripWidth: 1,
-                        pointerColor: lineColor,
-                        radius: 5,
-                        pointerLabelWidth: 110,
-                        pointerLabelHeight: 95,
-                        activatePointersOnLongPress: false,
-                        autoAdjustPointerLabelPosition: true,
-                        pointerLabelComponent: (items) => {
-                          const val = items?.[0]?.value;
-                          if (prvValue.current !== val) {
-                            prvValue.current = val;
-                            setTimeout(() => setpoints_data(val), 0);
-                          } 
-                          return null;
-                        },
-                      }}
-                    />
+                <CoinSparkline
+                  data={chartData}
+                  width={SCREEN_WIDTH - wp(8)}
+                  height={hp(28)}
+                  color={lineColor}
+                  isDark={isDark}
+                  timeFrame={timeFrame}
+                  onPriceChange={(value, timestamp) => {
+                    setpoints_data(Number(value));
+                    if (timestamp) {
+                      setpoints_data_time(
+                        new Date(Number(timestamp)).toLocaleString()
+                      );
+                    }
+                  }}
+                  onDragEnd={() => {
+                    const lastPoint = chartData[chartData.length - 1];
+                    if (!lastPoint) return;
+                    setpoints_data(Number(lastPoint.value));
+                    if (lastPoint.timestamp) {
+                      setpoints_data_time(
+                        new Date(Number(lastPoint.timestamp)).toLocaleString()
+                      );
+                    }
+                  }}
+                />
               )}
             </View>
 
-            {/* Timeframe Buttons */}
-            <View style={[styles.timeframeContainer,{backgroundColor:isDark?"#0B0B0F":"#FFFFFF"}]}>
+            <View
+              style={[
+                styles.timeframeContainer,
+                {
+                  backgroundColor: isDark ? "#0B0B0F" : "#FFFFFF",
+                },
+              ]}
+            >
               {timeFrames.map((tf) => (
                 <TouchableOpacity
                   key={tf.index}
                   style={[
                     styles.timeframeButton,
-                    pressed === tf.index && [
-                      {backgroundColor:
-                          isDark ? colors.dark.bg : colors.light.bg}
-                    ],
+                    pressed === tf.index && {
+                      backgroundColor: isDark
+                        ? colors.dark.bg
+                        : colors.light.bg,
+                    },
                   ]}
                   onPress={() => {
                     setPressed(tf.index);
@@ -264,9 +656,14 @@ export const CoinDetails = (props) => {
                     style={[
                       styles.timeframeText,
                       {
-                        color: pressed === tf.index
-                        ? isDark ? "#FFF" : "#272729"
-                        : isDark ? "#666" : "#999",
+                        color:
+                          pressed === tf.index
+                            ? isDark
+                              ? "#FFF"
+                              : "#272729"
+                            : isDark
+                            ? "#666"
+                            : "#999",
                       },
                     ]}
                   >
@@ -277,41 +674,108 @@ export const CoinDetails = (props) => {
             </View>
           </View>
 
-          {/* Info Cards Grid */}
           <View style={styles.infoGrid}>
-            <View style={[styles.infoCard, { backgroundColor: isDark ? "#0B0B0F" : "#FFFFFF" }]}>
-              <Text style={[styles.infoLabel, { color: isDark ? "#8E8E93" : "#8E8E93" }]}>
-              Price change 24H
+            <View
+              style={[
+                styles.infoCard,
+                {
+                  backgroundColor: isDark ? "#0B0B0F" : "#FFFFFF",
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.infoLabel,
+                  { color: isDark ? "#8E8E93" : "#8E8E93" },
+                ]}
+              >
+                Price change 24H
               </Text>
-              <Text style={[styles.infoValue, { color: isDark ? "#FFF" : "black" }]}>
-              {props?.route?.params?.data?.priceChangePercentage24h}%
+              <Text
+                style={[
+                  styles.infoValue,
+                  { color: isDark ? "#FFF" : "black" },
+                ]}
+              >
+                {props?.route?.params?.data?.priceChangePercentage24h}%
               </Text>
             </View>
 
-            <View style={[styles.infoCard, { backgroundColor: isDark ? "#0B0B0F" : "#FFFFFF" }]}>
-              <Text style={[styles.infoLabel, { color: isDark ? "#8E8E93" : "#8E8E93" }]}>
+            <View
+              style={[
+                styles.infoCard,
+                {
+                  backgroundColor: isDark ? "#0B0B0F" : "#FFFFFF",
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.infoLabel,
+                  { color: isDark ? "#8E8E93" : "#8E8E93" },
+                ]}
+              >
                 Last price (USD)
               </Text>
-              <Text style={[styles.infoValue, { color: isDark ? "#FFF" : "black" }]}>
-              ${props?.route?.params?.data?.currentPrice}
+              <Text
+                style={[
+                  styles.infoValue,
+                  { color: isDark ? "#FFF" : "black" },
+                ]}
+              >
+                ${props?.route?.params?.data?.currentPrice}
               </Text>
             </View>
 
-            <View style={[styles.infoCard, { backgroundColor: isDark ? "#0B0B0F" : "#FFFFFF" }]}>
-              <Text style={[styles.infoLabel, { color: isDark ? "#8E8E93" : "#8E8E93" }]}>
-              24H high
+            <View
+              style={[
+                styles.infoCard,
+                {
+                  backgroundColor: isDark ? "#0B0B0F" : "#FFFFFF",
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.infoLabel,
+                  { color: isDark ? "#8E8E93" : "#8E8E93" },
+                ]}
+              >
+                24H high
               </Text>
-              <Text style={[styles.infoValue, { color: isDark ? "#FFF" : "black" }]}>
-              ${props?.route?.params?.data?.high24h}
+              <Text
+                style={[
+                  styles.infoValue,
+                  { color: isDark ? "#FFF" : "black" },
+                ]}
+              >
+                ${props?.route?.params?.data?.high24h}
               </Text>
             </View>
 
-            <View style={[styles.infoCard, { backgroundColor: isDark ? "#0B0B0F" : "#FFFFFF" }]}>
-              <Text style={[styles.infoLabel, { color: isDark ? "#8E8E93" : "#8E8E93" }]}>
-              24H Low
+            <View
+              style={[
+                styles.infoCard,
+                {
+                  backgroundColor: isDark ? "#0B0B0F" : "#FFFFFF",
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.infoLabel,
+                  { color: isDark ? "#8E8E93" : "#8E8E93" },
+                ]}
+              >
+                24H Low
               </Text>
-              <Text style={[styles.infoValue, { color: isDark ? "#FFF" : "black" }]}>
-              ${props?.route?.params?.data?.low24h}
+              <Text
+                style={[
+                  styles.infoValue,
+                  { color: isDark ? "#FFF" : "black" },
+                ]}
+              >
+                ${props?.route?.params?.data?.low24h}
               </Text>
             </View>
           </View>
@@ -398,10 +862,11 @@ const styles = StyleSheet.create({
     marginLeft: wp(1.5),
   },
   chartContainer: {
-    height: hp(28),
-    marginBottom: hp(1.5),
-    marginHorizontal: -wp(2),
-  },
+  height: hp(28),
+  marginBottom: hp(1.5),
+  marginHorizontal: 0,
+  alignItems: "center",
+},
   chart: {
     height: hp(28),
     width: wp(90),
@@ -424,9 +889,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-around",
     marginTop: hp(2),
     paddingVertical: hp(0.2),
-    paddingHorizontal:wp(2),
-    borderRadius:10,
-    marginBottom:hp(2)
+    paddingHorizontal: wp(2),
+    borderRadius: 10,
+    marginBottom: hp(2),
   },
   timeframeButton: {
     flex: 1,

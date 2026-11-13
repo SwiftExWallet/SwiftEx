@@ -649,7 +649,11 @@ async function sendDepositViaNativeSigner({
     // --- Broadcast ----------------------------------------------------------------
     const { res, err } = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, {
         signedTransactions: [rawTx],
-        broadcastChain: chainConfig.subName=== "BNB" ? "BSC" : chainConfig.subName,
+        broadcastChain: chainConfig.subName === "BNB" ? "BSC"
+            : chainConfig.subName === "MATIC" ? "POL"
+            : chainConfig.subName === "AVAX" ? "AVA"
+            : chainConfig.subName === "BASE" ? "BAS"
+            : chainConfig.subName,
     });
 
     if (err?.status) {
@@ -1003,7 +1007,7 @@ async function sendTrustlineTx({
             .setTimeout(180)
             .build();
 
-        const txXDR = tx.toXDR();
+        const txXDR = tx.toXdr();
         const signedTx = await StellarSigner.signTransaction(txXDR);
         assertValidSignedStellarTx(signedTx);
 
@@ -1121,7 +1125,7 @@ async function sendDepositViaStellarSigner({
         if (memo) builder = builder.addMemo(memo);
         const tx = builder.setTimeout(180).build();
 
-        const txXDR = tx.toXDR();
+        const txXDR = tx.toXdr();
         const signedTx = await StellarSigner.signTransaction(txXDR);
         assertValidSignedStellarTx(signedTx);
 

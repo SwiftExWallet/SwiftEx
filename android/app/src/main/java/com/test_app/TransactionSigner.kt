@@ -1,35 +1,91 @@
 package org.app.swiftEx.wallet
 
 import com.facebook.react.bridge.*
-import android.content.Context
 import android.util.Log
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import org.json.JSONObject
 import org.web3j.crypto.*
 import org.web3j.utils.Numeric
 
 class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
     private val TAG = "TransactionSigner"
-    private val PREF_NAME = "com_swiftEx_app_secure"
-
-    private val prefs by lazy {
-        try {
-            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-            EncryptedSharedPreferences.create(
-                PREF_NAME,
-                masterKeyAlias,
-                reactApplicationContext,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to init EncryptedSharedPreferences", e)
-            reactApplicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        }
-    }
+    private val PREF_NAME = SecureWalletStore.PREF_NAME
+    private val prefs by lazy { SecureWalletStore.open(reactApplicationContext) }
 
     override fun getName() = "TransactionSigner"
+
+    private fun authenticateForSigning(promise: Promise, onAuthenticated: () -> Unit) {
+        if (!TransactionAuthPolicy.isEnabled(prefs)) {
+            onAuthenticated()
+            return
+        }
+
+        val activity = reactApplicationContext.currentActivity as? FragmentActivity
+            ?: return promise.reject("ACTIVITY_UNAVAILABLE", "No active activity")
+
+        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        val canAuthenticate = BiometricManager.from(activity).canAuthenticate(authenticators)
+        if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
+            return NativePinBottomSheet.show(
+                activity,
+                onSubmit = { pin ->
+                    try {
+                        val result = AppPinVerifier.authenticate(prefs, pin)
+                        if (result.status == PinAttemptStatus.SUCCESS) onAuthenticated()
+                        else promise.rejectPinAttempt(result)
+                    } catch (e: Exception) {
+                        promise.reject("PIN_AUTH_ERROR", "Unable to validate app PIN", e)
+                    }
+                },
+                onCancel = { promise.reject("AUTH_CANCELLED", "Authentication cancelled") },
+            )
+        }
+
+        val executor = ContextCompat.getMainExecutor(activity)
+        val prompt = BiometricPrompt(
+            activity,
+            executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    try {
+                        AppPinVerifier.recordDeviceSuccess(prefs)
+                        onAuthenticated()
+                    } catch (e: Exception) {
+                        promise.reject("PIN_AUTH_ERROR", "Unable to reset PIN lock", e)
+                    }
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    val code = if (
+                        errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
+                        errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
+                        errorCode == BiometricPrompt.ERROR_CANCELED
+                    ) "AUTH_CANCELLED" else "AUTH_FAILED"
+                    promise.reject(code, errString.toString())
+                }
+
+                override fun onAuthenticationFailed() {
+                    Log.w(TAG, "Biometric authentication attempt failed")
+                }
+            }
+        )
+
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Authenticate to sign transaction")
+            .setSubtitle("Confirm it is you before this wallet signs.")
+            .setAllowedAuthenticators(authenticators)
+            .build()
+
+        activity.runOnUiThread {
+            try { prompt.authenticate(promptInfo) } catch (error: RuntimeException) {
+                promise.reject("AUTH_FAILED", error.message, error)
+            }
+        }
+    }
 
     @ReactMethod
     fun signTransaction(
@@ -39,9 +95,10 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
         chainId: Int,
         promise: Promise
     ) {
+    authenticateForSigning(promise) {
         try {
             val privateKeyHex = getPrivateKey(chainName) ?:
-            return promise.reject("PRIVATE_KEY_NOT_FOUND", "Private key not found")
+            return@authenticateForSigning promise.reject("PRIVATE_KEY_NOT_FOUND", "Private key not found")
 
             val credentials = Credentials.create(privateKeyHex)
             val txJson = JSONObject(rawUnsignedTx)
@@ -77,6 +134,7 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
             promise.resolve(result)
         } catch (e: Exception) {
             promise.reject("SIGN_ERROR", e.message)
+            }
         }
     }
 
@@ -87,9 +145,10 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
         messageHex: String,
         promise: Promise
     ) {
+    authenticateForSigning(promise) {
         try {
             val privateKeyHex = getPrivateKey(chainName)
-                ?: return promise.reject("PRIVATE_KEY_NOT_FOUND", "Private key not found")
+                ?: return@authenticateForSigning promise.reject("PRIVATE_KEY_NOT_FOUND", "Private key not found")
 
             val credentials = Credentials.create(privateKeyHex)
 
@@ -122,6 +181,7 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
             promise.resolve(result)
         } catch (e: Exception) {
             promise.reject("SIGN_MESSAGE_ERROR", e.message ?: e.javaClass.simpleName)
+            }
         }
     }
 
@@ -132,9 +192,10 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
         typedDataJson: String,
         promise: Promise
     ) {
+        authenticateForSigning(promise) {
         try {
             val privateKeyHex = getPrivateKey(chainName) ?:
-                return promise.reject("PRIVATE_KEY_ERROR", "Private key not found")
+                return@authenticateForSigning promise.reject("PRIVATE_KEY_ERROR", "Private key not found")
 
             val credentials = Credentials.create(privateKeyHex)
             val structuredData = StructuredDataEncoder(typedDataJson)
@@ -155,10 +216,11 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
         } catch (e: Exception) {
             promise.reject("SIGN_TYPED_ERROR", e.message)
         }
+        }
     }
 
     private fun getPrivateKey(chainName: String): String? {
-        val walletJson: String? = prefs.all["activeUserWallet"]?.toString() ?: return null
+        val walletJson = prefs.all["activeUserWallet"]?.toString() ?: return null
         return try {
             val json = JSONObject(walletJson)
             val privateKey = json.optString("privatekey")

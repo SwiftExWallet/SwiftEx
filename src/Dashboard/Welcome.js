@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
+import { PPOST, proxyRequest } from './exchange/crypto-exchange-front-end-main/src/api';
 import {
   StyleSheet,
   Text,
@@ -27,11 +28,8 @@ import AsyncStorageLib from "@react-native-async-storage/async-storage";
 import { alert } from "./reusables/Toasts";
 import { useNavigation } from "@react-navigation/native";
 import apiHelper from "./exchange/crypto-exchange-front-end-main/src/apiHelper";
-import { REACT_APP_HOST } from "./exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
-import * as StellarSdk from '@stellar/stellar-sdk';
-import AccessNativeStorage from "./Wallets/AccessNativeStorage";
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import crashlytics from '@react-native-firebase/crashlytics';
-import { dydxAddressDrive } from "../dydx/dydxAddressDrive";
 import ReferralBottomSheet from "./reusables/ReferralBottomSheet";
 import { clearReferralCode, getSavedReferralCode, initReferral, subscribeReferral } from "../utilities/referralUtil";
 import { CHOTTU_URL } from "./constants";
@@ -88,7 +86,6 @@ const Welcome = (props) => {
         const appReset=await NativeModules.StorageModule.clearAll();
         crashlytics().setCrashlyticsCollectionEnabled(true);
         const userStatus=await createGuestUser(referralCode);
-        console.log("userStatus:-",userStatus.status,appReset)
         if(userStatus.status)
         {
           await clearReferralCode();
@@ -111,10 +108,10 @@ const Welcome = (props) => {
   const defaultWalletGenration=async()=>{
     try {
       setLoading(true);
-      const response=await dispatch(Generate_Wallet2())
+      const response=await dispatch(Generate_Wallet2("Main"))
         if (response) {
           console.log("respoms:",response)
-          const result = await apiHelper.post(REACT_APP_HOST+'/v1/wallet', {
+          const result = await proxyRequest('/v1/wallet', PPOST, {
               "addresses": {
                   "eth": response.wallet.address,
                   "xlm": response.wallet.stellarWallet.publicKey,
@@ -155,7 +152,6 @@ const Welcome = (props) => {
 
   const dispatChingData=async(wallet)=>{
     try {
-      const dydxAddress=await dydxAddressDrive(wallet.privateKey)
             const accounts = {
               address: wallet.address,
               name: "Main",
@@ -165,10 +161,6 @@ const Welcome = (props) => {
               },
               stellarWallet: {
                 publicKey: wallet.stellarWallet.publicKey,
-              },
-              dydx: {
-                dydxAddress: dydxAddress.dydxAddress,
-                dydxPublicKey: dydxAddress.publicKey,
               },
               wallets: [],
             };
@@ -183,10 +175,6 @@ const Welcome = (props) => {
                 },
                 stellarWallet: {
                   publicKey: wallet.stellarWallet.publicKey
-                },
-                dydx: {
-                  dydxAddress: dydxAddress.dydxAddress,
-                  dydxPublicKey: dydxAddress.publicKey,
                 },
                 walletType: "Multi-coin",
               },
@@ -215,8 +203,7 @@ const Welcome = (props) => {
                 wallet.address,
                 "Main",
                 "",
-                "",
-                (walletType = "Multi-coin")
+                "Multi-coin"
               )
             );
             dispatch(
@@ -228,28 +215,9 @@ const Welcome = (props) => {
             dispatch(getBalance(wallet.address));
             dispatch(setWalletType("Multi-coin"));
             genrateStellarKeypair(wallet.address,wallet.stellarWallet.publicKey)
-            const walletResponse = await AccessNativeStorage.saveWallet({
-              name: "Main",
-              address: wallet.address,
-              privatekey: wallet.privateKey,
-              stellarPublicKey: wallet.stellarWallet.publicKey,
-              stellarPrivateKey: wallet.stellarWallet.secretKey,
-              mnemonic: wallet.mnemonic,
-              walletType: wallet.walletType,
-              dydxAddress: dydxAddress.dydxAddress,
-              dydxPublicKey: dydxAddress.publicKey,
-              dydxMnemonic: dydxAddress.mnemonic,
-              dydxPrivateKey: dydxAddress.privateKey,
-              dydxWalletConnectSignature: dydxAddress.walletConnectSignature
-            })
-            if (walletResponse.success) {
             setLoading(false);
             navigation.navigate("HomeScreen");
             alert("success", "Wallet Genration Compleated!");
-            } else {
-            alert("error", "Wallet generation failed.");
-            setLoading(false);
-            }
     } catch (error) {
       alert("error","Wallet generation failed.");
       console.log("---Error-getting-from-dispatChingData--",error)

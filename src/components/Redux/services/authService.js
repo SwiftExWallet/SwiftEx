@@ -12,6 +12,24 @@ const { EthereumWallet } = NativeModules;
 
 const xrpl = require("xrpl");
 
+const buildPublicWallet = ({
+  address,
+  name,
+  classicAddress,
+  walletType,
+  xrp,
+  stellarWallet,
+}) => ({
+  ...(address && { address }),
+  ...(name && { name }),
+  ...(classicAddress && { classicAddress }),
+  ...(walletType && { walletType }),
+  ...(xrp?.address && { xrp: { address: xrp.address } }),
+  ...(stellarWallet?.publicKey && {
+    stellarWallet: { publicKey: stellarWallet.publicKey },
+  }),
+});
+
 const logIn = async (user) => {
   let response;
   const { username } = user;
@@ -163,21 +181,19 @@ const getEthBalance = async (address) => {
 };
 
 
-const Generate_Wallet2 = async () => {
-  const result = await EthereumWallet.createWallet();
+const Generate_Wallet2 = async (name) => {
+  const result = await EthereumWallet.createWallet(name || "Main");
   const Wallet = {
-    address: result.ethereum.address,
-    privateKey: result.ethereum.privateKey,
-    mnemonic: result.mnemonic,
+    walletId: result.walletId,
+    name: result.name,
+    address: result.address,
     xrp:{
-      address: "000000000",
-      privateKey: "000000000",
+      address: result.xrp?.address || "000000000",
     },
     stellarWallet: {
-        publicKey: result.stellar.publicKey,
-        secretKey: result.stellar.secretKey
+        publicKey: result.stellarPublicKey || result.stellarWallet?.publicKey,
     },
-    walletType: "Multi-coin",
+    walletType: result.walletType || "Multi-coin",
   };
   if (Wallet) {
     return {
@@ -191,40 +207,16 @@ const Generate_Wallet2 = async () => {
 async function setCurrentWallet(
   address,
   name,
-  privateKey,
-  mnemonic,
   classicAddress,
-  seed,
   walletType
 ) {
-  let wallet;
-  if (walletType) {
-    wallet = {
-      address: address,
-      name: name,
-      privateKey: "",
-      mnemonic:'',
-      xrp: {
-        address: classicAddress,
-        privateKey: "",
-      },
-    };
-  } else if (classicAddress && !walletType) {
-    wallet = {
-      classicAddress: classicAddress,
-      address: address,
-      name: name,
-      privateKey: "",
-      mnemonic:'',
-    };
-  } else {
-    wallet = {
-      address: address,
-      name: name,
-      privateKey: "",
-      mnemonic:''
-    };
-  }
+  const wallet = buildPublicWallet({
+    address,
+    name,
+    classicAddress,
+    walletType,
+    xrp: classicAddress ? { address: classicAddress } : null,
+  });
 
   AsyncStorage.setItem("wallet", JSON.stringify(wallet));
   AsyncStorage.setItem("Wallet", JSON.stringify(wallet));
@@ -257,24 +249,9 @@ async function AddToAllWallets(wallets, user) {
 
     if (wallets[0].walletType === "Multi-coin") {
 
-      allWallets.push({
-        name: wallets[0].name,
-        privateKey: "",
-        address: wallets[0].address,
-        mnemonic: "",
-        walletType: wallets[0].walletType,
-        xrp: {
-          address: wallets[0].xrp.address,
-          privateKey: "",
-        },
-        dydx:{
-            dydxAddress:wallets[0].dydx.dydxAddress,
-            dydxPublicKey:wallets[0].dydx.dydxPublicKey,
-        }
-      });
+      allWallets.push(buildPublicWallet(wallets[0]));
          const Ether_address= wallets[0].address;
         const publicKey = wallets[0].stellarWallet.publicKey;
-        const secretKey = wallets[0].stellarWallet.secretKey;
       
         try {
           let userTransactions = [];
@@ -288,9 +265,6 @@ async function AddToAllWallets(wallets, user) {
           const newTransaction = {
             Ether_address,
             publicKey,
-            secretKey,
-            dydxAddress:wallets[0].dydx.dydxAddress,
-            dydxPublicKey:wallets[0].dydx.dydxPublicKey,
           };
           userTransactions.push(newTransaction);
           await AsyncStorageLib.setItem('myDataKey', JSON.stringify(userTransactions));
@@ -299,29 +273,15 @@ async function AddToAllWallets(wallets, user) {
           throw error;
         }
     } else if (wallets[0].classicAddress) {
-      allWallets.push({
-        name: wallets[0].name,
-        privateKey: "",
-        mnemonic: '',
-        address: wallets[0].address,
-        classicAddress: wallets[0].classicAddress,
-        walletType: wallets[0].walletType,
-      });
+      allWallets.push(buildPublicWallet(wallets[0]));
     } else {
-      allWallets.push({
-        name: wallets[0].name,
-        privateKey: "",
-        mnemonic: '',
-        address: wallets[0].address,
-        walletType: wallets[0].walletType,
-      });
+      allWallets.push(buildPublicWallet(wallets[0]));
     }
     
     AsyncStorage.setItem(`${user}-wallets`, JSON.stringify(allWallets));
     try {
       const Ether_address= wallets[0].address;
       const publicKey = wallets[0].stellarWallet.publicKey;
-      const secretKey = wallets[0].stellarWallet.secretKey;
       let userTransactions = [];
       const transactions = await AsyncStorageLib.getItem('myDataKey');
       if (transactions) {
@@ -333,9 +293,6 @@ async function AddToAllWallets(wallets, user) {
       const newTransaction = {
         Ether_address,
         publicKey,
-        secretKey,
-        dydxAddress:wallets[0].dydx.dydxAddress,
-        dydxPublicKey:wallets[0].dydx.dydxPublicKey,
       };
       userTransactions.push(newTransaction);
       await AsyncStorageLib.setItem('myDataKey', JSON.stringify(userTransactions));

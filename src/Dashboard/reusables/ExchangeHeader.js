@@ -7,78 +7,9 @@ import {
 } from "react-native-responsive-screen";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import darkBlue from "../../../assets/darkBlue.png";
-import { REACT_APP_LOCAL_TOKEN } from "../exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import { useSelector } from "react-redux";
-import { createGuestUser } from "../exchange/crypto-exchange-front-end-main/src/api";
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import { colors } from "../../Screens/ThemeColorsConfig";
-
-export const ExchangeHeaderApp = () => {
-  const navigation = useNavigation();
-
-  return (
-    <View style={styles.headerContainer}>
-      <Text style={{ color: "#fff", fontWeight: "700" }}>Exchange</Text>
-      <View style={{ alignItems: "center" }}>
-        <Icon
-          name={"logout"}
-          type={"materialCommunity"}
-          size={20}
-          color={"#E96A6A"}
-          onPress={() => {
-            const LOCAL_TOKEN = REACT_APP_LOCAL_TOKEN;
-            AsyncStorage.removeItem(LOCAL_TOKEN);
-            navigation.navigate("Settings");
-          }}
-        />
-        <Text style={{ color: "#E96A6A" }}>Logout</Text>
-      </View>
-    </View>
-  );
-};
-
-export const ExchangeHeaderIcon = () => {
-  const navigation = useNavigation();
-
-  return (
-    <View style={styles.headerContainer1}>
-      <View
-        style={{
-          justifyContent: "space-around",
-          flexDirection: "row",
-          alignItems: "center",
-        }}
-      >
-        <Icon
-          name={"left"}
-          type={"antDesign"}
-          size={20}
-          color={"#010C66"}
-          onPress={() => {
-            navigation.goBack();
-          }}
-        />
-        <Image source={darkBlue} style={styles.logoImg} />
-      </View>
-      <Text style={styles.text}>Exchange</Text>
-      <View style={{ alignItems: "center" }}>
-        <Icon
-          name={"logout"}
-          type={"materialCommunity"}
-          size={20}
-          color={"#E96A6A"}
-          onPress={() => {
-            const LOCAL_TOKEN = REACT_APP_LOCAL_TOKEN;
-            AsyncStorage.removeItem(LOCAL_TOKEN);
-            navigation.navigate("Settings");
-          }}
-        />
-        <Text style={{ color: "#E96A6A" }}>Logout</Text>
-      </View>
-    </View>
-  );
-};
 
 export const Exchange_screen_header = ({ title, onLeftIconPress, onRightIconPress }) => {
   const [isDrawerVisible, setDrawerVisible] = useState(false);
@@ -211,26 +142,6 @@ export const Wallet_screen_header = ({ title, onLeftIconPress,rightIcon, onRight
             color={state.THEME.THEME === false ? "black" : "#fff"}
           />
         </TouchableOpacity> : <View style={styles.exchangerightIconContainer} />}
-      </View>
-    </>
-  );
-};
-
-export const Exchange_Login_screen = ({ title, onLeftIconPress }) => {
-  const state = useSelector((state) => state);
-  return (
-    <>
-      <View style={[styles.exchangeheaderContainer, { backgroundColor:"#131E3A",height: Platform.OS === "ios" ? hp(8) : hp(6) }]}>
-        <TouchableOpacity onPress={onLeftIconPress} style={[styles.exchangeleftIconContainer, { marginTop: Platform.OS === "ios" && hp(4) }]}>
-          <Icon
-            name={"arrow-left"}
-            type={"materialCommunity"}
-            size={30}
-            color={"#fff"}
-          />
-        </TouchableOpacity>
-        <Text style={[styles.exchangeheaderTitle, { marginTop: Platform.OS === "ios" && hp(4),color:state.THEME.THEME===false?"black":"#fff" }]}>{title}</Text>
-      <View style={styles.exchangerightIconContainer} />
       </View>
     </>
   );

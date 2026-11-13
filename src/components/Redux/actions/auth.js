@@ -92,9 +92,9 @@ export const Collapse = () => (dispatch) => {
   });
 };
 
-export const Generate_Wallet2  = () => (dispatch) => {
+export const Generate_Wallet2  = (name) => (dispatch) => {
  
-  return AuthService.Generate_Wallet2().then((response) => {
+  return AuthService.Generate_Wallet2(name).then((response) => {
     
     if (response.status === "success") {
       
@@ -149,8 +149,8 @@ export const AddToAllWallets  = (account,user) => (dispatch) => {
   });
 };
 
-export const setCurrentWallet = (address, name, privateKey, mnemonic,classicAddress,seed,walletType) => (dispatch) => {
-  return AuthService.setCurrentWallet(address, name, privateKey, mnemonic,classicAddress,seed,walletType).then((response) => {
+export const setCurrentWallet = (address, name, classicAddress, walletType) => (dispatch) => {
+  return AuthService.setCurrentWallet(address, name, classicAddress, walletType).then((response) => {
     if (response.status === "success") {
       dispatch({
         type: SETCURRENTWALLET,

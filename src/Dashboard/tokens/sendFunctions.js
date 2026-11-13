@@ -3,6 +3,7 @@ import "@ethersproject/shims";
 import { alert } from "../reusables/Toasts";
 import { PGET, proxyRequest } from "../exchange/crypto-exchange-front-end-main/src/api";
 import { NativeModules } from "react-native";
+import { CHAINS } from "../../utilities/TokenUtils";
 var ethers = require("ethers");
 
 const sendEth = async (
@@ -96,7 +97,7 @@ const sendEth = async (
       "eth",
       addressFrom,
       JSON.stringify(transaction),
-      1
+      CHAINS["ETH"].chainId
     );
 
     let rawTransaction = signedTx.signedTx;
@@ -213,7 +214,7 @@ const sendBNB = async (
       "bsc",
       addressFrom,
       JSON.stringify(transaction),
-      56
+      CHAINS["BNB"].chainId
     );
 
     let rawTransaction = signedTx.signedTx;

@@ -25,10 +25,8 @@ import { PGET, PPOST, PPUT, proxyRequest } from './exchange/crypto-exchange-fron
 import CustomInfoProvider from './exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import ShortTermStorage from '../utilities/ShortTermStorage';
 import { CHAINS, CheckTxStatus, TXSTATUS } from '../utilities/TokenUtils'
-import { AllbridgeCoreSdk, nodeRpcUrlsDefault } from "@allbridge/bridge-core-sdk";
 import { colors } from '../Screens/ThemeColorsConfig';
 import { ethers } from 'ethers';
-const sdk = new AllbridgeCoreSdk(nodeRpcUrlsDefault);
 const ThemeContext = React.createContext();
 const themes = {
   light: {
@@ -199,7 +197,7 @@ const ChainSelector = ({ activeChain, onSelect, colors }) => {
             </Text>
             <FlatList
               data={Object.values(CHAINS)
-                .filter(item => !item.name?.toLowerCase().includes("dydx"))
+                
                 .filter(
                   (item, index, self) =>
                     index === self.findIndex(obj => obj.name === item.name)
@@ -322,17 +320,7 @@ const TransactionCard = ({ item, walletAddress, activeChain, activeFilter, navig
   const getExplorerUrl = async () => {
     if (item.provider) {
       switch (item.provider) {
-        case 'RANGO': return `https://explorer.rango.exchange/swap/${item.requestId}`;
         case 'NEARINTENT': return `https://explorer.near-intents.org/transactions/${item.txHash}`;
-        case "ALLBRIDGE":
-          CustomInfoProvider.show("waiting", "Please Wait", "Collecting information.");
-          const getUrl = await sdk.getTransferStatus(item.fromChain, item.txHash);
-          if (getUrl.txId) {
-            CustomInfoProvider.hide();
-            return `https://core.allbridge.io/explorer/transfer/${getUrl.send.hash}`;
-          } else {
-            CustomInfoProvider.show("error", "!Opps", "Tx under relay.");
-          }
         case 'UNISWAP':
         case 'EVMTX':
         case 'ONEINCH':
@@ -377,8 +365,17 @@ const TransactionCard = ({ item, walletAddress, activeChain, activeFilter, navig
       CustomInfoProvider.show("waiting", "Please Wait", "Checking order status...");
       try {
         const chain = item.fromChain || activeChain;
+        const providerEnumMap = {
+          '1inch': 'ONEINCH_FUSION',
+          'ONEINCH': 'ONEINCH_FUSION',
+          '1inch_fusion': 'ONEINCH_FUSION',
+          '1inch_fusion_plus': 'ONEINCH_FUSION_PLUS',
+          'FUSION_PLUS': 'ONEINCH_FUSION_PLUS',
+          'EVMTX': 'EVMTX',
+        };
+        const swapProvider = providerEnumMap[item.provider?.toUpperCase?.()] || providerEnumMap[item.provider] || 'ONEINCH_FUSION';
         const { res, err } = await proxyRequest(
-          `/v1/swap/1inch/orderStatus?chain=${chain}&orderHash=${item.txHash || item.orderHash}&swapProvider=${item.provider}`,
+          `/v1/swap/1inch/orderStatus?chain=${chain}&orderHash=${item.txHash || item.orderHash}&swapProvider=${swapProvider}`,
           PGET
         );
 

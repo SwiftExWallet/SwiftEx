@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { PGET, proxyRequest } from './exchange/crypto-exchange-front-end-main/src/api';
 import { useEffect } from "react";
 import {
   StyleSheet,
@@ -19,7 +20,6 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import Icon from "../icon";
 import { alert } from "./reusables/Toasts";
-import { REACT_APP_HOST } from "./exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
 import { useSelector } from "react-redux";
 import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import { Wallet_market_loading } from "./reusables/Exchange_loading";
@@ -542,7 +542,7 @@ const Market = (props) => {
   const fetchKline = async (
     setData,
   ) => {
-      const result = await apiHelper.get(REACT_APP_HOST+"/v1/market-data");
+      const result = await proxyRequest('/v1/market-data', PGET);
       if (result.success) {
         setData(result.data.marketData);
          setUpdatedData(result.data.marketData)

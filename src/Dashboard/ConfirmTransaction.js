@@ -12,20 +12,20 @@ import {
 } from "react-native-responsive-screen";
 import { useSelector } from "react-redux";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
-import { SaveTransaction } from "../utilities/utilities";
 import { useNavigation } from "@react-navigation/native";
 import "react-native-get-random-values";
 import "@ethersproject/shims";
 import TransactionPinModal from "./Modals/transactionPinModal";
 import { useBiometricsForSendTransaction } from "../biometrics/biometric";
 import { useToast } from "native-base";
-import { alert, ShowToast } from "./reusables/Toasts";
+import { alert } from "./reusables/Toasts";
 import { CommonActions } from "@react-navigation/native";
 import { Wallet_screen_header } from "./reusables/ExchangeHeader";
 import { PPOST, proxyRequest } from "./exchange/crypto-exchange-front-end-main/src/api";
 import ShortTermStorage from "../utilities/ShortTermStorage";
 import { colors } from "../Screens/ThemeColorsConfig";
 import { ethers } from "ethers";
+import { getTransactionAuthEnabled } from "../utilities/transactionAuth";
 
 const ConfirmTransaction = (props) => {
   const state = useSelector((state) => state);
@@ -54,7 +54,7 @@ const ConfirmTransaction = (props) => {
     setLoading(true);
     setDisable(true);
     if (type === "Eth") {
-       const { res, err } = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, {signedTx:rawTransaction});
+       const { res, err } = await proxyRequest("/v1/eth/transaction/broadcast", PPOST, {signedTx:rawTransaction, broadcastChain: "ETH"});
          if(err)
          {
           alert("error",err.message||"Something went wrong...")
@@ -93,7 +93,7 @@ const ConfirmTransaction = (props) => {
         }
       }
     } else if (type === "BSC") {
-      const { res, err } = await proxyRequest("/v1/bsc/transaction/broadcast", PPOST, { signedTx: rawTransaction });
+      const { res, err } = await proxyRequest("/v1/bsc/transaction/broadcast", PPOST, { signedTx: rawTransaction, broadcastChain: "BSC" });
       if (err) {
         setDisable(false);
         setLoading(false);
@@ -185,6 +185,12 @@ const ConfirmTransaction = (props) => {
         style={style.doneBtn}
         disabled={disable ? true : false}
         onPress={async () => {
+          const transactionAuthEnabled = await getTransactionAuthEnabled();
+          if (!transactionAuthEnabled) {
+            await sendTx();
+            return;
+          }
+
           const biometric = await AsyncStorageLib.getItem("Biometric");
           if (biometric === "SET") {
             try {
@@ -208,7 +214,6 @@ const ConfirmTransaction = (props) => {
         type={props?.route?.params?.info?.type}
         rawTransaction={props?.route?.params?.info?.rawTransaction}
         walletType={walletType}
-        SaveTransaction={SaveTransaction}
         setLoading={setLoading}
         setDisable={setDisable}
         txAmt={props?.route?.params?.info?.amount}

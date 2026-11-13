@@ -14,13 +14,147 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { NEARINTENT, STELLAR_URL } from "../../../../constants";
 import { useNavigation } from "@react-navigation/native";
 import { authRequest, POST } from "../api";
-import AllbridgeTxTrack from "../components/AllbridgeTxTrack";
 import LocalTxManager from "../../../../../utilities/LocalTxManager";
 import { useSelector } from "react-redux";
 import { AllbridgeCoreSdk, nodeRpcUrlsDefault } from "@allbridge/bridge-core-sdk";
 import CustomInfoProvider from "../components/CustomInfoProvider";
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
 import { configure, GetNearIntentStatus } from "../../../../../nearIntent/nearIntentUtil";
+
+import tokenList from "./stellar/Tokens.json";
+
+const tokenMap = new Map(
+  tokenList.assets
+    .filter(token => token.contract)
+    .map(token => [token.contract.toUpperCase(), token])
+);
+
+const getToken = (contractId) =>
+  tokenMap.get(contractId?.toUpperCase()) || null;
+
+const formatRawAmount = (rawAmount, decimals = 7) => {
+  if (rawAmount == null) return null;
+
+  const negative = String(rawAmount).startsWith("-");
+  const digits = String(rawAmount).replace("-", "");
+  if (!/^\d+$/.test(digits)) return null;
+
+  const padded = digits.padStart(decimals + 1, "0");
+  const split = padded.length - decimals;
+
+  const whole = padded.slice(0, split);
+  const fraction = padded.slice(split).replace(/0+$/, "");
+
+  return `${negative ? "-" : ""}${whole}${fraction ? "." + fraction : ""}`;
+};
+
+const getTokenByContract = (contractId) => {
+  if (!contractId) return null;
+
+  return tokenList.assets.find(
+    (token) =>
+      token.contract?.toUpperCase() ===
+      contractId.toUpperCase()
+  );
+};
+
+const getBalanceChangeContract = (change) =>
+  change?.asset_contract_id || change?.contract_id || change?.asset;
+
+const getBalanceChangeAsset = (change) => {
+  const contract = getBalanceChangeContract(change);
+  return (
+    change?.asset_code ||
+    getTokenByContract(contract)?.code ||
+    (contract ? `${contract.slice(0, 4)}...${contract.slice(-4)}` : null)
+  );
+};
+
+const formatBalanceChangeAmount = (change) => {
+  if (!change || change.amount == null) return null;
+  const contract = getBalanceChangeContract(change);
+  const decimals = getTokenByContract(contract)?.decimals ?? 7;
+  return formatRawAmount(change.amount, decimals) ?? String(change.amount);
+};
+
+const getOperationAsset = (operation) =>
+  operation?.transferAsset ||
+  operation?.asset_code ||
+  (operation?.asset_type === "native" ? "XLM" : null) ||
+  "";
+
+const resolveTokenCode = (contractId) => {
+  const token = getTokenByContract(contractId);
+  return token?.code || null;
+};
+
+const decodeSwapParams = (operation) => {
+  try {
+    const params = operation.parameters || [];
+
+    const decoded = params.map(p =>
+      StellarSdk.xdr.ScVal.fromXdr(p.value, "base64")
+    );
+
+    const symbolVal = decoded.find(v => v.type === "scvSymbol");
+    const functionName = symbolVal
+      ? String(StellarSdk.scValToNative(symbolVal))
+      : undefined;
+
+    if (
+      ![
+        "swap_exact_tokens_for_tokens",
+        "swap_tokens_for_exact_tokens"
+      ].includes(functionName)
+    ) {
+      return null;
+    }
+
+    const args = decoded.slice(2);
+
+    const getInt = (v) => {
+      if (!v) return null;
+      if (["scvI128", "scvU128", "scvI64", "scvU64"].includes(v.type)) {
+        return StellarSdk.scValToNative(v).toString();
+      }
+      return null;
+    };
+
+    const pathValue = args[2];
+
+    if (pathValue?.type !== "scvVec") {
+      return null;
+    }
+
+    const path = StellarSdk.scValToNative(pathValue).map(v =>
+      typeof v === "string" ? v : null
+    );
+
+    if (path.length < 2 || path.some(v => !v)) {
+      return null;
+    }
+
+    const fromToken = getToken(path[0]);
+    const toToken = getToken(path[path.length - 1]);
+
+    return {
+      functionName,
+      fromContract: path[0],
+      toContract: path[path.length - 1],
+      fromCode: fromToken?.code || null,
+      toCode: toToken?.code || null,
+      fromAmount: fromToken
+        ? formatRawAmount(getInt(args[0]), fromToken.decimals)
+        : null,
+      minToAmount: toToken
+        ? formatRawAmount(getInt(args[1]), toToken.decimals)
+        : null,
+    };
+  } catch (error) {
+    console.log("Swap decode error:", error);
+    return null;
+  }
+};
 
 const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
 const PAGE_SIZE = 10;
@@ -41,7 +175,7 @@ const getThemeColors = (isDarkMode) => ({
   error: "#F44336",
   sent: "#FF5722",
   received: "#4CAF50",
-  // semantic tint pairs: {bg, fg} for icon containers / status text, per category
+
   tint: {
     success: { bg: isDarkMode ? "#123321" : "#E4F3E9", fg: isDarkMode ? "#7ED9A0" : "#1D5F33" },
     warning: { bg: isDarkMode ? "#3A2E10" : "#FBF0DD", fg: isDarkMode ? "#F2C579" : "#8A5A0B" },
@@ -77,25 +211,12 @@ const chainMap = {
   7: "Stellar",
 };
 
-// Known NEAR-Intents (1Click) deposit addresses on Stellar. Jab bhi user
-// koi plain `payment` in me se kisi address ko bhejta hai, ye actually
-// NEAR Intents ke through ek withdrawal/cross-chain-swap hoti hai — NEAR
-// Intents Stellar par koi Soroban contract-call nahi karta, sirf plain
-// payment + memo hota hai (isliye ye purely address-based detection hai,
-// function-name se decode nahi ho sakta jaisa Aquarius/Allbridge ke liye
-// karte hain).
-// TODO: Ye list backend/config se dynamically aani chahiye (NEAR Intents
-// Explorer API se verify karke — jaisa humne discuss kiya tha), kyunki
-// deposit addresses NEAR Intents side se rotate/change ho sakte hain.
-// Abhi ke liye ek known address hardcode kiya hai.
 const NEAR_INTENT_DEPOSIT_ADDRESSES = new Set([
   "GDJ4JZXZELZD737NVFORH4PSSQDWFDZTKW3AIDKHYQG23ZXBPDGGQBJK",
 ]);
 
 const isNearIntentWithdrawal = (operation) =>
   operation.type === "payment" && NEAR_INTENT_DEPOSIT_ADDRESSES.has(operation.to);
-
-// Icon per destination chain, falls back to a generic link icon for unknown IDs.
 const chainIconMap = {
   Ethereum: "ethereum",
   BNB: "currency-bnb",
@@ -122,41 +243,40 @@ const decodeDestinationChain = (params = []) => {
   }
 };
 
-// Decodes the Soroban contract method name out of the operation's `parameters`
-// array. Horizon's own `function` field is just the op-kind constant
-// (HostFunctionTypeHostFunctionTypeInvokeContract) — never the method name —
-// so the method itself has to be read from the first `Sym`-typed parameter.
 const getContractFunctionName = (params = []) => {
   try {
     const symParam = params.find((p) => p.type === "Sym");
     if (!symParam?.value) return null;
     return Buffer.from(symParam.value, "base64")
       .toString("utf-8")
-      // strip the SCVal type-tag bytes that precede the ascii symbol name
       .replace(/[^\x20-\x7E]/g, "");
   } catch {
     return null;
   }
 };
 
-// Function names that are uniquely used by Aquarius's router/pool contracts.
-// Used purely for a friendly "via Aquarius" label — does not affect
-// bridge/swap/transfer classification.
-// NOTE (fix): "deposit"/"withdraw"/"claim" ko yahan pehle include kiya
-// gaya tha, lekin ye generic bridge function-names hain — Allbridge (aur
-// baaki bridges) bhi bilkul yehi naam use karte hain (isi file me upar
-// `UNAMBIGUOUS_BRIDGE_FUNCTIONS = ['deposit', 'withdraw', 'claim_balance']`
-// isko already confirm karta hai). Sirf "swap_chained" hi genuinely,
-// verifiably Aquarius-specific hai (multi-hop router pattern, jo humne
-// actual on-chain trace se confirm kiya tha). Baaki naam yahan rakhna
-// false-positive "via Aquarius" label deta hai kisi bhi generic
-// deposit/withdraw-based bridge tx par (jaisa is bug me hua).
+const decodeContractTransfer = (operation) => {
+  if (getContractFunctionName(operation?.parameters) !== "transfer") return null;
+
+  try {
+    const params = operation.parameters || [];
+    const decode = (param) =>
+      StellarSdk.scValToNative(StellarSdk.xdr.ScVal.fromXdr(param.value, "base64"));
+    const contractAddress = String(decode(params[0]));
+    const from = String(decode(params[2]));
+    const to = String(decode(params[3]));
+    const amount = decode(params[4]).toString();
+
+    return {contractAddress, from, to, amount};
+  } catch (error) {
+    console.log("Contract transfer decode error:", error);
+    return null;
+  }
+};
+
 const AQUARIUS_FUNCTIONS = ["swap_chained"];
 
 const getContractProvider = (fnName = "", subtype = null) => {
-  // Sirf genuine SWAP operations par hi provider-label dikhao — bridge
-  // operations (jinke function names generic hote hain, alag protocols
-  // shared karte hain) par kabhi nahi.
   if (subtype && subtype !== "swap") return null;
   const name = (fnName || "").toLowerCase();
   if (AQUARIUS_FUNCTIONS.includes(name)) return "Aquarius";
@@ -165,20 +285,28 @@ const getContractProvider = (fnName = "", subtype = null) => {
 
 const UNAMBIGUOUS_BRIDGE_FUNCTIONS = ["deposit", "withdraw", "claim_balance"];
 
-// Classifies an invoke_host_function call into one of three user-facing
-// buckets so the UI never has to guess from the generic op type alone.
-// `swap_chained` (and similarly-named functions) is shared by Allbridge's
-// real cross-chain bridge AND its same-chain multi-hop DEX swap — the
-// function name alone can't tell them apart. The destination-chain
-// parameter is the actual signal: present = genuinely crossing chains,
-// absent = the swap starts and ends on Stellar.
 const getInvokeHostFunctionSubtype = (fnName = "", assetBalanceChanges = [], hasDestinationChain = false) => {
   const name = (fnName || "").toLowerCase();
 
-  if (UNAMBIGUOUS_BRIDGE_FUNCTIONS.includes(name)) return "bridge";
-
-  if (name.includes("swap") || name.includes("liquidity")) {
+  if (
+    name === "swap_exact_tokens_for_tokens" ||
+    name === "swap_tokens_for_exact_tokens" ||
+    name === "swap_chained" ||
+    name.includes("swap")
+  ) {
     return hasDestinationChain ? "bridge" : "swap";
+  }
+
+  if (UNAMBIGUOUS_BRIDGE_FUNCTIONS.includes(name)) {
+    return "bridge";
+  }
+
+  if (name.includes("liquidity")) {
+    return hasDestinationChain ? "bridge" : "swap";
+  }
+
+  if (name === "mint_and_forward") {
+    return "mint_forward";
   }
 
   const changeType = assetBalanceChanges?.[0]?.type;
@@ -186,8 +314,6 @@ const getInvokeHostFunctionSubtype = (fnName = "", assetBalanceChanges = [], has
     return "transfer";
   }
 
-  // Unknown contract call — fall back on whether a destination chain was
-  // actually decoded rather than assuming bridge by default.
   return hasDestinationChain ? "bridge" : "transfer";
 };
 
@@ -209,12 +335,17 @@ const getTransactionType = (operation, userPublicKey, isReceived) => {
       return "Swap Out";
     case "manage_buy_offer":
       return "Swap In";
-    case "invoke_host_function": {
+    case "invoke_host_function": 
+    case "swap_exact_tokens_for_tokens":
+    {
       const subtype = operation.contractSubtype || "bridge";
+      if (subtype === "mint_forward") {
+        return operation.mintForwardReceived ? "Received" : "Withdraw";
+      }
       if (subtype === "swap") {
-        const fromAsset = operation.swapFromCode || "Unknown";
-        const toAsset = operation.swapToCode || "Unknown";
-        return `${fromAsset} -> ${toAsset}`;
+        const fromAsset = operation.swapFromCode;
+        const toAsset = operation.swapToCode;
+        return "Swap";
       }
       if (subtype === "transfer") {
         return isReceived ? "Received" : "Sent";
@@ -265,7 +396,8 @@ const getTransactionIcon = (operation) => {
     case "path_payment_strict_send":
     case "path_payment_strict_receive":
       return "swap-vertical";
-    case "invoke_host_function": {
+    case "invoke_host_function":
+      case "swap_exact_tokens_for_tokens": {
       const subtype = operation.contractSubtype || "bridge";
       if (subtype === "swap") return "swap-horizontal";
       if (subtype === "transfer") return "cash-multiple";
@@ -286,9 +418,6 @@ const getTransactionIcon = (operation) => {
   }
 };
 
-// Maps an operation to a semantic tint bucket in theme.tint so colors carry
-// meaning consistently (success/warning/danger/accent/pro/neutral) instead
-// of being assigned type-by-type ad hoc.
 const getCardTint = (operation, item, isReceived) => {
   if (item.success === false || ["failed", "Failed", "FAILED"].includes(item.success)) {
     return "danger";
@@ -313,7 +442,8 @@ const getCardTint = (operation, item, isReceived) => {
       return "success";
     case "create_claimable_balance":
       return "pro";
-    case "invoke_host_function": {
+    case "invoke_host_function":
+      case "swap_exact_tokens_for_tokens": {
       const subtype = operation.contractSubtype || "bridge";
       if (subtype === "swap") return "pro";
       if (subtype === "transfer") return isReceived ? "success" : "neutral";
@@ -328,15 +458,6 @@ const getCardTint = (operation, item, isReceived) => {
 
 const BRIDGE_STEPS = ["sent", "bridging", "received"];
 
-// NOTE (fix): pehle "completed"/"success"/"claimable"/true sab 2 return
-// karte the — jo labels array (Sent/Bridging/Received) ke LAST index (2)
-// ke barabar hai. Render logic me `i === stepIndex` ko "abhi in-progress"
-// (orange ring) treat kiya jaata hai, `i < stepIndex` ko hi green-check
-// milta hai. Isliye jab transaction genuinely poori complete ho jaati thi,
-// "Received" step (index 2) hamesha orange/in-progress hi dikhta rehta
-// tha, kabhi green-check nahi hota — off-by-one bug. Fix: fully-complete
-// states ab 3 return karte hain (last-index se ek aage), taaki `i < 3`
-// teeno steps (0,1,2) ke liye true ho aur sab green-check ho jayein.
 const getBridgeStepIndex = (status) => {
   if (status === true) return 3;
   if (status === false) return 0;
@@ -434,17 +555,34 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
   const operations = item?.operations?.records || [];
   const operation =
     operations.find((op) =>
-      ["payment", "path_payment_strict_receive", "path_payment_strict_send", "invoke_host_function"].includes(op.type)
+      ["payment", "path_payment_strict_receive", "path_payment_strict_send", "invoke_host_function","swap_exact_tokens_for_tokens"].includes(op.type)
     ) || operations[0];
+  const decodedTransfer = decodeContractTransfer(operation);
+  const decodedTransferAmount = decodedTransfer
+    ? formatRawAmount(decodedTransfer.amount, getTokenByContract(decodedTransfer.contractAddress)?.decimals ?? 7)
+    : null;
+  const decodedTransferAsset = decodedTransfer
+    ? getTokenByContract(decodedTransfer.contractAddress)?.code || getBalanceChangeAsset({asset_contract_id: decodedTransfer.contractAddress})
+    : null;
 
   const txType = operation.asset_balance_changes?.find((resObj) => resObj.to === userPublicKey);
   const isReceived =
     operation?.to === userPublicKey ||
     operation.type === "create_account" ||
     operation.type === "change_trust" ||
-    (operation.type === "invoke_host_function" && !!txType);
+    (
+    (
+      operation.type === "invoke_host_function" ||
+      operation.type === "swap_exact_tokens_for_tokens"
+    ) &&
+    !!txType
+  ) || decodedTransfer?.to === userPublicKey || item?.isReceived;
 
-  const multiTxType = [...new Set(operations.map((op) => getTransactionType(op, userPublicKey, isReceived)))].join(" & ");
+  const mintForwardReceived = operation.contractSubtype === "mint_forward"
+    ? Boolean(operation.mintForwardReceived)
+    : isReceived;
+
+  const multiTxType = [...new Set(operations.map((op) => getTransactionType(op, userPublicKey, mintForwardReceived)))].join(" & ");
   const transactionType = multiTxType;
 
   const [showTx, setshowTx] = useState(false);
@@ -456,7 +594,10 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
   const tint = colors.tint[tintKey];
 
   let amountText = "0";
-  if (operation.type === "create_claimable_balance") {
+  if (operation.contractSubtype === "mint_forward") {
+  amountText = operation.mintForwardAmount ?? "—";
+}
+ else if (operation.type === "create_claimable_balance") {
     amountText = operation.amount;
   } else if (operation.type === "payment") {
     amountText = operation.amount;
@@ -467,7 +608,17 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
       operation.asset_balance_changes?.filter(
         (resObj) => resObj.type === "transfer" && (resObj.to === userPublicKey || resObj.from === userPublicKey)
       ) || [];
-    amountText = transfers.length > 1 ? transfers[1].amount : transfers[0]?.amount || "0";
+    const transfer = transfers.length > 1 ? transfers[1] : transfers[0];
+    amountText = formatBalanceChangeAmount(transfer) || operation.transferAmount || decodedTransferAmount || item?.amount || "0";
+    operation.transferAsset = operation.transferAsset || decodedTransferAsset;
+  }
+ else if (operation.type === "swap_exact_tokens_for_tokens") {
+    const transfers =
+      operation.asset_balance_changes?.filter(
+        (resObj) => resObj.type === "transfer" && (resObj.to === userPublicKey || resObj.from === userPublicKey)
+      ) || [];
+    const transfer = transfers.length > 1 ? transfers[1] : transfers[0];
+    amountText = formatBalanceChangeAmount(transfer) || operation.transferAmount || decodedTransferAmount || item?.amount || "0";
   } else if (operation.type === "manage_sell_offer" || operation.type === "manage_buy_offer") {
     amountText = operation.amount;
   } else if (operation.type === "buyCry" || operation.type === "sellCry") {
@@ -478,17 +629,14 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
     operation.type === "path_payment_strict_send" || operation.type === "path_payment_strict_receive";
   const isWalletTx = operation.type === "wallet_tx";
   const isBridgeInvoke = operation.type === "invoke_host_function" && (operation.contractSubtype || "bridge") === "bridge";
-  const isSwapInvoke = operation.type === "invoke_host_function" && operation.contractSubtype === "swap";
+  const isSwapInvoke =
+  (
+    operation.type === "invoke_host_function" ||
+    operation.type === "swap_exact_tokens_for_tokens"
+  ) &&
+  operation.contractSubtype === "swap";
   const isBridgeLike = isWalletTx && operation.txType !== "nearIntent";
-  // Plain `payment` op jo NEAR-Intents ke known deposit-address par jaa
-  // raha hai — Horizon ke liye ye ek simple payment hai, lekin actually
-  // ek cross-chain withdrawal hai (NEAR Intents Stellar par koi contract-
-  // call nahi karta). UI me ise bridge-card jaisa hi treat karte hain.
   const isNearIntentPayment = isNearIntentWithdrawal(operation);
-  // Dual-leg amount display applies to path payments, on-chain swaps,
-  // Allbridge-style bridge calls, aur NEAR-Intent withdrawals — anywhere
-  // a "from" and "to" leg both exist (ya conceptually exist, jaisa
-  // NEAR-Intent ke case me — receive-leg dusre chain par hoti hai).
   const isDualAmount = isPathPayment || isSwapInvoke || isBridgeInvoke || isNearIntentPayment;
 
   let assetFrom = "";
@@ -502,35 +650,26 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
     amountFrom = operation.source_amount;
     amountTo = operation.amount;
   } else if (isSwapInvoke) {
-    assetFrom = operation.swapFromCode || "Unknown";
-    assetTo = operation.swapToCode || "Unknown";
+    assetFrom = operation.swapFromCode || "Token";
+    assetTo = operation.swapToCode || "Token";
+    amountFrom = operation.swapFromAmount;
     const transfers = operation.asset_balance_changes || [];
-    const outLeg = transfers.find((t) => t.from === userPublicKey);
-    const inLeg = transfers.find((t) => t.to === userPublicKey);
-    amountFrom = outLeg?.amount || operation.amount;
-    amountTo = inLeg && inLeg !== outLeg ? inLeg.amount : null;
-  } else if (isBridgeInvoke) {
+
+    const inLeg = transfers.find((t) =>t.type === "transfer" &&t.to === userPublicKey);
+    amountTo =operation.swapToAmount ??inLeg?.amount ??operation.swapMinToAmount ??null;
+} else if (isBridgeInvoke) {
     const transfers = operation.asset_balance_changes || [];
     const outLeg = transfers.find((t) => t.from === userPublicKey);
     const inLeg = transfers.find((t) => t.to === userPublicKey);
     amountFrom = outLeg?.amount || amountText;
-    // Only show a "+" leg when a genuinely distinct incoming transfer exists
-    // in this same operation. Bridging out to another chain often has only
-    // the outgoing leg recorded here — the receive happens on the other
-    // chain later — so defaulting amountTo to amountFrom would show a
-    // misleading identical -X / +X pair.
     amountTo = inLeg && inLeg !== outLeg ? inLeg.amount : null;
   } else if (isNearIntentPayment) {
-    // Plain payment — Horizon ke paas destination-chain wali "+" leg ka
-    // koi data hi nahi hai (wo off-chain, NEAR solvers ke through hoti
-    // hai). Sirf outgoing leg pakki hai; incoming amount NEAR Intents
-    // Explorer API se hi milega (yahan available nahi, isliye null).
     amountFrom = operation.amount || amountText;
     amountTo = null;
   }
 
   const providerLabel =
-    operation.type === "invoke_host_function"
+    operation.type === "invoke_host_function"||operation.type==="swap_exact_tokens_for_tokens"
       ? getContractProvider(operation.contractFunctionName, operation.contractSubtype)
       : isNearIntentPayment
       ? "NEAR Intent"
@@ -544,14 +683,17 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
     }
   };
 
-  const txViewrManager = (txId, txType, received) => {
+  const txViewrManager = (txId, txType, received, fullTx) => {
     if (operation.txType === "nearIntent") {
-      Linking.openURL(`${NEARINTENT.EXPLORER}${txId}`);
+      let explorerUrl = `${NEARINTENT.EXPLORER}${txId}`;
+      if (fullTx?.txType === "nearIntent" && fullTx?.chain === "SRB" && fullTx?.depositMemo) {
+        explorerUrl += `?depositMemo=${fullTx.depositMemo}`;
+      }
+      Linking.openURL(explorerUrl);
       return;
     }
-    if (txType === "invoke_host_function" && !received) {
-      setshowTxHash([{ chain: "SRB", hash: txId }]);
-      setshowTx(true);
+    if (txType === "invoke_host_function"||txType==="swap_exact_tokens_for_tokens" && !received) {
+      Linking.openURL(`${STELLAR_URL.EXPERT_URL}/tx/${txId}`);
     } else if (txType === "wallet_tx") {
       setshowTxHash([{ chain: operation.chain, hash: operation.hash }]);
       setshowTx(true);
@@ -583,7 +725,8 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
             : txViewrManager(
                 item?.operations?.records[0]?.transaction_hash || item?.operations?.records[0]?.hash,
                 operation.type,
-                isReceived
+                isReceived,
+                item?.operations?.records[0]
               );
         }}
       >
@@ -631,15 +774,28 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
           ) : (
             !isDualAmount && (
               <View style={styles.transactionHeader}>
-                <Text style={[styles.amount, { color: colors.primaryText }]}>
-                  {isReceived ||
-                  ["manage_sell_offer", "manage_buy_offer", "sellCry", "buyCry", "create_claimable_balance"].includes(
-                    operation.type
-                  )
-                    ? ""
-                    : "-"}
-                  {operation.type !== "change_trust" && amountText}
-                </Text>
+                <Text
+  style={[
+    styles.amount,
+    {
+      color: operation.mintForwardDirection === "received"
+        ? colors.tint.success.fg
+        : colors.primaryText
+    }
+  ]}
+>
+  {operation.mintForwardAmount != null
+    ? `${
+        operation.mintForwardDirection === "received"
+          ? "+"
+          : operation.mintForwardDirection === "sent"
+          ? "-"
+          : ""
+      }${operation.mintForwardAmount} ${operation.mintForwardAsset || ""}`
+    : amountText !== "0"
+    ? `${isReceived ? "+" : operation.type === "payment" ? "-" : ""}${amountText} ${getOperationAsset(operation)}`
+    : "—"}
+</Text>
               </View>
             )
           )}
@@ -650,8 +806,10 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
                 <View>
                   <Text style={[styles.type, { color: colors.primaryText, maxWidth: 140 }]}>{transactionType}</Text>
                   <Text style={[styles.date, { color: colors.secondaryText }]}>{item.date}</Text>
-                   {providerLabel==="Aquarius" && (
+                   {providerLabel==="Aquarius" ? (
                     <Text style={[styles.providerLabel, { color: colors.tint.pro.fg }]}>via {providerLabel}</Text>
+                  ):(
+                    <Text style={[styles.providerLabel, { color: colors.tint.pro.fg }]}>via SoroSwap</Text>
                   )}
                 </View>
                 <View>
@@ -690,9 +848,6 @@ const TransactionCard = ({ item, userPublicKey, isDarkMode, onRefreshTx }) => {
         </View>
       </TouchableOpacity>
 
-      <View style={styles.allBridgeTxCon}>
-        <AllbridgeTxTrack txs={showTxHash} isDarkMode={true} showTx={showTx} closeTx={() => setshowTx(false)} />
-      </View>
     </>
   );
 };
@@ -702,48 +857,114 @@ const processStellarTx = async (tx, publicKey) => {
   const firstOp = operations.records[0];
   let amount = "0";
   let isReceived = false;
-
-  if (firstOp.type === "payment") {
+if (firstOp.type === "payment") {
     amount = firstOp.amount;
     isReceived = firstOp.to === publicKey;
   } else if (firstOp.type === "create_account") {
     amount = firstOp.starting_balance;
     isReceived = true;
-  } else if (firstOp.type === "invoke_host_function") {
+  } else if (firstOp.type === "invoke_host_function"||firstOp.type==="swap_exact_tokens_for_tokens") {
     const decodedChain = decodeDestinationChain(firstOp.parameters);
-    firstOp.destinationChain = decodedChain; // null when this call never left Stellar
+    firstOp.destinationChain = decodedChain;
 
     const fnName = getContractFunctionName(firstOp.parameters);
     firstOp.contractFunctionName = fnName;
     firstOp.contractSubtype = getInvokeHostFunctionSubtype(fnName, firstOp.asset_balance_changes, !!decodedChain);
+    const contractTransfer = decodeContractTransfer(firstOp);
+
+    if (contractTransfer) {
+      const transferToken = getTokenByContract(contractTransfer.contractAddress);
+      firstOp.transferAmount = formatRawAmount(
+        contractTransfer.amount,
+        transferToken?.decimals ?? 7,
+      ) || contractTransfer.amount;
+      firstOp.transferAsset = transferToken?.code || getBalanceChangeAsset({
+        asset_contract_id: contractTransfer.contractAddress,
+      });
+      amount = firstOp.transferAmount;
+      isReceived = contractTransfer.to === publicKey;
+    }
+
+    if (firstOp.contractSubtype === "mint_forward") {
+  const changes = firstOp.asset_balance_changes || [];
+
+  const transfers = changes.filter(
+    c => c.type === "transfer" && c.amount != null
+  );
+
+  const received = transfers.find(
+    c => c.to === publicKey
+  );
+
+  const sent = transfers.find(
+    c => c.from === publicKey
+  );
+
+  const forwarded = transfers.find(
+    c => c.from?.startsWith("C") && c.to?.startsWith("G")
+  );
+
+  const matched = received || sent || forwarded;
+
+  firstOp.mintForwardAmount = formatBalanceChangeAmount(matched);
+  firstOp.mintForwardAsset = getBalanceChangeAsset(matched) || "USDC";
+  firstOp.mintForwardReceived = Boolean(received);
+
+  firstOp.mintForwardDirection =
+    received ? "received" :
+    sent ? "sent" :
+    matched ? "forwarded" : "unknown";
+
+  amount = firstOp.mintForwardAmount ?? "0";
+  isReceived = Boolean(received);
+}
+
 
     if (firstOp.contractSubtype === "swap") {
-      // Resolve the actual from/to asset codes for this swap leg pair —
-      // these fields don't exist on the raw Horizon record, so without
-      // this every swap card silently fell back to "XLM -> XLM".
-      //
-      // NOTE (fix): Horizon's asset_balance_changes entries use the field
-      // name `asset_code` (matching every other place in this file, e.g.
-      // path-payment handling below) — this previously read `.code`,
-      // which doesn't exist on the object, so it was always undefined and
-      // silently fell through to the "Unknown" fallback for every
-      // non-native leg. That's why any swap involving a non-XLM asset on
-      // both legs (the vast majority of Aquarius multi-hop swaps) rendered
-      // as "Unknown -> Unknown" regardless of what was actually swapped.
-      const legs = firstOp.asset_balance_changes || [];
-      const outLeg = legs.find((l) => l.from === publicKey);
-      const inLeg = legs.find((l) => l.to === publicKey && l !== outLeg);
-      firstOp.swapFromCode = outLeg ? (outLeg.asset_type === "native" ? "XLM" : outLeg.asset_code || "Unknown") : "Unknown";
-      firstOp.swapToCode = inLeg ? (inLeg.asset_type === "native" ? "XLM" : inLeg.asset_code || "Unknown") : "Unknown";
-    }
+  const swapData = decodeSwapParams(firstOp);
+
+  if (swapData) {
+    firstOp.swapFromCode = swapData.fromCode;
+    firstOp.swapToCode = swapData.toCode;
+    firstOp.swapFromContract = swapData.fromContract;
+    firstOp.swapToContract = swapData.toContract;
+    firstOp.swapFromAmount = swapData.fromAmount;
+    firstOp.swapMinToAmount = swapData.minToAmount;
+
+const incomingTransfer = firstOp.asset_balance_changes?.find(
+  (t) =>
+    t.type === "transfer" &&
+    t.to === publicKey &&
+    (
+      !swapData.toContract ||
+      t.asset_contract_id === swapData.toContract ||
+      t.contract_id === swapData.toContract
+    )
+);
+
+firstOp.swapToAmount =
+  incomingTransfer?.amount ?? null;
+  } else {
+    const legs = firstOp.asset_balance_changes || [];
+
+    const outLeg = legs.find(l => l.from === publicKey);
+    const inLeg = legs.find(l => l.to === publicKey);
+
+    firstOp.swapFromCode = outLeg?.asset_code || null;
+    firstOp.swapToCode = inLeg?.asset_code || null;
+    firstOp.swapFromAmount = outLeg?.amount || null;
+    firstOp.swapToAmount = inLeg?.amount || null;
+  }
+}
 
     const resBal =
       firstOp.asset_balance_changes?.find(
         (resObj) => (resObj.to === publicKey || resObj.from === publicKey) && resObj.type === "transfer"
       ) || null;
 
-    if (resBal) {
-      amount = resBal.amount || "0";
+    if (resBal && firstOp.contractSubtype !== "mint_forward") {
+      amount = formatBalanceChangeAmount(resBal) || "0";
+      firstOp.transferAsset = getBalanceChangeAsset(resBal);
       isReceived = resBal.to === publicKey;
     }
   } else if (["change_trust"].includes(firstOp.type)) {
@@ -934,7 +1155,7 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
           }
           const stellarInvokeTxIds = new Set(
             processedTransactions
-              .filter((tx) => tx.operations.records[0].type === "invoke_host_function")
+              .filter((tx) => tx.operations.records[0].type === "invoke_host_function"||tx.operations.records[0].type === "swap_exact_tokens_for_tokens")
               .map((tx) => tx.operations.records[0].transaction_hash)
               .filter(Boolean)
           );
@@ -1107,8 +1328,21 @@ const StellarTransactionHistory = ({ publicKey, isDarkMode }) => {
       }
 
       if (filterTab === "path") {
-        return opType === "path_payment_strict_send" || opType === "path_payment_strict_receive" || opType === "wallet_tx";
-      }
+  const op = tx.operations.records[0];
+
+  return (
+    op.type === "path_payment_strict_send" ||
+    op.type === "path_payment_strict_receive" ||
+    op.type === "wallet_tx" ||
+    (
+      (
+        op.type === "invoke_host_function" ||
+        op.type === "swap_exact_tokens_for_tokens"
+      ) &&
+      op.contractSubtype === "swap"
+    )
+  );
+}
 
       return true;
     });

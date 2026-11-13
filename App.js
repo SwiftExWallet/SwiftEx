@@ -1,6 +1,6 @@
 import "./global";
 import { useEffect } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, View, AppState, Platform, NativeModules } from "react-native";
 import { Provider as StoreProvider } from "react-redux";
 import store from "./src/components/Redux/Store";
 import NavigationProvider from "./src/Routes/Navigation";
@@ -14,6 +14,7 @@ import crashlytics from '@react-native-firebase/crashlytics';
 import { CheckAppAvailable } from "./src/Screens/AppChecks/AppCheckService";
 import { withStallion } from 'react-native-stallion';
 import AppOTAUpdates from "./src/Dashboard/exchange/crypto-exchange-front-end-main/src/pages/AnimatedComponent/AppOTAUpdates";
+const {InAppUpdate} = NativeModules;
 
 function App() {
   LogBox.ignoreAllLogs()
@@ -22,6 +23,22 @@ function App() {
   }
   useEffect(() => {
     crashlytics().log('App mounted.');
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+    InAppUpdate?.checkForUpdate();
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'active') {
+        InAppUpdate?.checkForUpdate();
+      }
+    },
+    );
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
   

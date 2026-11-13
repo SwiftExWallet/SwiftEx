@@ -25,7 +25,7 @@ import { ShowErrotoast, Showsuccesstoast } from "../../../../reusables/Toasts";
 import Icon from "../../../../../icon";
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useIsFocused } from '@react-navigation/native';
-import { STELLAR_URL } from "../../../../constants";
+import { ENVIRONMENT, STELLAR_URL } from "../../../../constants";
 import { useToast } from "native-base";
 import { Exchange_screen_header } from "../../../../reusables/ExchangeHeader";
 import StellarAccountReserve from "../utils/StellarReserveComponent";
@@ -35,14 +35,12 @@ import WalletActivationComponent from "../utils/WalletActivationComponent";
 import CustomOrderBook from "../pages/stellar/CustomOrderBook";
 import AMMSwap from "../pages/stellar/AMMSwap";
 import InstentTradeHistory from "../pages/stellar/InstentTradeHistory";
-import * as StellarSdk from '@stellar/stellar-sdk';
+import * as StellarSdk from '@stellar/stellar-sdk/axios';
 import { colors } from "../../../../../Screens/ThemeColorsConfig";
-import stellarTokens from "../pages/stellar/Tokens.json";
-import OneTapComponet from "./OneTapComponet";
 import CustomInfoProvider from "./CustomInfoProvider";
 import CrossChainTx from "./CrossChainTx";
 import { GetStellarTokenList } from "../../../../../utilities/TokenUtils";
-import DragToProcced from "../../src/pages/AnimatedComponent/DragToProcced"
+import ShortTermStorage from "../../../../../utilities/ShortTermStorage";
 
 // Initialize Stellar server
 const server = new StellarSdk.Horizon.Server(STELLAR_URL.URL);
@@ -272,12 +270,26 @@ export const NewOfferModal = () => {
         offerId: stellarConfig.DEFAULT_OFFER_ID
       }))
       const tx = offerTx.setTimeout(stellarConfig.TRANSACTION_TIMEOUT).build();
-      const txXDR = tx.toXDR();
+      const txXDR = tx.toXdr();
       const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
       const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
       tx.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
       const offerResult = await server.submitTransaction(tx);
-      
+       await ShortTermStorage.syncTx({
+        txHash: offerResult.hash,
+        walletAddress: signedTx.publicKey,
+        fromAddress: signedTx.publicKey,
+        toAddress: signedTx.publicKey,
+        provider: "STELLAR",
+        fromChain: "STR",
+        fromToken: top_value,
+        toChain: "STR",
+        toToken: top_value_0,
+        amountIn: offer_amount?.toString(),
+        amountOut: offer_amount?.toString(),
+        txType: "Sell Offer",
+        fromTokenMetaData: top_value_0
+      });
       console.log('Sell Offer placed:', offerResult.hash);
       Showsuccesstoast(toast, SUCCESS_MESSAGES.SELL_OFFER_CREATED);
       setLoading(false);
@@ -335,12 +347,26 @@ export const NewOfferModal = () => {
           })
         )
         const tx=offerTx.setTimeout(stellarConfig.TRANSACTION_TIMEOUT).build();
-        const txXDR = tx.toXDR();
+        const txXDR = tx.toXdr();
         const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
         const signatureBuffer = Buffer.from(signedTx.signature, 'base64');
         tx.addSignature(signedTx.publicKey, signatureBuffer.toString('base64'));
       const offerResult = await server.submitTransaction(tx);
-      
+      await ShortTermStorage.syncTx({
+        txHash: offerResult.hash,
+        walletAddress: signedTx.publicKey,
+        fromAddress: signedTx.publicKey,
+        toAddress: signedTx.publicKey,
+        provider: "STELLAR",
+        fromChain: "STR",
+        fromToken: top_value,
+        toChain: "STR",
+        toToken: top_value_0,
+        amountIn: offer_amount?.toString(),
+        amountOut: offer_amount?.toString(),
+        txType: "Buy Offer",
+        fromTokenMetaData: top_value_0
+      });
       console.log('Buy Offer placed:', offerResult.hash);
       Showsuccesstoast(toast, SUCCESS_MESSAGES.BUY_OFFER_CREATED);
       setLoading(false);
@@ -1184,17 +1210,6 @@ export const NewOfferModal = () => {
                           )}
                         </Text>
                       </TouchableOpacity>
-                      {/* <View style={{marginTop:hp(0.9),marginBottom:hp(2.8)}}>
-                        <DragToProcced
-                          onDragComplete={() => {
-                            setLoading(true)
-                            offer_creation()
-                          }}
-                          disabled={Loading || isBalanceInsufficient || assetInfo}
-                          isProccessing={Loading}
-                          heading={assetInfo ? (ERROR_MESSAGES.INSUFFICIENT_FUNDS) : (show_trust_modal.length > 0 ? ERROR_MESSAGES.MULTIOP_OFFER : ERROR_MESSAGES.CREATE_OFFER)}
-                        />
-                      </View> */}
 
 
                     <Modal
@@ -1961,7 +1976,7 @@ const styles = StyleSheet.create({
 });
 
 export const stellarConfig = {
-  NETWORK: StellarSdk.Networks.PUBLIC,
+  NETWORK: ENVIRONMENT==="TESTNET"?StellarSdk.Networks.TESTNET:StellarSdk.Networks.PUBLIC,
   TRANSACTION_TIMEOUT: 30,
   DEFAULT_OFFER_ID: 0,
   ANIMATION_DURATION: 1500,
@@ -1982,7 +1997,7 @@ export const stellarConfig = {
     BTC: "BTC",
   },
   SUPPORTED_ASSETS: [
-    { code: "XLM", issuer: null, domain: "stellar.org", icon: "https://stellar.myfilebase.com/ipfs/QmSTXU2wn1USnmd5ZypA5zMze259wEPSDP3i8wivyr9qiq" },
+    { code: "XLM", issuer: null, domain: "stellar.org", icon: "https://ultracapital.xyz/static/images/icons/yXLM.png" },
     { code: "USDC", issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", domain: "centre.io", icon: "https://assets-cdn.trustwallet.com/blockchains/arbitrum/assets/0xaf88d065e77c8cC2239327C5EDb3A432268e5831/logo.png" }
   ],
   ISSUERS: {

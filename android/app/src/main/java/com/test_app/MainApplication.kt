@@ -33,6 +33,7 @@ class MainApplication : Application(), ReactApplication {
               add(EthereumWalletPackage())
               add(walletTransactionPackage())
              // add(PlayIntegrityPackage())
+              add(InAppUpdatePackage())
             },
       jsBundleFilePath = Stallion.getJSBundleFile(applicationContext)
     )}       

@@ -1,14 +1,72 @@
 import Foundation
 import stellarsdk
+import LocalAuthentication
 
 @objc(StellarSigner)
 class StellarSigner: NSObject {
   
   let sdk = StellarSDK(withHorizonUrl: "https://horizon.stellar.org")
-  let serviceName = "com.appSwiftEx.appStorage"
+
+  private func authenticateForSigning(_ completion: @escaping (Result<Void, Error>) -> Void) {
+    guard TransactionAuthPolicyIOS.isEnabled() else {
+      completion(.success(()))
+      return
+    }
+
+    let context = LAContext()
+    let reason = "Authenticate to sign transaction"
+    var error: NSError?
+
+    guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+      DispatchQueue.main.async {
+        NativePinBottomSheet.show { pin in
+          guard let pin else {
+            completion(.failure(NSError(domain: "AUTH", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid app PIN"])))
+            return
+          }
+          do {
+            let result = try AppPinVerifierIOS.authenticate(pin)
+            if result.status == .success { completion(.success(())) }
+            else { completion(.failure(result.authenticationError)) }
+          } catch { completion(.failure(error)) }
+        }
+      }
+      return
+    }
+
+    context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
+      if success {
+        do {
+          _ = try AppPinVerifierIOS.recordDeviceSuccess()
+          completion(.success(()))
+        } catch { completion(.failure(error)) }
+      } else {
+        completion(.failure(authError ?? NSError(domain: "AUTH", code: -2, userInfo: [NSLocalizedDescriptionKey: "Authentication failed"])))
+      }
+    }
+  }
+
+  private func signerAuthCode(_ error: Error) -> String {
+    let nsError = error as NSError
+    if nsError.domain.hasPrefix("PIN_") { return nsError.domain }
+    if nsError.domain == LAError.errorDomain {
+      switch LAError.Code(rawValue: nsError.code) {
+      case .userCancel, .systemCancel, .appCancel, .userFallback:
+        return "AUTH_CANCELLED"
+      default:
+        return "AUTH_FAILED"
+      }
+    }
+    if nsError.domain == "AUTH", nsError.code == -1 {
+      return "AUTH_UNAVAILABLE"
+    }
+    return "AUTH_FAILED"
+  }
   
   private func getPrivateKey(chain: String) throws -> String? {
-    guard let walletJson = retrieveFromKeychain(key: "activeUserWallet", service: serviceName) else {
+    guard let walletJson = WalletKeychainPolicy.activeWallet(read: { service in
+      self.retrieveFromKeychain(key: "activeUserWallet", service: service)
+    }) else {
       throw NSError(domain: "KEYCHAIN", code: -1, userInfo: [NSLocalizedDescriptionKey: "No wallet found"])
     }
     
@@ -103,18 +161,39 @@ class StellarSigner: NSObject {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
+    authenticateForSigning { authResult in
+      do {
+        try authResult.get()
+        self.signTransactionAfterAuthentication(
+          transactionXDR,
+          resolver: resolve,
+          rejecter: reject
+        )
+      } catch {
+        reject(self.signerAuthCode(error), error.localizedDescription, error)
+      }
+    }
+  }
+
+  private func signTransactionAfterAuthentication(
+    _ transactionXDR: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
     Task {
       do {
         let secretKey = try getPrivateKey(chain: "stellar")!
         let sourceKeyPair = try KeyPair(secretSeed: secretKey)
-        let envelopeXDR = try TransactionEnvelopeXDR(xdr: transactionXDR)
         let network = Network.public
-        let hash = try envelopeXDR.txHash(network: network)
-        let signature = sourceKeyPair.sign([UInt8](hash))
+        let transaction = try Transaction(envelopeXdr: transactionXDR)
+        try transaction.sign(keyPair: sourceKeyPair, network: network)
+        let signedXDR = try transaction.encodedEnvelope()
+        let signature = sourceKeyPair.sign([UInt8](try transaction.getTransactionHashData(network: network)))
         let signatureBase64 = Data(signature).base64EncodedString()
         
         await MainActor.run {
           resolve([
+            "signedXDR": signedXDR,
             "signature": signatureBase64,
             "publicKey": sourceKeyPair.accountId
           ])

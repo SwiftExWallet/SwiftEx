@@ -1,10 +1,11 @@
 package org.app.swiftEx.wallet
 
 import com.facebook.react.bridge.*
-import android.content.Context
 import android.util.Log
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import org.json.JSONObject
 import org.stellar.sdk.*
 import java.security.MessageDigest
@@ -12,27 +13,83 @@ import java.security.MessageDigest
 
 class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
     private val TAG = "StellarSigner"
-    private val PREF_NAME = "com_swiftEx_app_secure"
+    private val PREF_NAME = SecureWalletStore.PREF_NAME
     private val KEY_WALLET = "activeUserWallet"
     private val stellarServer = Server("https://horizon.stellar.org")
 
-    private val prefs by lazy {
-        try {
-            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-            EncryptedSharedPreferences.create(
-                PREF_NAME,
-                masterKeyAlias,
-                reactApplicationContext,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to init EncryptedSharedPreferences", e)
-            reactApplicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        }
-    }
+    private val prefs by lazy { SecureWalletStore.open(reactApplicationContext) }
 
     override fun getName() = "StellarSigner"
+
+    private fun authenticateForSigning(promise: Promise, onAuthenticated: () -> Unit) {
+        if (!TransactionAuthPolicy.isEnabled(prefs)) {
+            onAuthenticated()
+            return
+        }
+
+        val activity = reactApplicationContext.currentActivity as? FragmentActivity
+            ?: return promise.reject("ACTIVITY_UNAVAILABLE", "No active activity")
+
+        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        val canAuthenticate = BiometricManager.from(activity).canAuthenticate(authenticators)
+        if (canAuthenticate != BiometricManager.BIOMETRIC_SUCCESS) {
+            return NativePinBottomSheet.show(
+                activity,
+                onSubmit = { pin ->
+                    try {
+                        val result = AppPinVerifier.authenticate(prefs, pin)
+                        if (result.status == PinAttemptStatus.SUCCESS) onAuthenticated()
+                        else promise.rejectPinAttempt(result)
+                    } catch (e: Exception) {
+                        promise.reject("PIN_AUTH_ERROR", "Unable to validate app PIN", e)
+                    }
+                },
+                onCancel = { promise.reject("AUTH_CANCELLED", "Authentication cancelled") },
+            )
+        }
+
+        val executor = ContextCompat.getMainExecutor(activity)
+        val prompt = BiometricPrompt(
+            activity,
+            executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    try {
+                        AppPinVerifier.recordDeviceSuccess(prefs)
+                        onAuthenticated()
+                    } catch (e: Exception) {
+                        promise.reject("PIN_AUTH_ERROR", "Unable to reset PIN lock", e)
+                    }
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    val code = if (
+                        errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
+                        errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
+                        errorCode == BiometricPrompt.ERROR_CANCELED
+                    ) "AUTH_CANCELLED" else "AUTH_FAILED"
+                    promise.reject(code, errString.toString())
+                }
+
+                override fun onAuthenticationFailed() {
+                    Log.w(TAG, "Biometric authentication attempt failed")
+                }
+            }
+        )
+
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Authenticate to sign transaction")
+            .setSubtitle("Confirm it is you before this wallet signs.")
+            .setAllowedAuthenticators(authenticators)
+            .build()
+
+        activity.runOnUiThread {
+            try { prompt.authenticate(promptInfo) } catch (error: RuntimeException) {
+                promise.reject("AUTH_FAILED", error.message, error)
+            }
+        }
+    }
 
     @ReactMethod
     fun getAssets(publicKey: String, promise: Promise) {
@@ -68,6 +125,7 @@ class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJav
 
     @ReactMethod
     fun signTransaction(transactionXDR: String, promise: Promise) {
+    authenticateForSigning(promise) {
         Thread {
             try {
                 val secretKey = getPrivateKey() ?: run {
@@ -109,6 +167,7 @@ class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJav
                 promise.reject("SIGN_ERROR", "${e.message} | ${e.stackTraceToString()}")
             }
         }.start()
+        }
     }
 
     private fun ByteArray.toHexString(): String =

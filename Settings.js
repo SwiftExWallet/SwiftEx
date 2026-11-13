@@ -11,6 +11,7 @@ import {
   Image,
   Linking,
   ActivityIndicator,
+  Alert as NativeAlert,
 } from "react-native";
 import {
   widthPercentageToDP as wp,
@@ -32,6 +33,10 @@ import DeviceInfo from "react-native-device-info";
 import { alert } from "./src/Dashboard/reusables/Toasts";
 import darkBlue from "./assets/darkBlue.png";
 import crashlytics from '@react-native-firebase/crashlytics';
+import {
+  getTransactionAuthEnabled,
+  setTransactionAuthEnabled,
+} from "./src/utilities/transactionAuth";
 
 const Settings = (props) => {
   const navi = useNavigation();
@@ -45,6 +50,8 @@ const Settings = (props) => {
   const state = useSelector((state) => state);
   const theme = state.THEME.THEME ? colors.dark : colors.light;
   const [notificationLoading,setNotificationLoading] = useState(false);
+  const [transactionAuthEnabled, setTransactionAuthState] = useState(false);
+  const [transactionAuthLoading, setTransactionAuthLoading] = useState(false);
 
   const notificationPermissionStatus = async () => {
     try {
@@ -97,6 +104,44 @@ const Settings = (props) => {
     }
     insilize_data()
   }, [focused, state.THEME.THEME, Checked, notificationStatus])
+
+  useEffect(() => {
+    if (!focused) return;
+
+    getTransactionAuthEnabled().then(setTransactionAuthState);
+  }, [focused]);
+
+  const persistTransactionAuth = async (enabled) => {
+    try {
+      setTransactionAuthLoading(true);
+      const persistedState = await setTransactionAuthEnabled(enabled);
+      setTransactionAuthState(persistedState);
+    } catch (error) {
+      alert("error", error?.message || "Unable to update transaction authentication");
+    } finally {
+      setTransactionAuthLoading(false);
+    }
+  };
+
+  const handleTransactionAuthToggle = () => {
+    if (!transactionAuthEnabled) {
+      persistTransactionAuth(true);
+      return;
+    }
+
+    NativeAlert.alert(
+      "Disable transaction authentication?",
+      "Transactions and wallet signatures will no longer require PIN, biometric, or device authentication.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Disable",
+          style: "destructive",
+          onPress: () => persistTransactionAuth(false),
+        },
+      ]
+    );
+  };
 
   const handleNotification = async () => {
     try {
@@ -246,6 +291,28 @@ const Settings = (props) => {
           <Text style={[styles.text, { color: theme.headingTx }]}>{Platform.OS === 'android' ? "Biometric Authenticaton" : "Authenticaton"}</Text>
         </TouchableOpacity>
 
+        <View style={[styles.cardWithToggel, { borderBottomColor: theme.inactiveTx }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+            <View style={styles.iconCon}>
+              <Icon type={"materialCommunity"} name={"shield-key"} size={31} color={"#4052D6"} />
+            </View>
+            <Text style={[styles.text, { color: theme.headingTx, flexShrink: 1 }]}>Transaction authentication</Text>
+          </View>
+          <View style={Platform.OS == "android" ? { paddingRight: wp(2) } : { paddingRight: wp(3.5) }}>
+            {transactionAuthLoading ? (
+              <ActivityIndicator color={"green"} size={"small"} />
+            ) : (
+              <ToggleSwitch
+                isOn={transactionAuthEnabled}
+                onColor="green"
+                offColor="gray"
+                size="small"
+                onToggle={handleTransactionAuthToggle}
+              />
+            )}
+          </View>
+        </View>
+
         <TouchableOpacity
           style={[styles.card, { borderBottomColor: theme.inactiveTx }]}
           onPress={async () => {
@@ -258,6 +325,16 @@ const Settings = (props) => {
           <Text style={[styles.text, { color: theme.headingTx }]}>About SwiftEx</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={[styles.card, { borderBottomColor: theme.inactiveTx }]}
+          onPress={() => {navi.navigate("AppStatus")}}
+        >
+          <View style={styles.iconCon}>
+            <Icon type={"material"} name={"broken-image"} size={31} color={"#4052D6"} />
+          </View>
+          <Text style={[styles.text, { color: theme.headingTx }]}>App Status</Text>
+        </TouchableOpacity>
+        
         <TouchableOpacity
           style={[styles.card, { borderBottomWidth: 0, borderBottomColor: theme.inactiveTx }]}
           onPress={() => { Clipboard.setString("info@swiftexwallet.com"),alert("success","E-mail successfully copied") }}
