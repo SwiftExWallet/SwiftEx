@@ -30,7 +30,7 @@ import PositionsSection from "../components/PositionsSection";
 import { DepositSheet, WithdrawSheet } from "../components/FundsSheets";
 import PerpsHistory from "../components/PerpsHistory";
 import { usePerpsAccount } from "../hooks/usePerpsAccount";
-import { useDepositTracker, onPerpsBalance, clearDeposit, watchCredit } from "../storage/depositTracker";
+import { useDepositTracker, onPerpsBalance, clearDeposit, watchCredit, mayBeCredited } from "../storage/depositTracker";
 import { useWithdrawTracker, watchWithdraw, clearWithdraw } from "../storage/withdrawTracker";
 import { chainById, displayName } from "../api/asterAssets";
 import { cancelOrder, placeOrder, fetchMultiAssetsMode } from "../api/asterTrade";
@@ -127,7 +127,7 @@ const PerpsHome = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [depositCredited, sheet]);
   // Aster deposit-history check for the credit (any asset): only while this tab is open + app in front.
-  const depositWaiting = deposit.active && !!deposit.record.confirmedAt && !deposit.record.interrupted;
+  const depositWaiting = deposit.active && mayBeCredited(deposit.record) && !deposit.record.interrupted;
   useEffect(() => {
     if (!isFocused || !depositWaiting || !agentState.agent) return undefined;
     return watchCredit(agentState.agent, agentState.user);
@@ -342,6 +342,8 @@ const PerpsHome = () => {
             {displayName(deposit.record.asset || "USDT")} ·{" "}
             {deposit.record.interrupted
               ? "tap to continue"
+              : deposit.record.unknownStatus && !deposit.record.confirmedAt
+              ? "status unknown"
               : deposit.record.confirmedAt
               ? "waiting for credit"
               : deposit.record.sentAt

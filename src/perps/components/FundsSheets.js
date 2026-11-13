@@ -26,6 +26,7 @@ import { logPerpsError } from "../utils/perpsLog";
 import {
   useDepositTracker,
   startDeposit,
+  depositBlockReason,
   clearDeposit,
   continueDeposit,
   cancelInterruptedDeposit,
@@ -144,6 +145,7 @@ export const DepositSheet = ({ visible, onClose, theme, user, perpsBalance, mult
   const [retryTick, setRetryTick] = useState(0); // re-run the estimate after a connection error
   const [contErr, setContErr] = useState(null);
   const [continuing, setContinuing] = useState(false);
+  const [startErr, setStartErr] = useState(null); // deposit blocked (earlier tx still confirming…)
   const estSeq = useRef(0);
   const mounted = useRef(true);
   useEffect(() => {
@@ -165,6 +167,7 @@ export const DepositSheet = ({ visible, onClose, theme, user, perpsBalance, mult
     setStarting(false);
     setLoadError(null);
     setContErr(null);
+    setStartErr(null);
     getAssetLists()
       .then((l) => mounted.current && setLists(l))
       .catch(() => mounted.current && setLoadError("Couldn't load Aster's deposit list. Check your connection."));
@@ -248,7 +251,16 @@ export const DepositSheet = ({ visible, onClose, theme, user, perpsBalance, mult
   const plan = estimate && estimate.plan;
   const doConfirm = async () => {
     if (!estimate || !estimate.ok || starting || isDepositSending()) return; // double-tap guard
+    setStartErr(null);
     setStarting(true);
+    // No second deposit while an earlier one (or any tx on this chain) is still unconfirmed.
+    const block = await depositBlockReason(user, chain).catch(() => "Couldn't check your wallet. Check your connection and try again.");
+    if (!mounted.current) return;
+    if (block) {
+      setStarting(false);
+      setStartErr(block);
+      return;
+    }
     const fresh = await prepareChainDeposit({ chain, asset, user, amount }).catch(() => null);
     if (!mounted.current) return;
     setStarting(false);
@@ -257,7 +269,10 @@ export const DepositSheet = ({ visible, onClose, theme, user, perpsBalance, mult
       setEstimate(fresh || { ok: false, error: "Couldn't check the deposit. Check your connection." });
       return;
     }
-    startDeposit({ user, plan: fresh.plan, baseline: asset.name === "USDT" ? perpsBalance : null });
+    // startDeposit re-checks the same guard right before sending.
+    startDeposit({ user, plan: fresh.plan, baseline: asset.name === "USDT" ? perpsBalance : null }).then((res) => {
+      if (res && !res.ok && mounted.current) setStartErr(res.error);
+    });
   };
 
   const doContinue = async () => {
@@ -431,6 +446,7 @@ export const DepositSheet = ({ visible, onClose, theme, user, perpsBalance, mult
 
       {reviewing ? (
         <>
+          {startErr ? <Text style={[styles.err, { color: theme.fail }]}>{startErr}</Text> : null}
           <PrimaryButton
             theme={theme}
             label={`Confirm deposit of ${amount} ${displayName(asset.name)}`}

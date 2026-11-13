@@ -40,6 +40,23 @@ const TxLink = ({ theme, hash, chain }) =>
     </View>
   ) : null;
 
+// No tx hash yet (the wallet's helper timed out after sending): link to the wallet on the explorer.
+const AddressLink = ({ theme, address, chain }) =>
+  address ? (
+    <View style={styles.txLine}>
+      <TouchableOpacity
+        accessibilityRole="link"
+        onPress={() => Linking.openURL(`${chain.explorer}/address/${address}`)}
+        style={styles.txBtn}
+        hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+      >
+        <Text style={[styles.link, { color: theme.buttonColor }]}>Check your wallet on {chain.explorerName}</Text>
+      </TouchableOpacity>
+    </View>
+  ) : null;
+
+const UNKNOWN_TEXT = "Status unknown — don't deposit again yet. Check your wallet or the explorer.";
+
 const DepositStatusCard = ({ theme, record }) => {
   const appActive = useAppActive();
   const chain = chainById(record.chainId || 56);
@@ -56,6 +73,7 @@ const DepositStatusCard = ({ theme, record }) => {
   }, [waiting, appActive]);
 
   const paused = !!record.interrupted;
+  const unknown = !!record.unknownStatus && !record.confirmedAt && !credited && !failed;
   // Once the deposit step started (or anything after it), the approval is necessarily done.
   const approvedAt = record.approvedAt || record.depositStartAt || record.sentAt || record.confirmedAt || null;
   const approving = !paused && record.needsApprove && !approvedAt && !(failed && failed.step !== "approve");
@@ -77,7 +95,19 @@ const DepositStatusCard = ({ theme, record }) => {
   const notStarted = approving || (failed && failed.step === "approve");
   steps.push({
     label: "Deposit sent",
-    sub: paused ? record.interrupted.text : record.checking ? "Checking whether it went out…" : depositFailed && !record.sentAt ? failed.text : record.sentAt ? "Sent from your wallet" : notStarted ? "" : "Signing and sending…",
+    sub: paused
+      ? record.interrupted.text
+      : depositFailed && !record.sentAt
+      ? failed.text
+      : record.sentAt
+      ? "Sent from your wallet"
+      : unknown
+      ? UNKNOWN_TEXT
+      : record.checking
+      ? "Checking whether it went out… Don't deposit again meanwhile."
+      : notStarted
+      ? ""
+      : "Signing and sending…",
     state: paused ? "todo" : notStarted ? "todo" : record.sentAt ? "done" : depositFailed ? "failed" : "active",
     time: hhmm(record.sentAt),
   });
@@ -90,12 +120,20 @@ const DepositStatusCard = ({ theme, record }) => {
         ? record.unknownHash
           ? "Confirmed (see your wallet history for the tx)"
           : "Included in a block"
+        : record.sentAt && unknown
+        ? UNKNOWN_TEXT
+        : record.sentAt && record.unknownHash
+        ? "Deposit sent — waiting for the network"
         : record.sentAt
         ? "Usually a few seconds"
         : "",
     state: record.confirmedAt ? "done" : depositFailed && record.sentAt ? "failed" : record.sentAt ? "active" : "todo",
     time: hhmm(record.confirmedAt),
-    extra: <TxLink theme={theme} hash={record.depositHash} chain={chain} />,
+    extra: record.depositHash ? (
+      <TxLink theme={theme} hash={record.depositHash} chain={chain} />
+    ) : (record.unknownHash || unknown) && !failed ? (
+      <AddressLink theme={theme} address={record.user} chain={chain} />
+    ) : null,
   });
   if (!depositFailed) {
     steps.push({
@@ -112,7 +150,15 @@ const DepositStatusCard = ({ theme, record }) => {
     });
   }
 
-  const title = credited ? "Deposit complete" : failed ? "Deposit failed" : paused ? "Deposit paused" : "Deposit in progress";
+  const title = credited
+    ? "Deposit complete"
+    : failed
+    ? "Deposit failed"
+    : paused
+    ? "Deposit paused"
+    : unknown
+    ? "Deposit status unknown"
+    : "Deposit in progress";
   const titleColor = credited ? theme.success : failed ? theme.fail : theme.headingTx;
 
   return (
