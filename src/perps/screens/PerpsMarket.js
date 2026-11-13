@@ -18,6 +18,7 @@ import {
 import Icon from "../../icon";
 import { colors } from "../../Screens/ThemeColorsConfig";
 import { usePerpsAvailability } from "../usePerpsAvailability";
+import { useAppActive } from "../hooks/useAppActive";
 import { useAsterKlines } from "../hooks/useAsterKlines";
 import { useAsterSymbolStats } from "../hooks/useAsterSymbolStats";
 import { getCachedMarketMeta } from "../api/asterPublic";
@@ -77,7 +78,8 @@ const PerpsMarket = ({ navigation, route }) => {
   const baseAsset = meta.baseAsset || (symbol || "").replace(/USDT$|USDC$|USD$/, "");
   const maxLeverage = getCachedMaxLeverage(symbol);
 
-  const live = isFocused && allowed;
+  const appActive = useAppActive();
+  const live = isFocused && allowed && appActive; // pause sockets/pollers/timers in the background
   const { candles, loading, error, retry } = useAsterKlines(allowed ? symbol : null, interval, live);
   const { ticker, premium, retry: retryStats } = useAsterSymbolStats(allowed ? symbol : null, live);
   const now = useNow(live);

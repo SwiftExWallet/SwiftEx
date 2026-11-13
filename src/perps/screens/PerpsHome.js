@@ -25,6 +25,7 @@ import { usePerpsAgent } from "../hooks/usePerpsAgent";
 import TradingCard from "../components/TradingCard";
 import CoinLogo from "../components/CoinLogo";
 import { useAssetLogos } from "../hooks/useAssetLogos";
+import { useAppActive } from "../hooks/useAppActive";
 import PositionsSection from "../components/PositionsSection";
 import { DepositSheet, WithdrawSheet } from "../components/FundsSheets";
 import { usePerpsAccount } from "../hooks/usePerpsAccount";
@@ -76,7 +77,8 @@ const MarketRow = React.memo(({ item, theme, onPress }) => {
 
 const PerpsHome = () => {
   const navigation = useNavigation();
-  const isFocused = useIsFocused();
+  const appActive = useAppActive();
+  const isFocused = useIsFocused() && appActive; // live only on screen AND in the foreground
   const isDark = useSelector((state) => state.THEME.THEME) !== false;
   const theme = isDark ? colors.dark : colors.light;
   const [query, setQuery] = useState("");

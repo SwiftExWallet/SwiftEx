@@ -11,6 +11,7 @@ import {
   withdrawWithMainWallet,
 } from "../api/asterFunds";
 import { isAsterWithdrawSigningAvailable } from "../api/asterWithdrawSigner";
+import WithdrawStatusCard from "./WithdrawStatusCard";
 import { gt, isPositive, sub, mul, min as dMin, lte, toPlain, floorToStep } from "../utils/decimal";
 import { formatNumber } from "../utils/format";
 import { friendlyAsterError } from "../utils/asterErrors";
@@ -214,7 +215,8 @@ export const WithdrawSheet = ({ visible, onClose, theme, agent, user, available,
   const [reviewing, setReviewing] = useState(false); // review screen before PIN
   const [step, setStep] = useState(null); // checking | signing | sending
   const [result, setResult] = useState(null); // { ok, text }
-  const [tracking, setTracking] = useState(null); // { amount, receive, startUsdt, since, status, txHash, arrived }
+  const [tracking, setTracking] = useState(null);
+  // tracking: { amount, fee, receive, startUsdt, since, requestedAt, processingAt, sentAt, receivedAt, status, txHash, arrived, failed }
   const trackRef = useRef(null);
 
   const stopTracking = () => {
@@ -272,16 +274,25 @@ export const WithdrawSheet = ({ visible, onClose, theme, agent, user, available,
       // Arrived when the wallet's USDT grew by at least the expected amount (0.1% tolerance).
       const arrived =
         !!wallet && t.startUsdt !== null && !gt(mul(t.receive, "0.999"), sub(wallet.usdt, t.startUsdt));
+      if (!trackRef.current) return; // stopped (sheet closed / unmounted) while this poll ran
+      const now = Date.now();
       setTracking((prev) => {
         if (!prev) return prev;
+        const status = row ? row.state : prev.status;
+        const txHash = (row && row.txHash) || prev.txHash;
+        const isSent = status === "SUCCESS" || !!txHash;
         const next = {
           ...prev,
-          status: row ? row.state : prev.status,
-          txHash: (row && row.txHash) || prev.txHash,
+          status,
+          txHash,
+          processingAt: prev.processingAt || (row ? now : null),
+          sentAt: prev.sentAt || (isSent || arrived ? now : null),
+          receivedAt: prev.receivedAt || (arrived ? now : null),
           arrived: prev.arrived || arrived,
+          failed: status === "FAILED",
           walletUsdt: wallet ? wallet.usdt : prev.walletUsdt,
         };
-        if (next.arrived || next.status === "FAILED") stopTracking();
+        if (next.arrived || next.failed) stopTracking();
         return next;
       });
     };
@@ -322,6 +333,8 @@ export const WithdrawSheet = ({ visible, onClose, theme, agent, user, available,
       setResult({ ok: true, text: "Withdrawal requested." });
       const t = {
         amount,
+        fee,
+        requestedAt: Date.now(),
         receive: sub(amount, fee),
         startUsdt: before ? before.usdt : null,
         since: Date.now(),
@@ -339,53 +352,44 @@ export const WithdrawSheet = ({ visible, onClose, theme, agent, user, available,
   };
 
   const busy = !!step;
-  const trackingText = tracking
-    ? tracking.arrived
-      ? `Arrived: ${tracking.receive} USDT is in your wallet.`
-      : tracking.status === "FAILED"
-      ? "Aster reports the withdrawal failed. Your balance stays in Perps."
-      : tracking.status === "SUCCESS"
-      ? "Sent by Aster · waiting for it to show in your wallet…"
-      : "Processing · usually a few minutes…"
-    : null;
 
   return (
     <Sheet visible={visible} onClose={onClose} busy={busy} theme={theme} title="Withdraw USDT">
       <Text style={[styles.note, { color: theme.inactiveTx }]}>
         From your Perps balance to your own wallet on BNB Smart Chain.
       </Text>
-      <Row theme={theme} label="Withdrawable" value={maxAllowed !== null ? `${formatNumber(maxAllowed, 2)} USDT` : "…"} />
-      {!reviewing && !tracking ? (
-        <>
-          <AmountInput
-            theme={theme}
-            value={amount}
-            onChange={setAmount}
-            onMax={() => maxAllowed !== null && setAmount(floorToStep(toPlain(maxAllowed), "0.01"))}
-          />
-          {inline ? <Text style={[styles.err, { color: theme.fail }]}>{inline}</Text> : null}
-        </>
+      {tracking ? (
+        <WithdrawStatusCard theme={theme} tracking={tracking} />
       ) : (
-        <Row theme={theme} label="Amount" value={`${amount} USDT`} />
+        <>
+        <Row theme={theme} label="Withdrawable" value={maxAllowed !== null ? `${formatNumber(maxAllowed, 2)} USDT` : "…"} />
+        {!reviewing && !tracking ? (
+          <>
+            <AmountInput
+              theme={theme}
+              value={amount}
+              onChange={setAmount}
+              onMax={() => maxAllowed !== null && setAmount(floorToStep(toPlain(maxAllowed), "0.01"))}
+            />
+            {inline ? <Text style={[styles.err, { color: theme.fail }]}>{inline}</Text> : null}
+          </>
+        ) : (
+          <Row theme={theme} label="Amount" value={`${amount} USDT`} />
+        )}
+        <Row theme={theme} label="Network fee" value={fee !== null ? `${fee} USDT` : "…"} />
+        <Row theme={theme} label="You receive" value={receive !== null ? `${receive} USDT` : "—"} />
+        <Row theme={theme} label="Network · token" value="BNB Smart Chain · USDT" />
+        <View style={styles.row}>
+          <Text style={[styles.rowLabel, { color: theme.inactiveTx }]}>To (your wallet)</Text>
+        </View>
+        <Text selectable style={[styles.address, { color: theme.headingTx }]}>{user}</Text>
+        {infoNote ? <Text style={[styles.note, { color: theme.inactiveTx }]}>{infoNote}</Text> : null}
+        {step ? <Text style={[styles.note, { color: theme.headingTx }]}>{WITHDRAW_STEP_TEXT[step]}</Text> : null}
+        {result ? (
+          <Text style={[styles.note, { color: result.ok ? theme.success : theme.fail }]}>{result.text}</Text>
+        ) : null}
+        </>
       )}
-      <Row theme={theme} label="Network fee" value={fee !== null ? `${fee} USDT` : "…"} />
-      <Row theme={theme} label="You receive" value={receive !== null ? `${receive} USDT` : "—"} />
-      <Row theme={theme} label="Network · token" value="BNB Smart Chain · USDT" />
-      <View style={styles.row}>
-        <Text style={[styles.rowLabel, { color: theme.inactiveTx }]}>To (your wallet)</Text>
-      </View>
-      <Text selectable style={[styles.address, { color: theme.headingTx }]}>{user}</Text>
-      {infoNote ? <Text style={[styles.note, { color: theme.inactiveTx }]}>{infoNote}</Text> : null}
-      {step ? <Text style={[styles.note, { color: theme.headingTx }]}>{WITHDRAW_STEP_TEXT[step]}</Text> : null}
-      {result ? (
-        <Text style={[styles.note, { color: result.ok ? theme.success : theme.fail }]}>{result.text}</Text>
-      ) : null}
-      {trackingText ? (
-        <Text style={[styles.note, { color: tracking.arrived ? theme.success : theme.headingTx }]}>
-          {trackingText}
-          {tracking.txHash ? `\nTx ${short(tracking.txHash)}` : ""}
-        </Text>
-      ) : null}
       {!signingSupported ? (
         <Text style={[styles.note, { color: theme.warn }]}>
           Withdrawals need the latest app version.

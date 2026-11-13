@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   fetchPremiumIndex,
   fetchTickers24h,
@@ -16,10 +16,19 @@ export const useAsterSymbolStats = (symbol, active) => {
   const [ticker, setTicker] = useState(() => (symbol ? getCachedTicker(symbol) : null));
   const [premium, setPremium] = useState(() => (symbol ? getCachedPremium(symbol) : null));
   const [error, setError] = useState(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     if (!symbol) return;
     const [t, p] = await Promise.all([fetchTickers24h(symbol), fetchPremiumIndex(symbol)]);
+    if (!mountedRef.current) return; // screen closed while loading
     if (t.data) {
       cacheTicker(t.data);
       setTicker(t.data);

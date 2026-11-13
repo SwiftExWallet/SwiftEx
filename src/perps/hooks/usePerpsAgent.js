@@ -55,6 +55,14 @@ export const usePerpsAgent = (active) => {
   const [leverage, setLeverage] = useState(() => getMaxLeverageMap()); // symbol -> max leverage
   const userRef = useRef(user);
   userRef.current = user;
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // Follow the shared state (another screen enabled / reset trading).
   useEffect(() => {
@@ -134,7 +142,7 @@ export const usePerpsAgent = (active) => {
     }
     const forUser = user;
     const lev = await fetchLeverageBrackets(agent, forUser);
-    if (userRef.current !== forUser) return;
+    if (!mountedRef.current || userRef.current !== forUser) return;
     if (lev.agentInvalid) {
       await dropAgent(forUser, "Your trading key is no longer valid. Enable trading again.");
       return;
