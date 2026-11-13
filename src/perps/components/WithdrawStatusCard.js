@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking } from "react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import Icon from "../../icon";
+import { chainById, txUrl, displayName } from "../api/asterAssets";
 
 // Withdraw progress: Requested -> Processing -> Sent on BSC -> Received in wallet.
 // Neutral colors; green only when the funds are in the wallet, red only if Aster reports a failure.
@@ -61,6 +62,8 @@ export const Step = ({ theme, label, sub, state, time, last, extra }) => {
 
 const WithdrawStatusCard = ({ theme, tracking }) => {
   const { amount, fee, receive, txHash, failed } = tracking;
+  const tok = displayName(tracking.asset || "USDT");
+  const chain = chainById(tracking.chainId || 56);
   const received = !!tracking.receivedAt;
   const sent = !!tracking.sentAt || received;
 
@@ -73,14 +76,14 @@ const WithdrawStatusCard = ({ theme, tracking }) => {
       time: hhmm(tracking.processingAt || tracking.requestedAt),
     },
     {
-      label: "Sent on BNB Smart Chain",
+      label: `Sent on ${chain.name}`,
       sub: sent ? "On-chain transfer submitted" : "Usually within a few minutes",
       state: received ? "done" : sent ? "active" : "todo",
       time: hhmm(tracking.sentAt),
     },
     {
       label: "Received in your wallet",
-      sub: received ? `${receive} USDT added` : "Waiting for the wallet balance",
+      sub: received ? `${receive} ${tok} added` : tracking.slow ? "Taking longer than usual. Aster will still send it." : "Waiting for the transfer to confirm",
       state: received ? "success" : "todo",
       time: hhmm(tracking.receivedAt),
     },
@@ -88,7 +91,7 @@ const WithdrawStatusCard = ({ theme, tracking }) => {
   if (failed) {
     steps.splice(2, 2, {
       label: "Withdrawal failed",
-      sub: "Aster didn't complete it. Your USDT stays in Perps.",
+      sub: (tracking.failed && tracking.failed.text) || `Aster didn't complete it. Your ${tok} stays in Perps.`,
       state: "failed",
       time: "",
     });
@@ -108,22 +111,22 @@ const WithdrawStatusCard = ({ theme, tracking }) => {
         />
         <View style={styles.headerText}>
           <Text style={[styles.title, { color: titleColor }]}>{title}</Text>
-          <Text style={[styles.subtitle, { color: theme.inactiveTx }]}>{amount} USDT to your wallet</Text>
+          <Text style={[styles.subtitle, { color: theme.inactiveTx }]}>{amount} {tok} to your wallet on {chain.name}</Text>
         </View>
       </View>
 
       <View style={styles.amounts}>
         <View style={styles.amountCol}>
           <Text style={[styles.amountLabel, { color: theme.inactiveTx }]}>Amount</Text>
-          <Text style={[styles.amountValue, { color: theme.headingTx }]}>{amount} USDT</Text>
+          <Text style={[styles.amountValue, { color: theme.headingTx }]}>{amount} {tok}</Text>
         </View>
         <View style={styles.amountCol}>
           <Text style={[styles.amountLabel, { color: theme.inactiveTx }]}>Fee</Text>
-          <Text style={[styles.amountValue, { color: theme.headingTx }]}>{fee} USDT</Text>
+          <Text style={[styles.amountValue, { color: theme.headingTx }]}>{fee} {tok}</Text>
         </View>
         <View style={styles.amountCol}>
           <Text style={[styles.amountLabel, { color: theme.inactiveTx }]}>You receive</Text>
-          <Text style={[styles.amountValue, { color: theme.headingTx }]}>{receive} USDT</Text>
+          <Text style={[styles.amountValue, { color: theme.headingTx }]}>{receive} {tok}</Text>
         </View>
       </View>
 
@@ -147,10 +150,10 @@ const WithdrawStatusCard = ({ theme, tracking }) => {
           </TouchableOpacity>
           <TouchableOpacity
             accessibilityRole="link"
-            onPress={() => Linking.openURL(`https://bscscan.com/tx/${txHash}`)}
+            onPress={() => Linking.openURL(txUrl(chain.chainId, txHash))}
             style={styles.txBtn}
           >
-            <Text style={[styles.link, { color: theme.buttonColor }]}>View on BscScan</Text>
+            <Text style={[styles.link, { color: theme.buttonColor }]}>View on {chain.explorerName}</Text>
           </TouchableOpacity>
         </View>
       ) : null}

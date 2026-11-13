@@ -16,6 +16,7 @@ import {
   fetchPositions,
   fetchMultiAssetsMode,
   setMultiAssetsMode,
+  fetchAccount,
 } from "../api/asterTrade";
 import { formatPrice } from "../utils/format";
 import CoinLogo from "./CoinLogo";
@@ -81,7 +82,7 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
   const [amount, setAmount] = useState("");
   const [limitPrice, setLimitPrice] = useState("");
   const [leverage, setLeverage] = useState(Math.min(DEFAULT_LEVERAGE, maxLeverage));
-  const [marginType, setMarginType] = useState("ISOLATED");
+  const [marginType, setMarginType] = useState("CROSSED"); // default: Cross
   const [showDetails, setShowDetails] = useState(false);
   const [tpslOn, setTpslOn] = useState(false);
   const [tp, setTp] = useState("");
@@ -122,9 +123,34 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agent, user]);
 
-  const chooseMarginType = (value) => {
+  const chooseMarginType = async (value) => {
     marginTouchedRef.current = true;
     if (value === "ISOLATED" && multiAssets) {
+      // Single-Asset mode is needed for Isolated. Check first (never switch silently):
+      // open positions or non-USDT/USD1 collateral would be affected, so explain instead.
+      const acc = await fetchAccount(agent, user);
+      if (acc.error || !acc.data) {
+        CustomInfoProvider.show("error", "Couldn't check your account", friendlyAsterError(acc) || "Try again.");
+        return;
+      }
+      const open = (acc.data.positions || []).filter((p) => Number(p.positionAmt) !== 0);
+      const otherAssets = (acc.data.assets || []).filter(
+        (a) => !["USDT", "USD1"].includes(a.asset) && Number(a.walletBalance) > 0
+      );
+      if (open.length > 0 || otherAssets.length > 0) {
+        const why =
+          open.length > 0
+            ? `You have ${open.length} open position${open.length > 1 ? "s" : ""} using Cross margin from all your assets.`
+            : `You hold ${otherAssets.map((a) => a.asset).join(", ")} in Perps, which only counts as margin in Multi-Assets mode.`;
+        CustomInfoProvider.show(
+          "info",
+          "Isolated isn't available right now",
+          `Isolated uses USDT/USD1 only and needs Single-Asset mode. ${why} ${
+            open.length > 0 ? "Close them first, or keep Cross." : "Withdraw or convert them to USDT first, or keep Cross."
+          }`
+        );
+        return;
+      }
       CustomInfoProvider.show(
         "info",
         "Switch to Single-Asset mode?",
@@ -402,11 +428,16 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
               { value: "CROSSED", label: "Cross" },
             ]}
           />
-          {multiAssets ? (
-            <Text style={[styles.sizeLine, { color: theme.inactiveTx }]}>
-              Account is in Multi-Assets mode: Cross margin only (Isolated needs Single-Asset mode).
-            </Text>
-          ) : null}
+          <Text style={[styles.sizeLine, { color: theme.inactiveTx }]}>
+            {marginType === "ISOLATED"
+              ? "Isolated uses USDT/USD1 only, and risks only this position's margin."
+              : multiAssets
+              ? "Cross uses all your Perps assets as margin (Multi-Assets mode)."
+              : multiAssets === false
+              ? "Cross uses your USDT/USD1 balance (Single-Asset mode)."
+              : "Cross shares your balance across positions."}
+            {multiAssets && marginType !== "ISOLATED" ? " Isolated needs Single-Asset mode." : ""}
+          </Text>
         </View>
       ) : null}
 

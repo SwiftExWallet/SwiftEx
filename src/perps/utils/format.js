@@ -68,3 +68,9 @@ export const formatCountdown = (ms) => {
   const pad = (x) => String(x).padStart(2, "0");
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 };
+
+// Token amount: up to `maxDecimals`, trailing zeros trimmed (1 -> "1", 0.0012300 -> "0.00123").
+export const formatAmount = (value, maxDecimals = 6) => {
+  const s = formatNumber(value, maxDecimals);
+  return s.includes(".") ? s.replace(/0+$/, "").replace(/\.$/, "") : s;
+};

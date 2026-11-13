@@ -30,8 +30,10 @@ import PositionsSection from "../components/PositionsSection";
 import { DepositSheet, WithdrawSheet } from "../components/FundsSheets";
 import PerpsHistory from "../components/PerpsHistory";
 import { usePerpsAccount } from "../hooks/usePerpsAccount";
-import { useDepositTracker, onPerpsBalance, clearDeposit } from "../storage/depositTracker";
-import { cancelOrder, placeOrder } from "../api/asterTrade";
+import { useDepositTracker, onPerpsBalance, clearDeposit, watchCredit } from "../storage/depositTracker";
+import { useWithdrawTracker, watchWithdraw, clearWithdraw } from "../storage/withdrawTracker";
+import { chainById, displayName } from "../api/asterAssets";
+import { cancelOrder, placeOrder, fetchMultiAssetsMode, setMultiAssetsMode } from "../api/asterTrade";
 import { buildCloseOrder } from "../utils/orderMath";
 import { friendlyAsterError } from "../utils/asterErrors";
 import CustomInfoProvider from "../../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
@@ -108,10 +110,76 @@ const PerpsHome = () => {
   const depositCredited = !!deposit.record && !!deposit.record.creditedAt;
   useEffect(() => {
     if (depositCredited && sheet !== "deposit") {
-      CustomInfoProvider.show("success", "Deposit credited", `${deposit.record.amount} USDT is now in your Perps balance.`);
+      CustomInfoProvider.show(
+        "success",
+        "Deposit credited",
+        `${deposit.record.amount} ${displayName(deposit.record.asset || "USDT")} is now in your Perps balance.`
+      );
       clearDeposit();
+      accountState.refresh();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [depositCredited, sheet]);
+  // Aster deposit-history check for the credit (any asset): only while this tab is open + app in front.
+  const depositWaiting = deposit.active && !!deposit.record.confirmedAt && !deposit.record.interrupted;
+  useEffect(() => {
+    if (!isFocused || !depositWaiting || !agentState.agent) return undefined;
+    return watchCredit(agentState.agent, agentState.user);
+  }, [isFocused, depositWaiting, agentState.agent, agentState.user]);
+
+  // Withdrawal tracking (Aster history + on-chain receipt), same rules.
+  const withdraw = useWithdrawTracker();
+  useEffect(() => {
+    if (!isFocused || !withdraw.active || !agentState.agent) return undefined;
+    return watchWithdraw(agentState.agent, agentState.user);
+  }, [isFocused, withdraw.active, agentState.agent, agentState.user]);
+  const withdrawReceived = !!withdraw.record && !!withdraw.record.receivedAt;
+  useEffect(() => {
+    if (withdrawReceived && sheet !== "withdraw") {
+      const r = withdraw.record;
+      CustomInfoProvider.show(
+        "success",
+        "Withdrawal received",
+        `${r.receive} ${displayName(r.asset)} arrived in your wallet on ${chainById(r.chainId).name}.`
+      );
+      clearWithdraw();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [withdrawReceived, sheet]);
+
+  // Account margin mode (Multi-Assets on/off) for the deposit sheet. Switching always asks first.
+  const [multiAssets, setMultiAssets] = useState(null);
+  useEffect(() => {
+    if (sheet !== "deposit" || !agentState.agent) return undefined;
+    let cancelled = false;
+    fetchMultiAssetsMode(agentState.agent, agentState.user).then((res) => {
+      if (cancelled || res.error || !res.data) return;
+      setMultiAssets(res.data.multiAssetsMargin === true || res.data.multiAssetsMargin === "true");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sheet, agentState.agent, agentState.user]);
+  const enableMultiAssets = () =>
+    CustomInfoProvider.show(
+      "info",
+      "Turn on Multi-Assets mode?",
+      "All your Perps assets (BNB, ETH, USDC…) will count as Cross margin, at their collateral value. Isolated margin is not available in this mode. This applies to all markets and doesn't change your open positions.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Turn on",
+          onPress: async () => {
+            const res = await setMultiAssetsMode(agentState.agent, agentState.user, true);
+            if (res.error) {
+              CustomInfoProvider.show("error", "Couldn't switch mode", friendlyAsterError(res));
+              return;
+            }
+            setMultiAssets(true);
+          },
+        },
+      ]
+    );
 
   const runAction = async (title, fn) => {
     const res = await fn();
@@ -235,16 +303,38 @@ const PerpsHome = () => {
           onPress={() => setSheet("deposit")}
           style={[styles.pill, { backgroundColor: theme.cardBg, borderColor: theme.inactiveTx }]}
         >
-          <ActivityIndicator size="small" color={theme.buttonColor} />
+          {deposit.record.interrupted ? (
+            <Icon name="pause-circle-outline" type="ionicon" size={20} color={theme.headingTx} />
+          ) : (
+            <ActivityIndicator size="small" color={theme.buttonColor} />
+          )}
           <Text style={[styles.pillTxt, { color: theme.headingTx }]}>
-            Deposit in progress · {deposit.record.amount} USDT ·{" "}
-            {deposit.record.confirmedAt
+            {deposit.record.interrupted ? "Deposit paused" : "Deposit in progress"} · {deposit.record.amount}{" "}
+            {displayName(deposit.record.asset || "USDT")} ·{" "}
+            {deposit.record.interrupted
+              ? "tap to continue"
+              : deposit.record.confirmedAt
               ? "waiting for credit"
               : deposit.record.sentAt
               ? "confirming"
               : deposit.record.needsApprove && !deposit.record.approvedAt
               ? "approving"
               : "sending"}
+          </Text>
+          <Icon name="chevron-forward" type="ionicon" size={16} color={theme.inactiveTx} />
+        </TouchableOpacity>
+      ) : null}
+      {tradingEnabled && withdraw.active ? (
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Withdrawal in progress, show status"
+          onPress={() => setSheet("withdraw")}
+          style={[styles.pill, { backgroundColor: theme.cardBg, borderColor: theme.inactiveTx }]}
+        >
+          <ActivityIndicator size="small" color={theme.buttonColor} />
+          <Text style={[styles.pillTxt, { color: theme.headingTx }]}>
+            Withdrawal in progress · {withdraw.record.amount} {displayName(withdraw.record.asset)} ·{" "}
+            {withdraw.record.txHash ? "sending on-chain" : "processing"}
           </Text>
           <Icon name="chevron-forward" type="ionicon" size={16} color={theme.inactiveTx} />
         </TouchableOpacity>
@@ -360,6 +450,8 @@ const PerpsHome = () => {
             theme={theme}
             user={agentState.user}
             perpsBalance={perpsBalance}
+            multiAssets={multiAssets}
+            onEnableMultiAssets={enableMultiAssets}
           />
           {historyOpen ? (
             <PerpsHistory

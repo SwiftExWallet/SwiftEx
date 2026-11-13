@@ -17,11 +17,12 @@ import Clipboard from "@react-native-clipboard/clipboard";
 import Icon from "../../icon";
 import CoinLogo from "./CoinLogo";
 import { shortHash, hhmm } from "./WithdrawStatusCard";
+import { chainById, txUrl, displayName } from "../api/asterAssets";
 import { usePerpsHistory, HISTORY_MAX_DAYS } from "../hooks/usePerpsHistory";
 import { fetchTradesAround } from "../api/asterHistory";
 import { useDepositTracker, isDepositActive } from "../storage/depositTracker";
 import { add, isValid, toPlain } from "../utils/decimal";
-import { formatNumber } from "../utils/format";
+import { formatNumber, formatAmount } from "../utils/format";
 import { friendlyAsterError } from "../utils/asterErrors";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -119,7 +120,7 @@ const Chip = ({ theme, label, active, onPress, left }) => (
   </TouchableOpacity>
 );
 
-const TxLine = ({ theme, hash }) =>
+const TxLine = ({ theme, hash, chainId }) =>
   hash ? (
     <View style={styles.txLine}>
       <Text style={[styles.txHash, { color: theme.inactiveTx }]}>{shortHash(hash)}</Text>
@@ -134,11 +135,11 @@ const TxLine = ({ theme, hash }) =>
       </TouchableOpacity>
       <TouchableOpacity
         accessibilityRole="link"
-        onPress={() => Linking.openURL(`https://bscscan.com/tx/${hash}`)}
+        onPress={() => Linking.openURL(txUrl(chainId || 56, hash))}
         style={styles.txBtn}
         hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
       >
-        <Text style={[styles.link, { color: theme.buttonColor }]}>View on BscScan</Text>
+        <Text style={[styles.link, { color: theme.buttonColor }]}>View on {chainById(chainId || 56).explorerName}</Text>
       </TouchableOpacity>
     </View>
   ) : null;
@@ -290,16 +291,16 @@ const TransferRow = ({ theme, t }) => {
           <View style={styles.stateLine}>
             {!done && !failed ? <ActivityIndicator size="small" color={theme.buttonColor} style={styles.stateSpin} /> : null}
             <Text style={[styles.rowSub, { color: failed ? theme.fail : theme.inactiveTx }]}>
-              {STATE_TEXT[st] || st} · {hhmm(t.time)} · BNB Smart Chain
+              {STATE_TEXT[st] || st} · {hhmm(t.time)} · {chainById(t.chainId || 56).name}
             </Text>
           </View>
         </View>
         <Text style={[styles.rowAmt, { color: theme.headingTx }]}>
           {isDeposit ? "+" : "−"}
-          {formatNumber(t.amount, 2)} {t.asset || "USDT"}
+          {formatAmount(t.amount, 6)} {displayName(t.asset || "USDT")}
         </Text>
       </View>
-      <TxLine theme={theme} hash={t.txHash} />
+      <TxLine theme={theme} hash={t.txHash} chainId={t.chainId} />
     </View>
   );
 };
@@ -386,7 +387,7 @@ const PerpsHistory = ({ visible, onClose, theme, isDark, agent, user }) => {
     if (isDepositActive(deposit) && deposit.user.toLowerCase() === String(user).toLowerCase()) {
       const known = deposit.depositHash && list.some((t) => t.txHash && t.txHash.toLowerCase() === deposit.depositHash.toLowerCase());
       if (!known) {
-        list.push({ key: "local-deposit", type: "DEPOSIT", amount: deposit.amount, state: "local", time: deposit.startedAt, txHash: deposit.depositHash });
+        list.push({ key: "local-deposit", type: "DEPOSIT", amount: deposit.amount, asset: deposit.asset || "USDT", chainId: deposit.chainId || 56, state: "local", time: deposit.startedAt, txHash: deposit.depositHash });
       }
     }
     return list.sort((a, b) => b.time - a.time);

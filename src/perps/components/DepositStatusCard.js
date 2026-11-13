@@ -4,6 +4,7 @@ import Clipboard from "@react-native-clipboard/clipboard";
 import Icon from "../../icon";
 import { Step, hhmm, shortHash } from "./WithdrawStatusCard";
 import { useAppActive } from "../hooks/useAppActive";
+import { chainById, txUrl, displayName } from "../api/asterAssets";
 
 // Deposit progress, same look as the withdraw card:
 // Approve USDT (only if needed) -> Deposit sent -> Confirmed on BSC -> Credited in Perps.
@@ -15,7 +16,7 @@ const elapsed = (ms) => {
   return m > 0 ? `${m}m ${String(s % 60).padStart(2, "0")}s` : `${s}s`;
 };
 
-const TxLink = ({ theme, hash }) =>
+const TxLink = ({ theme, hash, chain }) =>
   hash ? (
     <View style={styles.txLine}>
       <Text style={[styles.txHash, { color: theme.inactiveTx }]}>{shortHash(hash)}</Text>
@@ -30,17 +31,19 @@ const TxLink = ({ theme, hash }) =>
       </TouchableOpacity>
       <TouchableOpacity
         accessibilityRole="link"
-        onPress={() => Linking.openURL(`https://bscscan.com/tx/${hash}`)}
+        onPress={() => Linking.openURL(txUrl(chain.chainId, hash))}
         style={styles.txBtn}
         hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
       >
-        <Text style={[styles.link, { color: theme.buttonColor }]}>View on BscScan</Text>
+        <Text style={[styles.link, { color: theme.buttonColor }]}>View on {chain.explorerName}</Text>
       </TouchableOpacity>
     </View>
   ) : null;
 
 const DepositStatusCard = ({ theme, record }) => {
   const appActive = useAppActive();
+  const chain = chainById(record.chainId || 56);
+  const tok = displayName(record.asset || "USDT");
   const credited = !!record.creditedAt;
   const failed = record.failed;
   // 1s ticker for the "waiting for credit" timer, only while it is shown and the app is in front.
@@ -52,31 +55,34 @@ const DepositStatusCard = ({ theme, record }) => {
     return () => clearInterval(id);
   }, [waiting, appActive]);
 
-  const approving = record.needsApprove && !record.approvedAt && !(failed && failed.step !== "approve");
+  const paused = !!record.interrupted;
+  // Once the deposit step started (or anything after it), the approval is necessarily done.
+  const approvedAt = record.approvedAt || record.depositStartAt || record.sentAt || record.confirmedAt || null;
+  const approving = !paused && record.needsApprove && !approvedAt && !(failed && failed.step !== "approve");
   const steps = [];
   if (record.needsApprove) {
     const approveFailed = failed && failed.step === "approve";
     steps.push({
-      label: "Approve USDT",
-      sub: approveFailed ? failed.text : record.approvedAt ? "Vault allowed to take exactly this amount" : "Confirm in your wallet",
-      state: approveFailed ? "failed" : record.approvedAt ? "done" : "active",
-      time: hhmm(record.approvedAt || record.approveStartAt),
-      extra: <TxLink theme={theme} hash={record.approveHash} />,
+      label: `Approve ${tok}`,
+      sub: approveFailed ? failed.text : approvedAt ? "Vault allowed to take exactly this amount" : paused ? "Re-checked when you continue (not repeated if done)" : "Confirm in your wallet",
+      state: approveFailed ? "failed" : approvedAt ? "done" : paused ? "todo" : "active",
+      time: hhmm(approvedAt || record.approveStartAt),
+      extra: <TxLink theme={theme} hash={record.approveHash} chain={chain} />,
     });
   } else {
-    steps.push({ label: "Approve USDT", sub: "Not needed — allowance already set", state: "done", time: "" });
+    steps.push({ label: `Approve ${tok}`, sub: record.isNative ? `Not needed for ${tok}` : "Not needed — allowance already set", state: "done", time: "" });
   }
 
   const depositFailed = failed && failed.step !== "approve";
   const notStarted = approving || (failed && failed.step === "approve");
   steps.push({
     label: "Deposit sent",
-    sub: depositFailed && !record.sentAt ? failed.text : record.sentAt ? "Sent from your wallet" : notStarted ? "" : "Signing and sending…",
-    state: notStarted ? "todo" : record.sentAt ? "done" : depositFailed ? "failed" : "active",
+    sub: paused ? record.interrupted.text : record.checking ? "Checking whether it went out…" : depositFailed && !record.sentAt ? failed.text : record.sentAt ? "Sent from your wallet" : notStarted ? "" : "Signing and sending…",
+    state: paused ? "todo" : notStarted ? "todo" : record.sentAt ? "done" : depositFailed ? "failed" : "active",
     time: hhmm(record.sentAt),
   });
   steps.push({
-    label: "Confirmed on BSC",
+    label: `Confirmed on ${chain.name}`,
     sub:
       depositFailed && record.sentAt
         ? failed.text
@@ -89,13 +95,13 @@ const DepositStatusCard = ({ theme, record }) => {
         : "",
     state: record.confirmedAt ? "done" : depositFailed && record.sentAt ? "failed" : record.sentAt ? "active" : "todo",
     time: hhmm(record.confirmedAt),
-    extra: <TxLink theme={theme} hash={record.depositHash} />,
+    extra: <TxLink theme={theme} hash={record.depositHash} chain={chain} />,
   });
   if (!depositFailed) {
     steps.push({
       label: "Credited in Perps",
       sub: credited
-        ? `${record.amount} USDT added · took ${elapsed(record.creditedAt - record.confirmedAt)}`
+        ? `${record.amount} ${tok} added · took ${elapsed(record.creditedAt - record.confirmedAt)}`
         : record.confirmedAt
         ? record.slow
           ? `Taking longer than usual (${elapsed(Date.now() - record.confirmedAt)}). Aster will still credit it.`
@@ -106,7 +112,7 @@ const DepositStatusCard = ({ theme, record }) => {
     });
   }
 
-  const title = credited ? "Deposit complete" : failed ? "Deposit failed" : "Deposit in progress";
+  const title = credited ? "Deposit complete" : failed ? "Deposit failed" : paused ? "Deposit paused" : "Deposit in progress";
   const titleColor = credited ? theme.success : failed ? theme.fail : theme.headingTx;
 
   return (
@@ -121,7 +127,7 @@ const DepositStatusCard = ({ theme, record }) => {
         <View style={styles.headerText}>
           <Text style={[styles.title, { color: titleColor }]}>{title}</Text>
           <Text style={[styles.subtitle, { color: theme.inactiveTx }]}>
-            {record.amount} USDT · BNB Smart Chain → Perps · {record.needsApprove ? "2 steps" : "1 step"}
+            {record.amount} {tok} · {chain.name} → Perps · {record.needsApprove ? "2 steps" : "1 step"}
           </Text>
         </View>
       </View>

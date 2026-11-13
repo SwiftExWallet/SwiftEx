@@ -476,7 +476,13 @@ private func signTypedDataAfterAuthentication(
       guard params["receiver"]!.lowercased() == w,
             params["receiver"]!.lowercased() == ((message["destination"] as? String) ?? "").lowercased()
       else { throw AsterRejected(reason: "Receiver must be your own address") }
-      guard params["chainId"] == "56" else { throw AsterRejected(reason: "Unsupported chain") }
+      let chainNames = ["1": "ETH", "56": "BSC", "42161": "Arbitrum"]
+      guard let cid = params["chainId"], let chainName = chainNames[cid] else { throw AsterRejected(reason: "Unsupported chain") }
+      let domain = root["domain"] as? [String: Any]
+      let domainChain: String = (domain?["chainId"] as? NSNumber)?.stringValue ?? ((domain?["chainId"] as? String) ?? "")
+      guard domainChain == cid, (message["destination Chain"] as? String) == chainName
+      else { throw AsterRejected(reason: "Chain mismatch") }
+      guard (message["aster chain"] as? String) == "Mainnet" else { throw AsterRejected(reason: "Unsupported network") }
       guard params["asset"] == (message["token"] as? String),
             params["amount"] == (message["amount"] as? String),
             params["fee"] == (message["fee"] as? String),

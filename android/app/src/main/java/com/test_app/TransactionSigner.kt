@@ -316,6 +316,14 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
         "user", "signer", "chainId", "asset", "amount", "fee", "receiver", "userNonce", "nonce"
     )
     private val ASTER_PARAM_VALUE = Regex("^[0-9A-Za-z.]{1,80}$")
+    // EVM withdraw chains Aster supports (chainId -> "destination Chain" name, from Aster docs).
+    private val ASTER_WITHDRAW_CHAINS = mapOf("1" to "ETH", "56" to "BSC", "42161" to "Arbitrum")
+
+    private fun asterDomainChainId(typedDataJson: String): String? = try {
+        JSONObject(typedDataJson).getJSONObject("domain").get("chainId").toString()
+    } catch (e: Exception) {
+        null
+    }
 
     private fun asterRequestError(query: String, typedDataJson: String, walletAddress: String): String? {
         return try {
@@ -336,7 +344,12 @@ class TransactionSigner(reactContext: ReactApplicationContext) : ReactContextBas
                 !params["signer"]!!.equals(walletAddress, ignoreCase = true) -> "Request signer must be your wallet"
                 !params["receiver"]!!.equals(walletAddress, ignoreCase = true) -> "Receiver must be your own address"
                 !params["receiver"]!!.equals(message.optString("destination"), ignoreCase = true) -> "Receiver mismatch"
-                params["chainId"] != "56" -> "Unsupported chain"
+                ASTER_WITHDRAW_CHAINS[params["chainId"]] == null -> "Unsupported chain"
+                // The signed Action must be for the same chain as the request (Aster docs:
+                // domain.chainId = withdraw chain, "destination Chain" = that chain's name).
+                asterDomainChainId(typedDataJson) != params["chainId"] -> "Chain mismatch"
+                message.optString("destination Chain") != ASTER_WITHDRAW_CHAINS[params["chainId"]] -> "Chain mismatch"
+                message.optString("aster chain") != "Mainnet" -> "Unsupported network"
                 params["asset"] != message.optString("token") -> "Asset mismatch"
                 params["amount"] != message.optString("amount") -> "Amount mismatch"
                 params["fee"] != message.optString("fee") -> "Fee mismatch"
