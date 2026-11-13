@@ -33,10 +33,11 @@ import { usePerpsAccount } from "../hooks/usePerpsAccount";
 import { useDepositTracker, onPerpsBalance, clearDeposit, watchCredit } from "../storage/depositTracker";
 import { useWithdrawTracker, watchWithdraw, clearWithdraw } from "../storage/withdrawTracker";
 import { chainById, displayName } from "../api/asterAssets";
-import { cancelOrder, placeOrder, fetchMultiAssetsMode, setMultiAssetsMode } from "../api/asterTrade";
+import { cancelOrder, placeOrder, fetchMultiAssetsMode } from "../api/asterTrade";
 import { buildCloseOrder } from "../utils/orderMath";
 import { friendlyAsterError } from "../utils/asterErrors";
 import { showInfo } from "../utils/modalSafe";
+import { startMultiAssetsFlow } from "../api/multiAssetsFlow";
 import { logPerpsError, getPerpsErrors, formatPerpsErrors, clearPerpsErrors } from "../utils/perpsLog";
 import { withTimeout } from "../utils/async";
 
@@ -167,26 +168,15 @@ const PerpsHome = () => {
   }, [sheet, agentState.agent, agentState.user]);
   // Opened from the Deposit sheet: close the sheet first; the dialog shows once it has hidden (iOS).
   const enableMultiAssets = () => {
-    setSheet(null);
-    return showInfo(
-      "info",
-      "Turn on Multi-Assets mode?",
-      "All your Perps assets (BNB, ETH, USDC…) will count as Cross margin, at their collateral value. Isolated margin is not available in this mode. This applies to all markets and doesn't change your open positions.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Turn on",
-          onPress: async () => {
-            const res = await setMultiAssetsMode(agentState.agent, agentState.user, true);
-            if (res.error) {
-              showInfo("error", "Couldn't switch mode", friendlyAsterError(res));
-              return;
-            }
-            setMultiAssets(true);
-          },
-        },
-      ]
-    );
+    setSheet(null); // the guided dialogs open once the sheet has hidden (iOS-safe)
+    startMultiAssetsFlow({
+      agent: agentState.agent,
+      user: agentState.user,
+      onDone: (enabled) => {
+        if (enabled) setMultiAssets(true);
+        accountState.refresh();
+      },
+    });
   };
 
   // Close position / cancel order. Never leaves the UI waiting; a lost reply is "unknown",

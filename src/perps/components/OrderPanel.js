@@ -26,6 +26,7 @@ import { ensureFreshMarketMeta, getCachedMarketMeta, ORDER_RULE_FIELDS } from ".
 const RULES_MAX_AGE_MS = 60 * 60 * 1000; // refetch exchangeInfo before an order if older than 1h
 
 import { showInfo, useModalPresence } from "../utils/modalSafe";
+import { startMultiAssetsFlow } from "../api/multiAssetsFlow";
 import { logPerpsError } from "../utils/perpsLog";
 import { sleep, withTimeout } from "../utils/async";
 const RULES_TIMEOUT_MS = 35000; // exchangeInfo refresh (30s request + margin)
@@ -175,7 +176,7 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
       showInfo(
         "info",
         "Switch to Single-Asset mode?",
-        "Isolated margin isn't available while your Aster account uses Multi-Assets mode. Switch the account to Single-Asset mode (USDT margin only)? This applies to all markets.",
+        "Isolated uses USDT/USD1 only, so your account will switch to Single-Asset mode: only USDT/USD1 count as margin, on all markets. You can turn Multi-Assets back on later (choose Cross).",
         [
           { text: "Cancel", style: "cancel" },
           {
@@ -526,6 +527,16 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
               : "Cross shares your balance across positions."}
             {multiAssets && marginType !== "ISOLATED" ? " Isolated needs Single-Asset mode." : ""}
           </Text>
+          {multiAssets === false && marginType === "CROSSED" ? (
+            <TouchableOpacity
+              accessibilityRole="button"
+              onPress={() =>
+                startMultiAssetsFlow({ agent, user, onDone: (on) => on && mounted.current && setMultiAssets(true) })
+              }
+            >
+              <Text style={[styles.sizeLine, { color: theme.buttonColor, fontWeight: "700" }]}>Turn Multi-Asset back on</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : null}
 
