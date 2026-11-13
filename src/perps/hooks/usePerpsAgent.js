@@ -16,7 +16,7 @@ export const useMainEvmAddress = () => {
     : null;
 };
 
-// status: checking | no-evm | locked (release build) | not-enabled | enabling | enabled
+// status: checking | no-evm | locked (native secure storage missing, e.g. old build + OTA JS) | not-enabled | enabling | enabled
 export const usePerpsAgent = (active) => {
   const user = useMainEvmAddress();
   const [status, setStatus] = useState("checking");

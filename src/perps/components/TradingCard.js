@@ -111,7 +111,7 @@ const TradingCard = ({ theme, agentState, funds }) => {
     );
   }
 
-  // not-enabled | enabling | locked (release build)
+  // not-enabled | enabling | locked (app build without secure key storage)
   const locked = status === "locked";
   const enabling = status === "enabling";
   const canPress = !locked && !enabling && accepted;
