@@ -86,7 +86,12 @@ const PerpsHome = () => {
   const theme = isDark ? colors.dark : colors.light;
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
-  const { markets, loading, refreshing, updating, error, retry, refresh } = useAsterMarkets(isFocused);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const deposit = useDepositTracker();
+  // The full-screen History covers this list: pause its market stream + account poller meanwhile
+  // (the poller keeps running if a deposit is waiting for its credit).
+  const listActive = isFocused && !historyOpen;
+  const { markets, loading, refreshing, updating, error, retry, refresh } = useAsterMarkets(listActive);
   useAssetLogos(); // start loading coin logos as soon as the tab mounts
   const agentState = usePerpsAgent(isFocused);
   const { leverage } = agentState;
@@ -94,12 +99,10 @@ const PerpsHome = () => {
   const accountState = usePerpsAccount({
     agent: agentState.agent,
     user: agentState.user,
-    active: isFocused && tradingEnabled,
+    active: isFocused && tradingEnabled && (!historyOpen || deposit.active),
     onAgentInvalid: agentState.reset,
   });
   const [sheet, setSheet] = useState(null); // 'deposit' | 'withdraw' | null
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const deposit = useDepositTracker();
   const depositPending = deposit.active;
   const perpsBalance = accountState.account ? accountState.account.walletBalance : null;
   // "Credited in Perps": feed each balance from the shared account poller into the tracker.

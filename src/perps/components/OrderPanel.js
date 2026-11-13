@@ -8,7 +8,7 @@ import {
   estimateFee,
   DEFAULT_TAKER_FEE_RATE,
 } from "../utils/orderMath";
-import { gt, isPositive, toPlain, roundToStep, mul, floorToStep } from "../utils/decimal";
+import { gt, isPositive, toPlain, roundToStep, mul, floorToStep, cleanAmountInput } from "../utils/decimal";
 import { formatNumber } from "../utils/format";
 import { friendlyAsterError } from "../utils/asterErrors";
 import {
@@ -71,9 +71,6 @@ const Row = ({ label, value, theme, valueColor }) => (
   </View>
 );
 
-// Digits + one dot (comma accepted as dot), max 8 decimals.
-const cleanInput = (t) =>
-  t.replace(/,/g, ".").replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1").replace(/^(\d*\.\d{0,8}).*$/, "$1");
 
 // Trade form shown on PerpsMarket once trading is enabled.
 const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, agentState, account, onPlaced }) => {
@@ -355,7 +352,7 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
           theme={theme}
           label="Limit price"
           value={limitPrice}
-          onChangeText={(t) => setLimitPrice(cleanInput(t))}
+          onChangeText={(t) => setLimitPrice(cleanAmountInput(t))}
           placeholder="0.00"
           suffix="USDT"
         />
@@ -364,7 +361,7 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
         theme={theme}
         label={`Amount (margin) · Available ${available !== null ? `$${formatNumber(available, 2)}` : "…"}`}
         value={amount}
-        onChangeText={(t) => setAmount(cleanInput(t))}
+        onChangeText={(t) => setAmount(cleanAmountInput(t))}
         placeholder="0.00"
         suffix="USDT"
         right={
@@ -453,10 +450,10 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
       {tpslOn ? (
         <View style={styles.tpslRow}>
           <View style={{ flex: 1, marginRight: 6 }}>
-            <Field theme={theme} label="TP price" value={tp} onChangeText={(t) => setTp(cleanInput(t))} placeholder="Optional" />
+            <Field theme={theme} label="TP price" value={tp} onChangeText={(t) => setTp(cleanAmountInput(t))} placeholder="Optional" />
           </View>
           <View style={{ flex: 1, marginLeft: 6 }}>
-            <Field theme={theme} label="SL price" value={sl} onChangeText={(t) => setSl(cleanInput(t))} placeholder="Optional" />
+            <Field theme={theme} label="SL price" value={sl} onChangeText={(t) => setSl(cleanAmountInput(t))} placeholder="Optional" />
           </View>
         </View>
       ) : null}

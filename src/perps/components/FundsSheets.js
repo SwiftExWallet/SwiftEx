@@ -31,13 +31,10 @@ import {
   isDepositSending,
 } from "../storage/depositTracker";
 import { useWithdrawTracker, startWithdraw, clearWithdraw, isWithdrawFinished } from "../storage/withdrawTracker";
-import { gt, isPositive, sub, min as dMin, lte, toPlain, floorToStep } from "../utils/decimal";
+import { gt, isPositive, sub, min as dMin, lte, toPlain, floorToStep, cleanAmountInput, decimalsOf } from "../utils/decimal";
 import { formatNumber, formatAmount } from "../utils/format";
 import { friendlyAsterError } from "../utils/asterErrors";
 
-// Digits + one dot (comma accepted as dot), max 8 decimals.
-const cleanInput = (t) =>
-  t.replace(/,/g, ".").replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1").replace(/^(\d*\.\d{0,8}).*$/, "$1");
 
 const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "");
 const pct = (r) => `${Math.round(r * 1000) / 10}%`;
@@ -71,7 +68,7 @@ const AmountInput = ({ theme, value, onChange, onMax, suffix = "USDT", maxBusy }
   <View style={[styles.field, { backgroundColor: theme.cardBg }]}>
     <TextInput
       value={value}
-      onChangeText={(t) => onChange(cleanInput(t))}
+      onChangeText={(t) => onChange(cleanAmountInput(t))}
       placeholder="0.00"
       placeholderTextColor={theme.inactiveTx}
       keyboardType="decimal-pad"
@@ -202,6 +199,8 @@ export const DepositSheet = ({ visible, onClose, theme, user, perpsBalance, mult
   if (amount && !isPositive(amount)) inline = "Enter an amount";
   else if (amount && asset && isPositive(asset.minDeposit) && gt(asset.minDeposit, amount))
     inline = `Minimum deposit is ${asset.minDeposit} ${displayName(asset.name)}`;
+  else if (amount && asset && decimalsOf(amount) > asset.decimals)
+    inline = `${displayName(asset.name)} allows at most ${asset.decimals} decimals`;
   else if (amount && bal !== null && gt(amount, bal)) inline = `More than your wallet has (${formatAmount(bal, 6)})`;
   const noGas = !!balances && !isPositive(balances.native);
 

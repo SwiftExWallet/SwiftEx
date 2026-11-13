@@ -121,3 +121,25 @@ export const fromTokenUnits = (bn, tokenDecimals) => {
   if (s.includes(".")) s = s.replace(/0+$/, "").replace(/\.$/, "");
   return s;
 };
+
+// Amount / price text field cleaner (typed or pasted). Keeps digits and ONE decimal point, max
+// `maxDecimals` decimals. Separators: a single "," is a decimal comma ("12,5" -> 12.5); when both
+// "," and "." appear, the LAST one is the decimal point and the other is a thousands separator
+// ("1,234.56" / "1.234,56" -> 1234.56); several commas and no dot are thousands ("1,234,567").
+// Extra dots typed after the first are ignored ("1.2." -> "1.2"). Signs, letters, spaces dropped.
+export const cleanAmountInput = (text, maxDecimals = 8) => {
+  let t = String(text === null || text === undefined ? "" : text).replace(/[^0-9.,]/g, "");
+  const lastComma = t.lastIndexOf(",");
+  const lastDot = t.lastIndexOf(".");
+  if (lastComma >= 0 && lastDot >= 0) {
+    t = lastComma > lastDot ? t.replace(/\./g, "").replace(/,/g, ".") : t.replace(/,/g, "");
+  } else if (lastComma >= 0) {
+    const commas = (t.match(/,/g) || []).length;
+    t = commas > 1 ? t.replace(/,/g, "") : t.replace(",", ".");
+  } else if (/^\d{1,3}(\.\d{3}){2,}$/.test(t)) {
+    t = t.replace(/\./g, ""); // "1.234.567" = dot thousands
+  }
+  const i = t.indexOf(".");
+  if (i >= 0) t = `${t.slice(0, i + 1)}${t.slice(i + 1).replace(/\./g, "").slice(0, maxDecimals)}`;
+  return t;
+};

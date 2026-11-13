@@ -13,6 +13,7 @@ import { CHAINS } from "../../utilities/TokenUtils";
 import { fustionEvmTxManager } from "../../utilities/evmTxManager";
 import { signAsterWithdrawRequest } from "./asterWithdrawSigner";
 import { asterFetch } from "./asterPublic";
+import { PERPS_CHAINS, getAssetLists } from "./asterAssets";
 import { asterSignedRequest, getServerNowMs, syncServerTime, nextNonceMicros } from "./asterSigned";
 import { toTokenUnits, fromTokenUnits, toPlain, fromUnits, toUnits, isPositive } from "../utils/decimal";
 
@@ -198,9 +199,54 @@ export const prepareChainDeposit = async ({ chain, asset, user, amount }) => {
   return { ok: true, plan, error: null };
 };
 
+// Last check right before signing: everything in the plan must belong to the selected chain.
+// Returns an error string (abort) or null.
+export const verifyDepositPlan = async (user, plan) => {
+  const chain = PERPS_CHAINS.find((c) => c.chainId === Number(plan.chainId));
+  if (!chain || chain.key !== plan.chainKey) return "Unknown network";
+  const appChain = CHAINS[plan.chainKey];
+  if (!appChain || Number(appChain.chainId) !== chain.chainId) return "Network settings don't match";
+  const same = (a, b) => !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
+  if (!same(plan.deposit.to, chain.vault)) return "Wrong deposit contract for this network";
+  let lists;
+  try {
+    lists = await getAssetLists();
+  } catch (e) {
+    return "Couldn't verify the asset list. Check your connection.";
+  }
+  const listed = (lists.deposit || []).find((a) => a.chainId === chain.chainId && a.name === plan.asset);
+  if (!listed || listed.isNative !== !!plan.isNative || Number(listed.decimals) !== Number(plan.decimals)) {
+    return "Asset isn't supported on this network";
+  }
+  if (!plan.isNative && !same(listed.contract, plan.contract)) return "Token contract doesn't match this network";
+  let args;
+  try {
+    args = vault.decodeFunctionData("depositFor", plan.deposit.data);
+  } catch (e) {
+    return "Invalid deposit data";
+  }
+  const currency = plan.isNative ? NATIVE_TOKEN_ADDRESS : plan.contract;
+  if (!same(args.currency, currency) || !same(args.forAddress, user)) return "Deposit data doesn't match";
+  if (!args.amount.eq(plan.amountWei) || !args.broker.eq(PERP_BROKER)) return "Deposit amount doesn't match";
+  if (!ethers.BigNumber.from(plan.valueWei).eq(plan.isNative ? plan.amountWei : 0)) return "Deposit value doesn't match";
+  for (const a of plan.approves || []) {
+    if (plan.isNative || !same(a.to, plan.contract)) return "Approval is for the wrong token";
+    try {
+      const ap = erc20.decodeFunctionData("approve", a.data);
+      if (!same(ap.spender, chain.vault)) return "Approval is for the wrong contract";
+      if (!a.reset && !ap.amount.eq(plan.amountWei)) return "Approval amount doesn't match";
+    } catch (e) {
+      return "Invalid approval data";
+    }
+  }
+  return null;
+};
+
 // Send a prepared plan through the app's existing EVM signer/broadcaster (fustionEvmTxManager).
 // onStep('approving' | 'depositing' | 'waiting'). Never throws.
 export const executeChainDeposit = async (user, plan, onStep) => {
+  const guard = await verifyDepositPlan(user, plan).catch(() => "Couldn't verify the deposit");
+  if (guard) return { ok: false, step: plan.needsApprove ? "approve" : "deposit", error: `Stopped before sending: ${guard}` };
   let approveHash = null;
   for (const a of plan.approves || []) {
     if (onStep) onStep("approving");
@@ -426,6 +472,13 @@ export const withdrawWithMainWallet = async (user, amount, fee, { asset = "USDT"
   const wChain = WITHDRAW_CHAIN_NAMES[String(chainId)];
   if (!wChain) throw new Error("Unsupported chain");
   const domain = { ...WITHDRAW_DOMAIN, chainId: Number(chainId) };
+  // Guard: asset + network must be in Aster's live withdraw list (when it is available).
+  const lists = await getAssetLists().catch(() => null);
+  if (lists && lists.withdraw && lists.withdraw.length && !lists.withdraw.some((a) => a.chainId === Number(chainId) && a.name === asset)) {
+    const err = new Error(`${asset} can't be withdrawn to that network. Nothing was sent.`);
+    err.step = "verify";
+    throw err;
+  }
   const owner = ethers.utils.getAddress(user);
   await syncServerTime();
   const userNonce = String(Math.trunc(getServerNowMs()) * 1000); // docs: ms * 1000

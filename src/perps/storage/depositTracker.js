@@ -61,6 +61,7 @@ export const getDepositRecord = () => record;
 const friendlyTxError = (err, step, r) => {
   const m = String(err || "");
   const nat = chainOf(r).native;
+  if (/^Stopped before sending/.test(m)) return `${m}. Nothing was sent.`;
   if (/cancel/i.test(m)) {
     return step === "deposit"
       ? "You cancelled. The approval went through, but nothing was deposited."
@@ -153,7 +154,7 @@ const run = async (plan) => {
       return;
     }
     const msg = String(res.error || "");
-    if (res.step === "deposit" && !/cancel|revert|insufficient funds|PIN|auth|biometric/i.test(msg)) {
+    if (res.step === "deposit" && !/cancel|revert|insufficient funds|PIN|auth|biometric|Stopped before sending/i.test(msg)) {
       // Timeout / RPC / broadcast error after the deposit step started: maybe it went out.
       patch({ checking: true });
       const out = await depositWentOut(record);

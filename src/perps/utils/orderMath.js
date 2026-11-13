@@ -66,6 +66,11 @@ export const buildEntryOrder = (input) => {
     return fail(`Amount too small. Minimum about $${ceilToStep(minMargin, "0.01")} at ${lev}x`);
   }
   if (!isPositive(qty)) return fail("Amount too small");
+  // LOT_SIZE / MARKET_LOT_SIZE maxQty (market orders have a lower cap on Aster).
+  const maxQty = type === "MARKET" ? meta.marketMaxQty || meta.maxQty : meta.maxQty;
+  if (isPositive(maxQty) && gt(qty, maxQty)) {
+    return fail(`Order is too large: at most ${maxQty} per ${type === "MARKET" ? "market" : "limit"} order. Lower the amount or leverage.`);
+  }
   const notional = mul(qty, price);
   if (meta.minNotional && lt(notional, meta.minNotional)) {
     const minMargin = div(meta.minNotional, String(lev));

@@ -143,6 +143,8 @@ export const ORDER_RULE_FIELDS = [
   "stepSize",
   "minQty",
   "marketStepSize",
+  "maxQty",
+  "marketMaxQty",
   "minNotional",
   "priceBandDown",
   "priceBandUp",
@@ -177,6 +179,8 @@ export const fetchPerpMarkets = async () => {
       stepSize: filterValue(s.filters, "LOT_SIZE", "stepSize"),
       minQty: filterValue(s.filters, "LOT_SIZE", "minQty"),
       marketStepSize: filterValue(s.filters, "MARKET_LOT_SIZE", "stepSize"),
+      maxQty: filterValue(s.filters, "LOT_SIZE", "maxQty"),
+      marketMaxQty: filterValue(s.filters, "MARKET_LOT_SIZE", "maxQty"),
       minNotional: filterValue(s.filters, "MIN_NOTIONAL", "notional"),
       // Limit prices must stay within mark × [multiplierDown, multiplierUp]
       priceBandDown: filterValue(s.filters, "PERCENT_PRICE", "multiplierDown"),

@@ -492,6 +492,9 @@ const PerpsHistory = ({ visible, onClose, theme, isDark, agent, user }) => {
             keyExtractor={(it) => it.key || it.k}
             renderItem={renderItem}
             stickySectionHeadersEnabled={false}
+            initialNumToRender={12}
+            maxToRenderPerBatch={20}
+            windowSize={11}
             ListHeaderComponent={
               <>
                 {tab !== 2 ? (
