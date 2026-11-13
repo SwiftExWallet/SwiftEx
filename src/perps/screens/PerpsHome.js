@@ -40,6 +40,7 @@ import { showInfo } from "../utils/modalSafe";
 import { startMultiAssetsFlow } from "../api/multiAssetsFlow";
 import { logPerpsError, getPerpsErrors, formatPerpsErrors, clearPerpsErrors } from "../utils/perpsLog";
 import { withTimeout } from "../utils/async";
+import { useFocusRequest, consumeFocus, findFocusTarget, getFocusRequest } from "../utils/positionFocus";
 
 
 const MarketRow = React.memo(({ item, theme, onPress }) => {
@@ -242,6 +243,53 @@ const PerpsHome = () => {
     ]);
   };
 
+  // "View position" / "Done" after an order: scroll to the new row and glow it briefly.
+  const listRef = useRef(null);
+  const sectionY = useRef(0);
+  const rowY = useRef({});
+  const [highlight, setHighlight] = useState(null); // { key, pulse, strength }
+  const refreshedFor = useRef(null);
+  const focusReq = useFocusRequest();
+  const positions = accountState.positions;
+  const openOrders = accountState.openOrders;
+  useEffect(() => {
+    if (!focusReq || !isFocused || !tradingEnabled) return undefined;
+    if (!getFocusRequest()) {
+      consumeFocus(focusReq); // expired (row never appeared)
+      return undefined;
+    }
+    const key = findFocusTarget(focusReq, positions, openOrders);
+    if (!key) {
+      // The new row may not be in the last poll yet: one extra refresh per request, then the
+      // normal 5s poll.
+      if (refreshedFor.current !== focusReq.at) {
+        refreshedFor.current = focusReq.at;
+        accountState.refresh();
+      }
+      return undefined;
+    }
+    // Wait one frame so the row has been laid out, then scroll + glow.
+    const id = setTimeout(() => {
+      const y = rowY.current[key];
+      if (listRef.current && y !== undefined) {
+        listRef.current.scrollToOffset({ offset: Math.max(0, sectionY.current + y - 60), animated: true });
+      }
+      setHighlight({ key, pulse: Date.now(), strength: focusReq.strength });
+      consumeFocus(focusReq);
+    }, 250);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusReq, isFocused, tradingEnabled, positions, openOrders]);
+
+  // Tab badge: number of open positions (shared account poller; no extra requests).
+  const positionCount = tradingEnabled ? positions.length : 0;
+  useEffect(() => {
+    navigation.setOptions({
+      tabBarBadge: positionCount > 0 ? positionCount : undefined,
+      tabBarBadgeStyle: { backgroundColor: theme.buttonColor, color: "#FFFFFF", fontSize: 11 },
+    });
+  }, [navigation, positionCount, theme.buttonColor]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toUpperCase();
     const list = q
@@ -378,6 +426,13 @@ const PerpsHome = () => {
           marks={accountState.marks}
           onClosePosition={onClosePosition}
           onCancelOrder={onCancelOrder}
+          highlight={highlight}
+          onLayout={(e) => {
+            sectionY.current = e.nativeEvent.layout.y;
+          }}
+          onRowLayout={(key, y) => {
+            rowY.current[key] = y;
+          }}
         />
       ) : null}
       {tradingEnabled ? (
@@ -459,6 +514,7 @@ const PerpsHome = () => {
         </TouchableOpacity>
       ) : null}
       <FlatList
+        ref={listRef}
         data={loading || (error && markets.length === 0) ? [] : filtered}
         keyExtractor={(item) => item.symbol}
         renderItem={renderItem}

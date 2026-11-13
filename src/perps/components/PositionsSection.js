@@ -5,6 +5,8 @@ import { gt, div, isPositive, sub, toPlain } from "../utils/decimal";
 import { formatNumber, formatPrice } from "../utils/format";
 import { getCachedMarketMeta } from "../api/asterPublic";
 import CoinLogo from "./CoinLogo";
+import Highlight from "./Highlight";
+import { positionKey, orderKey } from "../utils/positionFocus";
 
 const metaOf = (symbol) => (getCachedMarketMeta() || {})[symbol] || {};
 
@@ -124,30 +126,40 @@ const OrderRow = ({ o, theme, onCancel }) => {
 };
 
 // Positions + open orders on the Perps tab.
-const PositionsSection = ({ theme, positions, openOrders, marks, onClosePosition, onCancelOrder }) => {
+// highlight: { key, pulse, strength } glows that row (after "View position"); onRowLayout(key, y)
+// reports each row's y inside this section, onLayout the section's own layout (for scrolling).
+const PositionsSection = ({ theme, positions, openOrders, marks, onClosePosition, onCancelOrder, highlight, onRowLayout, onLayout }) => {
   if (!positions.length && !openOrders.length) return null;
+  const glow = (key) => (highlight && highlight.key === key ? highlight : null);
+  const wrap = (key, child) => {
+    const h = glow(key);
+    return (
+      <Highlight
+        key={key}
+        pulse={h ? h.pulse : null}
+        strength={h ? h.strength : "strong"}
+        color={theme.buttonColor}
+        radius={16}
+        onLayout={onRowLayout ? (e) => onRowLayout(key, e.nativeEvent.layout.y) : undefined}
+      >
+        {child}
+      </Highlight>
+    );
+  };
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} onLayout={onLayout}>
       {positions.length ? (
         <>
           <Text style={[styles.title, { color: theme.headingTx }]}>Positions</Text>
-          {positions.map((p) => (
-            <PositionRow
-              key={`${p.symbol}-${p.positionSide}`}
-              p={p}
-              mark={marks[p.symbol]}
-              theme={theme}
-              onClose={onClosePosition}
-            />
-          ))}
+          {positions.map((p) =>
+            wrap(positionKey(p), <PositionRow p={p} mark={marks[p.symbol]} theme={theme} onClose={onClosePosition} />)
+          )}
         </>
       ) : null}
       {openOrders.length ? (
         <>
           <Text style={[styles.title, { color: theme.headingTx }]}>Open orders</Text>
-          {openOrders.map((o) => (
-            <OrderRow key={String(o.orderId)} o={o} theme={theme} onCancel={onCancelOrder} />
-          ))}
+          {openOrders.map((o) => wrap(orderKey(o), <OrderRow o={o} theme={theme} onCancel={onCancelOrder} />))}
         </>
       ) : null}
     </View>
@@ -159,7 +171,7 @@ export default PositionsSection;
 const styles = StyleSheet.create({
   wrap: { marginTop: 6 },
   title: { fontSize: 18, fontWeight: "700", marginHorizontal: 19, marginTop: 14, marginBottom: 8 },
-  card: { marginHorizontal: 12, marginBottom: 8, borderRadius: 16, padding: 14 },
+  card: { borderRadius: 16, padding: 14 }, // outer spacing comes from the Highlight wrapper
   headRow: { flexDirection: "row", alignItems: "center" },
   logo: { marginRight: 8 },
   orderLogo: { marginRight: 10 },
@@ -173,7 +185,7 @@ const styles = StyleSheet.create({
   cell: { flex: 1 },
   cellLabel: { fontSize: 11 },
   cellValue: { fontSize: 13, fontWeight: "600", marginTop: 2 },
-  orderRow: { flexDirection: "row", alignItems: "center", marginHorizontal: 12, marginBottom: 8, borderRadius: 14, padding: 12 },
+  orderRow: { flexDirection: "row", alignItems: "center", borderRadius: 14, padding: 12 },
   orderTitle: { fontSize: 14, fontWeight: "600" },
   orderSub: { fontSize: 12, marginTop: 3 },
   cancelBtn: { paddingHorizontal: 8, paddingVertical: 6 },

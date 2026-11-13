@@ -37,7 +37,7 @@ import CustomInfoProvider from "./exchange/crypto-exchange-front-end-main/src/co
 import { colors } from "../Screens/ThemeColorsConfig";
 import { PERPS_ENABLED } from "../perps/config";
 import { usePerpsAvailability } from "../perps/usePerpsAvailability";
-import HomeBanner from "../perps/components/HomeBanner";
+import HomeBanner, { PerpsBanner } from "../perps/components/HomeBanner";
 
 if (
   Platform.OS === "android" &&
@@ -526,15 +526,7 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
             {PERPS_ENABLED && (
               <>
                 {perpsVisible && (
-                  <HomeBanner
-                    theme={theme}
-                    highlighted
-                    title="Trade Perps"
-                    subtitle="Up to 20x leverage on BTC, ETH & more"
-                    icon="candlestick-chart"
-                    iconType="material"
-                    onPress={() => navigation.navigate("Perps")}
-                  />
+                  <PerpsBanner theme={theme} onPress={() => navigation.navigate("Perps")} />
                 )}
                 <HomeBanner
                   theme={theme}

@@ -29,6 +29,7 @@ import { showInfo, useModalPresence } from "../utils/modalSafe";
 import { startMultiAssetsFlow } from "../api/multiAssetsFlow";
 import { logPerpsError } from "../utils/perpsLog";
 import { sleep, withTimeout } from "../utils/async";
+import { positionSummary } from "../utils/positionFocus";
 const RULES_TIMEOUT_MS = 35000; // exchangeInfo refresh (30s request + margin)
 // Safety cap only: each request already times out at 15s (margin + leverage + order + 2 TP/SL
 // <= ~75s). The cap must exceed that, so it can never fire while the order is still being sent.
@@ -90,7 +91,9 @@ const Row = ({ label, value, theme, valueColor }) => (
 
 
 // Trade form shown on PerpsMarket once trading is enabled.
-const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, agentState, account, onPlaced }) => {
+// onShowNew({ kind, symbol, orderId, strength, go }): success dialog's "View position" / "Done".
+// positionBar: optional node shown right above Long / Short (the market's "Your position" bar).
+const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, agentState, account, onPlaced, onShowNew, positionBar }) => {
   const { agent, user } = agentState;
   const [type, setType] = useState("MARKET");
   const [amount, setAmount] = useState("");
@@ -304,6 +307,21 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
     return { placed: null };
   };
 
+  // After a fill: Aster's position for this market (entry, size, liq.). null if not readable.
+  const readBackPosition = async () => {
+    for (let i = 0; i < 2; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(i === 0 ? 600 : 1500);
+      // eslint-disable-next-line no-await-in-loop
+      const r = await withTimeout(fetchPositions(agent, user, symbol), 6000).catch(() => ({ error: "timeout" }));
+      if (!r.error) {
+        const p = (Array.isArray(r.data) ? r.data : [r.data]).find((x) => x && x.symbol === symbol && Number(x.positionAmt) !== 0);
+        if (p) return p;
+      }
+    }
+    return null;
+  };
+
   const submit = async () => {
     if (!confirmOrder || !confirmOrder.ok || submitting) return;
     const order = confirmOrder;
@@ -381,14 +399,28 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
       }
       const failed = (res.tpsl || []).filter((x) => !x.ok);
       failed.forEach((f) => logPerpsError({ step: `order:tpsl:${f.type}`, code: f.code, msg: f.error }));
+      const entry = res.entry || {};
+      // A limit order that filled at once is a position too; otherwise it waits in Open orders.
+      const isOrder = type === "LIMIT" && String(entry.status || "").toUpperCase() !== "FILLED";
+      // Show the actual position (entry, size, liq.) read back from Aster after the fill.
+      const pos = isOrder ? null : await readBackPosition();
+      const what = isOrder
+        ? `Limit ${direction === "LONG" ? "buy" : "sell"} ${order.qty} ${baseAsset} at $${formatPrice(order.price, meta.tickSize)} · waiting in Open orders.`
+        : pos
+        ? positionSummary(pos, baseAsset, meta.tickSize)
+        : `${direction === "LONG" ? "Long" : "Short"} ${order.qty} ${baseAsset} opened at market.`;
+      const focus = { kind: isOrder ? "order" : "position", symbol, orderId: isOrder ? entry.orderId : null };
       result = {
         type: failed.length ? "info" : "success",
-        title: failed.length ? "Order placed — TP/SL failed" : "Order placed",
+        title: failed.length ? "Order placed — TP/SL failed" : isOrder ? "Order placed" : "Position opened",
         msg: failed.length
-          ? `${failed.map((f) => `${f.type}: ${friendlyAsterError(f)}`).join("\n")}\nSet TP/SL again from your position.`
-          : type === "LIMIT"
-          ? `Limit ${direction === "LONG" ? "buy" : "sell"} ${order.qty} ${baseAsset} at $${formatPrice(order.price, meta.tickSize)} placed. If the price is already there it fills right away; otherwise it waits in Open orders.`
-          : `${direction === "LONG" ? "Long" : "Short"} ${order.qty} ${baseAsset} opened at market.`,
+          ? `${what}\n\n${failed.map((f) => `${f.type}: ${friendlyAsterError(f)}`).join("\n")}\nSet TP/SL again from your position.`
+          : what,
+        // Primary first: the success dialog stacks its buttons top to bottom.
+        buttons: [
+          { text: isOrder ? "View order" : "View position", style: "primary", onPress: () => onShowNew && onShowNew({ ...focus, strength: "strong", go: true }) },
+          { text: "Done", style: "cancel", onPress: () => onShowNew && onShowNew({ ...focus, strength: "light" }) },
+        ],
       };
       if (mounted.current) setAmount("");
       if (onPlaced) onPlaced();
@@ -404,7 +436,7 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
         setSubmitting(false);
         setConfirm(null);
       }
-      if (result) showInfo(result.type, result.title, result.msg);
+      if (result) showInfo(result.type, result.title, result.msg, result.buttons);
     }
     if (checkClientId) {
       const st = await resolveUnknownOrder(checkClientId);
@@ -561,6 +593,8 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
       ) : null}
 
       {amount && blockReason ? <Text style={[styles.block, { color: theme.fail }]}>{blockReason}</Text> : null}
+
+      {positionBar || null}
 
       <View style={styles.tradeBtns}>
         {[

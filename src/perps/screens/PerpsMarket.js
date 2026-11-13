@@ -29,6 +29,8 @@ import CoinLogo from "../components/CoinLogo";
 import { usePerpsAgent } from "../hooks/usePerpsAgent";
 import { usePerpsAccount } from "../hooks/usePerpsAccount";
 import { DEFAULT_MAX_LEVERAGE } from "../utils/orderMath";
+import Highlight from "../components/Highlight";
+import { requestFocus, positionBarText } from "../utils/positionFocus";
 import {
   formatPrice,
   formatPercent,
@@ -54,6 +56,33 @@ const Stat = ({ label, value, theme }) => (
     </Text>
   </View>
 );
+
+// Compact "Your position" bar: side, size, live PnL (+ waiting limit orders). Tap = Perps tab.
+const PositionBar = ({ theme, position, orderCount, baseAsset, mark, pulse, onPress }) => {
+  const t = position ? positionBarText(position, baseAsset, mark) : null;
+  const pnlColor = !t || t.sign === 0 ? theme.inactiveTx : t.sign > 0 ? theme.success : theme.fail;
+  const orders = orderCount ? `${orderCount} open order${orderCount > 1 ? "s" : ""}` : "";
+  return (
+    <Highlight pulse={pulse} strength="light" color={theme.buttonColor} radius={12} style={styles.barWrap}>
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel={`Your ${baseAsset} position, show details`}
+        onPress={onPress}
+        style={[styles.bar, { backgroundColor: theme.cardBg }]}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.barLabel, { color: theme.inactiveTx }]}>{t ? "Your position" : "Your orders"}</Text>
+          <Text style={[styles.barTxt, { color: theme.headingTx }]} numberOfLines={1}>
+            {t ? t.side : orders}
+            {t && t.pnl ? <Text style={{ color: pnlColor }}>{` · ${t.pnl}`}</Text> : null}
+          </Text>
+          {t && orders ? <Text style={[styles.barLabel, { color: theme.inactiveTx }]}>{`+ ${orders}`}</Text> : null}
+        </View>
+        <Icon name="chevron-forward" type="ionicon" size={18} color={theme.inactiveTx} />
+      </TouchableOpacity>
+    </Highlight>
+  );
+};
 
 const useNow = (active) => {
   const [now, setNow] = useState(Date.now());
@@ -94,6 +123,17 @@ const PerpsMarket = ({ navigation, route }) => {
   const accountForPanel = accountState.account
     ? { ...accountState.account, noDeposit: accountState.noDeposit }
     : null;
+
+  // "Your position" bar (above Long / Short): this market's position and waiting limit orders.
+  const myPosition = (accountState.positions || []).find((p) => p.symbol === symbol) || null;
+  const myOrders = (accountState.openOrders || []).filter((o) => o.symbol === symbol && (o.type || o.origType) === "LIMIT");
+  const [barPulse, setBarPulse] = useState(null);
+  const showNew = (req) => {
+    requestFocus(req); // the Perps tab scrolls to it + glows (now, or when you go back)
+    if (req.go) navigation.navigate("HomeScreen", { screen: "Perps" });
+    else setBarPulse(Date.now()); // "Done": stay here, glow the bar briefly
+  };
+  const openPositions = () => showNew({ kind: myPosition ? "position" : "order", symbol, orderId: null, strength: "strong", go: true });
 
   const goBack = () => navigation.goBack();
   const containerStyle = [
@@ -252,6 +292,20 @@ const PerpsMarket = ({ navigation, route }) => {
             agentState={{ agent: agentState.agent, user: agentState.user, onInvalid: agentState.reset }}
             account={accountForPanel}
             onPlaced={accountState.refresh}
+            onShowNew={showNew}
+            positionBar={
+              myPosition || myOrders.length ? (
+                <PositionBar
+                  theme={theme}
+                  position={myPosition}
+                  orderCount={myOrders.length}
+                  baseAsset={baseAsset}
+                  mark={accountState.marks[symbol]}
+                  pulse={barPulse}
+                  onPress={openPositions}
+                />
+              ) : null
+            }
           />
         ) : (
           <View style={styles.lockedTrade}>
@@ -439,6 +493,26 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "600",
+  },
+  barWrap: {
+    marginHorizontal: 0,
+    marginBottom: 0,
+    marginTop: 12,
+  },
+  bar: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+  },
+  barLabel: {
+    fontSize: 11,
+  },
+  barTxt: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginTop: 1,
   },
   blockedTxt: {
     fontSize: 16,

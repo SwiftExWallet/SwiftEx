@@ -1,6 +1,9 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Icon from "../../icon";
+import { getCachedMarketMeta } from "../api/asterPublic";
+import { perpsBannerSubtitle } from "../utils/positionFocus";
 
 // Simple home banner card (icon + title + subtitle + arrow). Used for "Trade Perps" and "Discover".
 const HomeBanner = ({ theme, title, subtitle, icon, iconType, highlighted, onPress }) => (
@@ -29,6 +32,46 @@ const HomeBanner = ({ theme, title, subtitle, icon, iconType, highlighted, onPre
 );
 
 export default HomeBanner;
+
+// Live market count for the "Trade Perps" banner: the in-memory market rules if loaded, else the
+// saved market list (perps_markets_cache, written by useAsterMarkets). No network request.
+const usePerpsMarketCount = () => {
+  const [n, setN] = useState(() => {
+    const m = getCachedMarketMeta();
+    return m ? Object.keys(m).length : null;
+  });
+  useEffect(() => {
+    if (n) return undefined;
+    let cancelled = false;
+    AsyncStorage.getItem("perps_markets_cache")
+      .then((raw) => {
+        const c = raw ? JSON.parse(raw) : null;
+        if (!cancelled && c && Array.isArray(c.markets) && c.markets.length) setN(c.markets.length);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return n;
+};
+
+// Home "Trade Perps" banner. Neutral copy: never advertises a max leverage (it varies by market).
+export const PerpsBanner = ({ theme, onPress }) => {
+  const count = usePerpsMarketCount();
+  return (
+    <HomeBanner
+      theme={theme}
+      highlighted
+      title="Trade Perps"
+      subtitle={perpsBannerSubtitle(count)}
+      icon="candlestick-chart"
+      iconType="material"
+      onPress={onPress}
+    />
+  );
+};
 
 const styles = StyleSheet.create({
   card: {
