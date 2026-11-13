@@ -2,6 +2,7 @@
 // Never log keys, signatures or full signed URLs.
 import { ethers } from "ethers";
 import { asterFetch, fetchServerTime } from "./asterPublic";
+import { logPerpsError } from "../utils/perpsLog";
 
 const AGENT_DOMAIN = {
   name: "AsterSignTransaction",
@@ -109,6 +110,7 @@ const signedRequestOnce = async ({ agent, user, method = "GET", path, params = {
   try {
     signature = await signerFor(agent.pk)._signTypedData(AGENT_DOMAIN, MESSAGE_TYPES, { msg: qs });
   } catch (e) {
+    logPerpsError({ step: "sign", path: `${method} ${path}`, msg: e && e.message ? e.message : "sign failed" });
     return { data: null, error: "Could not sign request", code: null, agentInvalid: false };
   }
 

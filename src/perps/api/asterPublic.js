@@ -1,5 +1,7 @@
 // Aster public (no-auth) REST helpers. Read-only market data. Every helper resolves to
 // { data, error } and never throws.
+import { logPerpsError } from "../utils/perpsLog";
+
 export const ASTER_REST_BASE = "https://fapi.asterdex.com";
 
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -42,11 +44,15 @@ export const asterFetch = async (
     const code = data && typeof data.code === "number" ? data.code : null;
     if (!response.ok || (code !== null && code < 0)) {
       const msg = data && data.msg ? data.msg : `HTTP ${response.status}`;
-      return { data, error: msg, code };
+      logPerpsError({ step: "http", path: `${method} ${String(path).split("?")[0]}`, status: response.status, code, msg });
+      return { data, error: msg, code, status: response.status };
     }
     return { data, error: null, code };
   } catch (err) {
-    return { data: null, error: friendlyError(err), code: null };
+    const msg = friendlyError(err);
+    logPerpsError({ step: "network", path: `${method} ${String(path).split("?")[0]}`, msg });
+    // transport: no answer from Aster (timeout / offline) — the request may or may not have arrived.
+    return { data: null, error: msg, code: null, transport: true };
   } finally {
     if (timer) clearTimeout(timer);
   }

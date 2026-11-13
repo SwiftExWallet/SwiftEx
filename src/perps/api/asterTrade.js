@@ -83,3 +83,8 @@ export const openPosition = async ({
   }
   return { ok: true, entry: entry.data, tpsl };
 };
+
+// GET /fapi/v3/order by our clientOrderId (read-only): did an order whose reply was lost arrive?
+// -> { data: order | null, error, code }. Aster answers -2013 "Order does not exist" when it did not.
+export const fetchOrderByClientId = (agent, user, symbol, clientOrderId) =>
+  signed(agent, user, "GET", "/fapi/v3/order", { symbol, origClientOrderId: clientOrderId });

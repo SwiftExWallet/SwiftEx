@@ -21,6 +21,8 @@ import { isAsterWithdrawSigningAvailable } from "../api/asterWithdrawSigner";
 import WithdrawStatusCard from "./WithdrawStatusCard";
 import DepositStatusCard from "./DepositStatusCard";
 import CoinLogo from "./CoinLogo";
+import { useModalPresence } from "../utils/modalSafe";
+import { logPerpsError } from "../utils/perpsLog";
 import {
   useDepositTracker,
   startDeposit,
@@ -39,7 +41,9 @@ import { friendlyAsterError } from "../utils/asterErrors";
 const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "");
 const pct = (r) => `${Math.round(r * 1000) / 10}%`;
 
-const Sheet = ({ visible, onClose, busy, theme, title, children }) => (
+const Sheet = ({ visible, onClose, busy, theme, title, children }) => {
+  const presence = useModalPresence(visible); // iOS: info dialogs wait until this has hidden
+  return (
   <Modal
     isVisible={visible}
     onBackdropPress={() => !busy && onClose()}
@@ -47,6 +51,7 @@ const Sheet = ({ visible, onClose, busy, theme, title, children }) => (
     style={styles.modal}
     avoidKeyboard
     useNativeDriverForBackdrop
+    onModalHide={presence.onModalHide}
   >
     <View style={[styles.sheet, { backgroundColor: theme.bg }]}>
       <Text style={[styles.title, { color: theme.headingTx }]}>{title}</Text>
@@ -55,9 +60,10 @@ const Sheet = ({ visible, onClose, busy, theme, title, children }) => (
       </ScrollView>
     </View>
   </Modal>
-);
+  );
+};
 
-const Row = ({ label, value, theme, color }) => (
+const Row =({ label, value, theme, color }) => (
   <View style={styles.row}>
     <Text style={[styles.rowLabel, { color: theme.inactiveTx }]}>{label}</Text>
     <Text style={[styles.rowValue, { color: color || theme.headingTx }]}>{value}</Text>
@@ -533,11 +539,11 @@ export const WithdrawSheet = ({ visible, onClose, theme, agent, user, available 
     setError(null);
     setSending(true);
     // Fee can change: re-read it right before signing and stop if it moved.
-    const fresh = await fetchWithdrawOptions(agent, user);
+    const fresh = await fetchWithdrawOptions(agent, user).catch(() => ({ data: null, error: "Network error" }));
     const freshCh = fresh.data && fresh.data.find((o) => o.asset === opt.asset);
     const freshFee = freshCh && (freshCh.chains.find((c) => c.chainId === ch.chainId) || {}).fee;
     let useFee = freshFee;
-    if (useFee === undefined || useFee === null) useFee = await estimateWithdrawFee(opt.asset, ch.chainId);
+    if (useFee === undefined || useFee === null) useFee = await estimateWithdrawFee(opt.asset, ch.chainId).catch(() => null);
     if (!mounted.current) return;
     if (useFee === null || useFee === undefined) {
       setSending(false);
@@ -551,10 +557,15 @@ export const WithdrawSheet = ({ visible, onClose, theme, agent, user, available 
       setError(`The network fee changed to ${useFee} ${tok}. Please check and confirm again.`);
       return;
     }
-    const res = await startWithdraw({ user, asset: opt.asset, chainId: ch.chainId, amount, fee });
-    if (!mounted.current) return;
-    setSending(false);
-    if (!res.ok) setError(res.error);
+    try {
+      const res = await startWithdraw({ user, asset: opt.asset, chainId: ch.chainId, amount, fee });
+      if (mounted.current && !res.ok) setError(res.error);
+    } catch (e) {
+      logPerpsError({ step: "withdraw:exception", msg: e && e.message });
+      if (mounted.current) setError("Something went wrong. Check the withdrawal status before trying again.");
+    } finally {
+      if (mounted.current) setSending(false); // never leave the button spinning
+    }
   };
 
   const close = () => {

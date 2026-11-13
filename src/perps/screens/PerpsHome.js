@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -36,7 +36,9 @@ import { chainById, displayName } from "../api/asterAssets";
 import { cancelOrder, placeOrder, fetchMultiAssetsMode, setMultiAssetsMode } from "../api/asterTrade";
 import { buildCloseOrder } from "../utils/orderMath";
 import { friendlyAsterError } from "../utils/asterErrors";
-import CustomInfoProvider from "../../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
+import { showInfo } from "../utils/modalSafe";
+import { logPerpsError, getPerpsErrors, formatPerpsErrors, clearPerpsErrors } from "../utils/perpsLog";
+import { withTimeout } from "../utils/async";
 
 
 const MarketRow = React.memo(({ item, theme, onPress }) => {
@@ -113,7 +115,7 @@ const PerpsHome = () => {
   const depositCredited = !!deposit.record && !!deposit.record.creditedAt;
   useEffect(() => {
     if (depositCredited && sheet !== "deposit") {
-      CustomInfoProvider.show(
+      showInfo(
         "success",
         "Deposit credited",
         `${deposit.record.amount} ${displayName(deposit.record.asset || "USDT")} is now in your Perps balance.`
@@ -140,7 +142,7 @@ const PerpsHome = () => {
   useEffect(() => {
     if (withdrawReceived && sheet !== "withdraw") {
       const r = withdraw.record;
-      CustomInfoProvider.show(
+      showInfo(
         "success",
         "Withdrawal received",
         `${r.receive} ${displayName(r.asset)} arrived in your wallet on ${chainById(r.chainId).name}.`
@@ -163,8 +165,10 @@ const PerpsHome = () => {
       cancelled = true;
     };
   }, [sheet, agentState.agent, agentState.user]);
-  const enableMultiAssets = () =>
-    CustomInfoProvider.show(
+  // Opened from the Deposit sheet: close the sheet first; the dialog shows once it has hidden (iOS).
+  const enableMultiAssets = () => {
+    setSheet(null);
+    return showInfo(
       "info",
       "Turn on Multi-Assets mode?",
       "All your Perps assets (BNB, ETH, USDC…) will count as Cross margin, at their collateral value. Isolated margin is not available in this mode. This applies to all markets and doesn't change your open positions.",
@@ -175,7 +179,7 @@ const PerpsHome = () => {
           onPress: async () => {
             const res = await setMultiAssetsMode(agentState.agent, agentState.user, true);
             if (res.error) {
-              CustomInfoProvider.show("error", "Couldn't switch mode", friendlyAsterError(res));
+              showInfo("error", "Couldn't switch mode", friendlyAsterError(res));
               return;
             }
             setMultiAssets(true);
@@ -183,19 +187,45 @@ const PerpsHome = () => {
         },
       ]
     );
+  };
 
+  // Close position / cancel order. Never leaves the UI waiting; a lost reply is "unknown",
+  // not "failed" (refresh and check before trying again).
+  const actionBusy = useRef(false);
   const runAction = async (title, fn) => {
-    const res = await fn();
-    if (res && res.agentInvalid) agentState.reset();
-    if (res && res.error) CustomInfoProvider.show("error", title, friendlyAsterError(res));
-    else CustomInfoProvider.show("success", title, "Done.");
-    accountState.refresh();
+    if (actionBusy.current) return;
+    actionBusy.current = true;
+    try {
+      const res = await withTimeout(fn(), 60000).catch((e) => ({ error: (e && e.message) || "timeout", transport: true }));
+      if (res && res.agentInvalid) agentState.reset();
+      if (res && res.error) {
+        logPerpsError({ step: `action:${title}`, code: res.code, msg: res.error });
+        if (res.transport) {
+          showInfo("info", `${title}: status unknown`, "We didn't get an answer from Aster. Your positions and orders are refreshing — check them before trying again.");
+        } else showInfo("error", title, friendlyAsterError(res));
+      } else showInfo("success", title, "Done.");
+    } catch (e) {
+      logPerpsError({ step: `action:${title}:exception`, msg: e && e.message });
+      showInfo("error", title, "Something went wrong. Check your positions and orders.");
+    } finally {
+      actionBusy.current = false;
+      accountState.refresh();
+    }
+  };
+
+  // Hidden diagnostics: long-press the "Perps" title to read the last 20 Perps errors (no secrets).
+  const showErrorLog = async () => {
+    const list = await getPerpsErrors().catch(() => []);
+    showInfo("info", `Perps error log (${list.length})`, formatPerpsErrors(list), [
+      { text: "Close", style: "cancel" },
+      { text: "Clear log", onPress: () => clearPerpsErrors() },
+    ]);
   };
 
   const onClosePosition = (p) => {
     const order = buildCloseOrder({ symbol: p.symbol, positionAmt: p.positionAmt });
     if (!order) return;
-    CustomInfoProvider.show(
+    showInfo(
       "info",
       "Close position?",
       `Market ${order.side === "SELL" ? "sell" : "buy"} ${order.quantity} to close your ${p.symbol} position.`,
@@ -210,7 +240,7 @@ const PerpsHome = () => {
   };
 
   const onCancelOrder = (o) => {
-    CustomInfoProvider.show("info", "Cancel order?", `${o.symbol} ${o.type}`, [
+    showInfo("info", "Cancel order?", `${o.symbol} ${o.type}`, [
       { text: "Keep", style: "cancel" },
       {
         text: "Cancel order",
@@ -239,7 +269,7 @@ const PerpsHome = () => {
 
   const confirmReset = () => {
     setMenuOpen(false);
-    CustomInfoProvider.show(
+    showInfo(
       "info",
       "Reset trading key?",
       "This removes the trading key from this device. You can enable trading again at any time.",
@@ -263,7 +293,13 @@ const PerpsHome = () => {
   const header = (
     <View>
       <View style={styles.titleRow}>
-        <Text style={[styles.title, { color: theme.headingTx }]}>Perps</Text>
+        <Text
+          onLongPress={showErrorLog}
+          delayLongPress={1200}
+          style={[styles.title, { color: theme.headingTx }]}
+        >
+          Perps
+        </Text>
         {agentState.status === "enabled" ? (
           <TouchableOpacity
             accessibilityRole="button"

@@ -19,6 +19,7 @@ import CoinLogo from "./CoinLogo";
 import { shortHash, hhmm } from "./WithdrawStatusCard";
 import { chainById, txUrl, displayName } from "../api/asterAssets";
 import { usePerpsHistory } from "../hooks/usePerpsHistory";
+import { useModalPresence } from "../utils/modalSafe";
 import { fetchTradesAround } from "../api/asterHistory";
 import { useDepositTracker, isDepositActive } from "../storage/depositTracker";
 import { add, isValid, toPlain } from "../utils/decimal";
@@ -340,6 +341,7 @@ const PerpsHistory = ({ visible, onClose, theme, isDark, agent, user }) => {
   const [period, setPeriod] = useState(PERIODS[0]);
   const [symbol, setSymbol] = useState(null);
   const h = usePerpsHistory({ agent, user, active: visible });
+  const presence = useModalPresence(visible, "rn"); // iOS: info dialogs wait until it has hidden
   const { record: deposit } = useDepositTracker();
 
   // "All" = no lower bound: rows load 200 at a time as the list scrolls.
@@ -430,7 +432,14 @@ const PerpsHistory = ({ visible, onClose, theme, isDark, agent, user }) => {
       : "No deposits or withdrawals in this period.";
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen" statusBarTranslucent>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      onRequestClose={onClose}
+      onDismiss={presence.onDismiss}
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+    >
       <View style={[styles.screen, { backgroundColor: theme.bg }]}>
         <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
         <View style={styles.header}>

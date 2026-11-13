@@ -17,13 +17,29 @@ import {
   fetchMultiAssetsMode,
   setMultiAssetsMode,
   fetchAccount,
+  fetchOrderByClientId,
 } from "../api/asterTrade";
 import { formatPrice } from "../utils/format";
 import CoinLogo from "./CoinLogo";
 import { ensureFreshMarketMeta, getCachedMarketMeta, ORDER_RULE_FIELDS } from "../api/asterPublic";
 
 const RULES_MAX_AGE_MS = 60 * 60 * 1000; // refetch exchangeInfo before an order if older than 1h
-import CustomInfoProvider from "../../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
+
+import { showInfo, useModalPresence } from "../utils/modalSafe";
+import { logPerpsError } from "../utils/perpsLog";
+import { sleep, withTimeout } from "../utils/async";
+const RULES_TIMEOUT_MS = 35000; // exchangeInfo refresh (30s request + margin)
+// Safety cap only: each request already times out at 15s (margin + leverage + order + 2 TP/SL
+// <= ~75s). The cap must exceed that, so it can never fire while the order is still being sent.
+const ORDER_TIMEOUT_MS = 120000;
+// Only the trading-rule fields of a fresh market entry (ignores cache shape / extra fields).
+const pickRules = (m) => {
+  const out = {};
+  ORDER_RULE_FIELDS.forEach((k) => {
+    if (m[k] !== undefined && m[k] !== null) out[k] = String(m[k]);
+  });
+  return out;
+};
 
 const DEFAULT_LEVERAGE = 5;
 
@@ -86,6 +102,14 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
   const [sl, setSl] = useState("");
   const [confirm, setConfirm] = useState(null); // direction being confirmed
   const [submitting, setSubmitting] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const confirmPresence = useModalPresence(!!confirm); // iOS: info dialogs wait until it has hidden
   // What Aster has now for this market (leverage, margin type, whether a position is open).
   const [server, setServer] = useState({ leverage: null, marginType: null, hasPosition: false });
   const [serverTick, setServerTick] = useState(0);
@@ -127,7 +151,7 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
       // open positions or non-USDT/USD1 collateral would be affected, so explain instead.
       const acc = await fetchAccount(agent, user);
       if (acc.error || !acc.data) {
-        CustomInfoProvider.show("error", "Couldn't check your account", friendlyAsterError(acc) || "Try again.");
+        showInfo("error", "Couldn't check your account", friendlyAsterError(acc) || "Try again.");
         return;
       }
       const open = (acc.data.positions || []).filter((p) => Number(p.positionAmt) !== 0);
@@ -139,7 +163,7 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
           open.length > 0
             ? `You have ${open.length} open position${open.length > 1 ? "s" : ""} using Cross margin from all your assets.`
             : `You hold ${otherAssets.map((a) => a.asset).join(", ")} in Perps, which only counts as margin in Multi-Assets mode.`;
-        CustomInfoProvider.show(
+        showInfo(
           "info",
           "Isolated isn't available right now",
           `Isolated uses USDT/USD1 only and needs Single-Asset mode. ${why} ${
@@ -148,7 +172,7 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
         );
         return;
       }
-      CustomInfoProvider.show(
+      showInfo(
         "info",
         "Switch to Single-Asset mode?",
         "Isolated margin isn't available while your Aster account uses Multi-Assets mode. Switch the account to Single-Asset mode (USDT margin only)? This applies to all markets.",
@@ -159,7 +183,7 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
             onPress: async () => {
               const res = await setMultiAssetsMode(agent, user, false);
               if (res.error) {
-                CustomInfoProvider.show("error", "Couldn't switch mode", friendlyAsterError(res));
+                showInfo("error", "Couldn't switch mode", friendlyAsterError(res));
                 return;
               }
               setMultiAssets(false);
@@ -250,7 +274,7 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
     if (blockReason) return;
     const check = tpslCheck(direction);
     if (!check.ok) {
-      CustomInfoProvider.show("error", "Check TP / SL", check.errors.join("\n"));
+      showInfo("error", "Check TP / SL", check.errors.join("\n"));
       return;
     }
     setConfirm(direction);
@@ -265,69 +289,136 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
   }, [confirm, confirmOrder, submitting]);
   const confirmTpSl = confirm ? tpslCheck(confirm) : null;
 
+  // The reply to an order was lost (timeout / no network): look the order up by our client id
+  // instead of guessing — never invite a blind retry that could open a second position.
+  const resolveUnknownOrder = async (clientOrderId) => {
+    for (let i = 0; i < 3; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(i === 0 ? 2000 : 5000);
+      // eslint-disable-next-line no-await-in-loop
+      const r = await withTimeout(fetchOrderByClientId(agent, user, symbol, clientOrderId), 15000).catch(() => ({ error: "timeout" }));
+      if (!r.error && r.data && r.data.status) return { placed: true, status: r.data.status };
+      if (r.code === -2013) return { placed: false };
+    }
+    return { placed: null };
+  };
+
   const submit = async () => {
     if (!confirmOrder || !confirmOrder.ok || submitting) return;
+    const order = confirmOrder;
+    const direction = confirm;
+    const tpslOrders = confirmTpSl ? confirmTpSl.orders : [];
     setSubmitting(true);
-    // Never trade on stale rules: if the saved exchangeInfo is older than 1h, refetch it first.
-    // If the rules for this market changed, stop so the user re-checks the recalculated order.
-    const fresh = await ensureFreshMarketMeta(RULES_MAX_AGE_MS);
-    if (!fresh.ok) {
-      setSubmitting(false);
-      CustomInfoProvider.show(
-        "error",
-        "Order not placed",
-        "Couldn't refresh this market's trading rules. Check your connection and try again."
-      );
-      return;
-    }
-    if (fresh.refreshed) {
-      const latest = (getCachedMarketMeta() || {})[symbol];
-      const changed =
-        !latest || ORDER_RULE_FIELDS.some((k) => String(latest[k]) !== String(meta[k]));
-      if (changed) {
-        setSubmitting(false);
-        setConfirm(null);
-        CustomInfoProvider.show(
-          "info",
-          "Market rules updated",
-          latest
-            ? "This market's trading rules changed. Please check your order and confirm again."
-            : `${symbol} is not available for trading right now.`
-        );
+    let result = null; // { type, title, msg } — shown only after the sheet has fully hidden (iOS)
+    let checkClientId = null;
+    try {
+      // Never trade on stale rules: if the saved exchangeInfo is older than 1h, refetch it first.
+      // If the rules for this market changed, stop so the user re-checks the recalculated order.
+      const fresh = await withTimeout(ensureFreshMarketMeta(RULES_MAX_AGE_MS), RULES_TIMEOUT_MS).catch(() => ({
+        ok: false,
+        error: "timeout",
+      }));
+      if (!fresh.ok) {
+        logPerpsError({ step: "order:rules", msg: fresh.error || "refresh failed" });
+        result = {
+          type: "error",
+          title: "Order not placed",
+          msg: "Couldn't refresh this market's trading rules. Check your connection and try again.",
+        };
         return;
       }
+      if (fresh.refreshed) {
+        // Re-build the SAME order with the fresh rules; stop only if the order itself changes or
+        // becomes invalid (comparing raw fields gave false "rules updated" from cache-shape /
+        // number-vs-string differences).
+        const latest = (getCachedMarketMeta() || {})[symbol];
+        const rebuilt = latest
+          ? buildEntryOrder({ symbol, direction, type, margin: amount, leverage, markPrice, limitPrice, meta: { ...meta, ...pickRules(latest) } })
+          : null;
+        const changed = !rebuilt || !rebuilt.ok || rebuilt.qty !== order.qty || rebuilt.price !== order.price;
+        if (changed) {
+          logPerpsError({ step: "order:rules-changed", msg: rebuilt && !rebuilt.ok ? rebuilt.error : "qty/price changed" });
+          result = {
+            type: "info",
+            title: "Market rules updated",
+            msg: latest
+              ? "This market's trading rules changed. Please check your order and confirm again."
+              : `${symbol} is not available for trading right now.`,
+          };
+          return;
+        }
+      }
+      const res = await withTimeout(
+        openPosition({
+          agent,
+          user,
+          symbol,
+          entryParams: order.params,
+          tpSlOrders: tpslOrders,
+          leverage,
+          leverageChanged: server.leverage !== leverage,
+          marginType,
+          marginTypeChanged: server.marginType !== marginType,
+        }),
+        ORDER_TIMEOUT_MS
+      ).catch(() => ({ ok: false, step: "order", error: "timeout", transport: true }));
+      if (mounted.current) setServerTick((t) => t + 1); // re-read leverage / margin / position
+      if (res.agentInvalid && agentState.onInvalid) agentState.onInvalid();
+      if (!res.ok) {
+        logPerpsError({ step: `order:${res.step || "?"}`, code: res.code, msg: res.error });
+        if (res.step === "order" && res.transport) {
+          checkClientId = order.params.newClientOrderId;
+          result = {
+            type: "info",
+            title: "Order status unknown",
+            msg: "We didn't get an answer from Aster. Checking whether your order went through… Please don't place it again yet.",
+          };
+        } else {
+          result = { type: "error", title: "Order not placed", msg: friendlyAsterError(res) };
+        }
+        return;
+      }
+      const failed = (res.tpsl || []).filter((x) => !x.ok);
+      failed.forEach((f) => logPerpsError({ step: `order:tpsl:${f.type}`, code: f.code, msg: f.error }));
+      result = {
+        type: failed.length ? "info" : "success",
+        title: failed.length ? "Order placed — TP/SL failed" : "Order placed",
+        msg: failed.length
+          ? `${failed.map((f) => `${f.type}: ${friendlyAsterError(f)}`).join("\n")}\nSet TP/SL again from your position.`
+          : type === "LIMIT"
+          ? `Limit ${direction === "LONG" ? "buy" : "sell"} ${order.qty} ${baseAsset} at $${formatPrice(order.price, meta.tickSize)} placed. If the price is already there it fills right away; otherwise it waits in Open orders.`
+          : `${direction === "LONG" ? "Long" : "Short"} ${order.qty} ${baseAsset} opened at market.`,
+      };
+      if (mounted.current) setAmount("");
+      if (onPlaced) onPlaced();
+    } catch (e) {
+      logPerpsError({ step: "order:exception", msg: e && e.message ? e.message : String(e) });
+      result = {
+        type: "error",
+        title: "Something went wrong",
+        msg: "Please check Positions and Open orders before trying again.",
+      };
+    } finally {
+      if (mounted.current) {
+        setSubmitting(false);
+        setConfirm(null);
+      }
+      if (result) showInfo(result.type, result.title, result.msg);
     }
-    const res = await openPosition({
-      agent,
-      user,
-      symbol,
-      entryParams: confirmOrder.params,
-      tpSlOrders: confirmTpSl ? confirmTpSl.orders : [],
-      leverage,
-      leverageChanged: server.leverage !== leverage,
-      marginType,
-      marginTypeChanged: server.marginType !== marginType,
-    });
-    setSubmitting(false);
-    setConfirm(null);
-    setServerTick((t) => t + 1); // re-read leverage / margin / position from Aster
-    if (res.agentInvalid && agentState.onInvalid) agentState.onInvalid();
-    if (!res.ok) {
-      CustomInfoProvider.show("error", "Order not placed", friendlyAsterError(res));
-      return;
+    if (checkClientId) {
+      const st = await resolveUnknownOrder(checkClientId);
+      if (mounted.current) setServerTick((t) => t + 1);
+      if (onPlaced && st.placed) onPlaced();
+      showInfo(
+        st.placed ? "success" : st.placed === false ? "error" : "info",
+        st.placed ? "Order went through" : st.placed === false ? "Order not placed" : "Order status still unknown",
+        st.placed
+          ? `Aster has your order (${st.status}). Check Positions / Open orders.`
+          : st.placed === false
+          ? "Aster has no record of this order. You can try again."
+          : "Couldn't confirm it yet. Check Positions and Open orders before trying again."
+      );
     }
-    const failed = (res.tpsl || []).filter((x) => !x.ok);
-    CustomInfoProvider.show(
-      failed.length ? "info" : "success",
-      failed.length ? "Order placed — TP/SL failed" : "Order placed",
-      failed.length
-        ? `${failed.map((f) => `${f.type}: ${friendlyAsterError(f)}`).join("\n")}\nSet TP/SL again from your position.`
-        : type === "LIMIT"
-        ? `Limit ${confirm === "LONG" ? "buy" : "sell"} ${confirmOrder.qty} ${baseAsset} at $${formatPrice(confirmOrder.price, meta.tickSize)} placed. If the price is already there it fills right away; otherwise it waits in Open orders.`
-        : `${confirm === "LONG" ? "Long" : "Short"} ${confirmOrder.qty} ${baseAsset} opened at market.`
-    );
-    setAmount("");
-    if (onPlaced) onPlaced();
   };
 
   const setMax = () => {
@@ -484,6 +575,7 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
         onBackButtonPress={() => !submitting && setConfirm(null)}
         style={styles.modal}
         useNativeDriverForBackdrop
+        onModalHide={confirmPresence.onModalHide}
       >
         {confirmOrder && confirmOrder.ok ? (
           <View style={[styles.sheet, { backgroundColor: theme.bg }]}>

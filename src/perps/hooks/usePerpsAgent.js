@@ -1,3 +1,4 @@
+import { logPerpsError } from "../utils/perpsLog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ethers } from "ethers";
 import { useSelector } from "react-redux";
@@ -168,6 +169,7 @@ export const usePerpsAgent = (active) => {
       if (userRef.current !== forUser) return;
       setStatus("not-enabled");
       setError(e && e.message ? e.message : "Could not enable trading");
+      logPerpsError({ step: "enable-trading", msg: e && e.message });
     }
   }, [user, status]);
 
