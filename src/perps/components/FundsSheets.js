@@ -5,13 +5,14 @@ import {
   getDepositWalletState,
   fetchDepositAsset,
   prepareDeposit,
-  executeDeposit,
   fetchWithdrawInfo,
   fetchWithdrawHistory,
   withdrawWithMainWallet,
 } from "../api/asterFunds";
 import { isAsterWithdrawSigningAvailable } from "../api/asterWithdrawSigner";
 import WithdrawStatusCard from "./WithdrawStatusCard";
+import DepositStatusCard from "./DepositStatusCard";
+import { useDepositTracker, startDeposit, clearDeposit, isDepositFinished } from "../storage/depositTracker";
 import { gt, isPositive, sub, mul, min as dMin, lte, toPlain, floorToStep } from "../utils/decimal";
 import { formatNumber } from "../utils/format";
 import { friendlyAsterError } from "../utils/asterErrors";
@@ -74,34 +75,37 @@ const PrimaryButton = ({ theme, label, onPress, disabled, busy, color }) => (
   </TouchableOpacity>
 );
 
-const STEP_TEXT = {
-  approving: "Step 1/2 · Approving USDT…",
-  depositing: "Sending deposit…",
-  waiting: "Waiting for Aster to credit your deposit…",
-};
-
 // ------------------------------------------------------------------ Deposit
-export const DepositSheet = ({ visible, onClose, theme, user, onDeposited }) => {
+const ESTIMATE_DEBOUNCE_MS = 600;
+
+// USDT on BSC (main wallet) -> Perps. The deposit itself runs in storage/depositTracker so it
+// keeps going (and is tracked) when this sheet is closed; this sheet shows the form or the timeline.
+// perpsBalance: current Perps wallet balance (baseline for "Credited in Perps"), or null.
+export const DepositSheet = ({ visible, onClose, theme, user, perpsBalance }) => {
+  const { record } = useDepositTracker();
   const [wallet, setWallet] = useState(null);
   const [minDeposit, setMinDeposit] = useState("0");
   const [amount, setAmount] = useState("");
   const [loadError, setLoadError] = useState(null);
-  const [review, setReview] = useState(null); // result of prepareDeposit
+  const [estimate, setEstimate] = useState(null); // result of prepareDeposit for `amount`
+  const [estimating, setEstimating] = useState(false);
   const [reviewing, setReviewing] = useState(false);
-  const [step, setStep] = useState(null);
-  const [result, setResult] = useState(null);
+  const [starting, setStarting] = useState(false);
+  const estSeq = useRef(0);
+
+  const showTimeline = !!record && (!user || record.user.toLowerCase() === user.toLowerCase());
 
   useEffect(() => {
     if (!visible || !user) return;
     setAmount("");
-    setReview(null);
-    setStep(null);
-    setResult(null);
+    setEstimate(null);
+    setReviewing(false);
+    setStarting(false);
     setLoadError(null);
     setWallet(null);
     getDepositWalletState(user)
       .then(setWallet)
-      .catch(() => setLoadError("Couldn't load your wallet balance"));
+      .catch(() => setLoadError("Couldn't load your wallet balance. Check your connection."));
     fetchDepositAsset().then((r) => {
       if (r.data && r.data.minDeposit) setMinDeposit(r.data.minDeposit);
     });
@@ -109,86 +113,124 @@ export const DepositSheet = ({ visible, onClose, theme, user, onDeposited }) => 
 
   let inline = null;
   if (amount && !isPositive(amount)) inline = "Enter an amount";
-  else if (amount && wallet && gt(amount, wallet.usdt)) inline = "Not enough USDT";
   else if (amount && isPositive(minDeposit) && gt(minDeposit, amount)) inline = `Minimum deposit is ${minDeposit} USDT`;
-  else if (wallet && !isPositive(wallet.bnb)) inline = "Need a little BNB for gas";
+  else if (amount && wallet && gt(amount, wallet.usdt)) inline = `More than your wallet has (${formatNumber(wallet.usdt, 2)} USDT)`;
+  const noBnb = !!wallet && !isPositive(wallet.bnb);
 
-  const doReview = async () => {
-    setReviewing(true);
-    try {
-      setReview(await prepareDeposit(user, amount, minDeposit));
-    } catch (e) {
-      setReview({ ok: false, error: "Couldn't prepare the deposit. Check your connection." });
+  // Live estimate (steps + gas) for a valid amount, debounced; stale answers are ignored.
+  useEffect(() => {
+    if (!visible || !user || !wallet || !amount || inline) {
+      setEstimate(null);
+      setEstimating(false);
+      return undefined;
     }
-    setReviewing(false);
-  };
+    const seq = ++estSeq.current;
+    setEstimating(true);
+    const id = setTimeout(() => {
+      prepareDeposit(user, amount, minDeposit)
+        .catch(() => ({ ok: false, error: "Couldn't estimate the network fee. Check your connection." }))
+        .then((res) => {
+          if (seq !== estSeq.current) return;
+          setEstimate(res);
+          setEstimating(false);
+        });
+    }, ESTIMATE_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [visible, user, wallet, amount, inline, minDeposit]);
 
-  const doDeposit = async () => {
-    if (!review || !review.ok) return;
-    setResult(null);
-    const res = await executeDeposit(user, review.plan, setStep);
-    const hashes = [
-      res.approveHash ? `Approve tx ${short(res.approveHash)}` : null,
-      res.txHash ? `Deposit tx ${short(res.txHash)}` : null,
-    ]
-      .filter(Boolean)
-      .join("\n");
-    if (!res.ok) {
-      setStep(null);
-      setResult({ ok: false, text: `${res.error}${hashes ? `\n${hashes}` : ""}` });
+  const plan = estimate && estimate.plan;
+  const doConfirm = async () => {
+    if (!estimate || !estimate.ok) return;
+    setStarting(true);
+    // Re-check right before sending: balances / allowance / gas may have changed.
+    const fresh = await prepareDeposit(user, amount, minDeposit).catch(() => null);
+    setStarting(false);
+    if (!fresh || !fresh.ok) {
+      setReviewing(false);
+      setEstimate(fresh || { ok: false, error: "Couldn't check the deposit. Check your connection." });
       return;
     }
-    setResult({
-      ok: true,
-      text: `Deposit sent. Deposits can take a few minutes to show up.${hashes ? `\n${hashes}` : ""}`,
-    });
-    if (onDeposited) onDeposited(review.plan.amount);
+    startDeposit({ user, plan: fresh.plan, baseline: perpsBalance });
   };
 
-  const busy = !!step && step !== "waiting";
+  const close = () => {
+    if (isDepositFinished(record)) clearDeposit();
+    onClose();
+  };
+
+  if (showTimeline) {
+    return (
+      <Sheet visible={visible} onClose={close} busy={false} theme={theme} title="Deposit USDT">
+        <DepositStatusCard theme={theme} record={record} />
+        {!isDepositFinished(record) ? (
+          <Text style={[styles.note, { color: theme.inactiveTx }]}>
+            You can close this. Progress stays on the Perps screen.
+          </Text>
+        ) : null}
+        <PrimaryButton theme={theme} label={isDepositFinished(record) ? "Done" : "Close"} onPress={close} />
+      </Sheet>
+    );
+  }
+
+  const stepsText = plan ? (plan.needsApprove ? "2 steps · approve + deposit" : "1 step · allowance already set") : "—";
   return (
-    <Sheet visible={visible} onClose={onClose} busy={busy} theme={theme} title="Deposit USDT">
+    <Sheet visible={visible} onClose={close} busy={starting} theme={theme} title="Deposit USDT">
       <Text style={[styles.note, { color: theme.inactiveTx }]}>
         From your wallet {short(user)} on BNB Smart Chain to your Perps balance.
       </Text>
       {loadError ? <Text style={[styles.err, { color: theme.fail }]}>{loadError}</Text> : null}
-      <Row theme={theme} label="Wallet USDT" value={wallet ? formatNumber(wallet.usdt, 2) : "…"} />
-      <Row theme={theme} label="Wallet BNB (gas)" value={wallet ? formatNumber(wallet.bnb, 5) : "…"} />
-      <AmountInput
+      <Row theme={theme} label="Wallet USDT (BSC)" value={wallet ? `${formatNumber(wallet.usdt, 2)} USDT` : "…"} />
+      {!reviewing ? (
+        <>
+          <AmountInput
+            theme={theme}
+            value={amount}
+            onChange={setAmount}
+            onMax={() => wallet && setAmount(floorToStep(toPlain(wallet.usdt), "0.01"))}
+          />
+          {inline ? <Text style={[styles.err, { color: theme.fail }]}>{inline}</Text> : null}
+        </>
+      ) : (
+        <Row theme={theme} label="Amount" value={`${amount} USDT`} />
+      )}
+      <Row theme={theme} label="Network · token" value="BNB Smart Chain · USDT" />
+      <Row theme={theme} label="You receive in Perps" value={amount && !inline ? `${amount} USDT` : "—"} />
+      <Row theme={theme} label="Steps" value={estimating ? "…" : stepsText} />
+      <Row
         theme={theme}
-        value={amount}
-        onChange={(v) => {
-          setAmount(v);
-          setReview(null);
-        }}
-        onMax={() => wallet && setAmount(toPlain(wallet.usdt))}
+        label="Est. gas (BNB)"
+        value={estimating ? "…" : plan ? `~${formatNumber(plan.gasCostBnb, 6)} BNB` : "—"}
+        color={estimate && estimate.lowGas ? theme.fail : undefined}
       />
-      {inline ? <Text style={[styles.err, { color: theme.fail }]}>{inline}</Text> : null}
-
-      {review && review.plan ? (
-        <View style={styles.block}>
-          <Row theme={theme} label="Steps" value={review.plan.needsApprove ? "Approve + Deposit" : "Deposit"} />
-          <Row theme={theme} label="Est. network fee" value={`~${formatNumber(review.plan.gasCostBnb, 6)} BNB`} />
-          <Row theme={theme} label="Gas price" value={`${formatNumber(review.plan.gasPriceGwei, 2)} gwei`} />
-        </View>
+      <Row theme={theme} label="Wallet BNB" value={wallet ? `${formatNumber(wallet.bnb, 6)} BNB` : "…"} />
+      {noBnb ? (
+        <Text style={[styles.err, { color: theme.fail }]}>
+          You have no BNB. Add a little BNB to this wallet to pay the network fee.
+        </Text>
       ) : null}
-      {review && !review.ok ? <Text style={[styles.err, { color: theme.fail }]}>{review.error}</Text> : null}
-      {step ? <Text style={[styles.note, { color: theme.headingTx }]}>{STEP_TEXT[step]}</Text> : null}
-      {result ? (
-        <Text style={[styles.note, { color: result.ok ? theme.success : theme.fail }]}>{result.text}</Text>
+      {estimate && !estimate.ok && !inline ? (
+        <Text style={[styles.err, { color: theme.fail }]}>{estimate.error}</Text>
       ) : null}
 
-      {result && result.ok ? (
-        <PrimaryButton theme={theme} label="Done" onPress={onClose} />
-      ) : review && review.ok ? (
-        <PrimaryButton theme={theme} label={`Confirm deposit of ${review.plan.amount} USDT`} onPress={doDeposit} busy={busy} />
+      {reviewing ? (
+        <>
+          <PrimaryButton
+            theme={theme}
+            label={`Confirm deposit of ${amount} USDT`}
+            onPress={doConfirm}
+            busy={starting}
+            disabled={!estimate || !estimate.ok}
+          />
+          <TouchableOpacity disabled={starting} onPress={() => setReviewing(false)} style={styles.secondary}>
+            <Text style={[styles.secondaryTxt, { color: theme.inactiveTx }]}>Back</Text>
+          </TouchableOpacity>
+        </>
       ) : (
         <PrimaryButton
           theme={theme}
           label="Review"
-          onPress={doReview}
-          busy={reviewing}
-          disabled={!amount || !!inline || !wallet}
+          onPress={() => setReviewing(true)}
+          disabled={!amount || !!inline || !wallet || noBnb || estimating || !estimate || !estimate.ok}
         />
       )}
     </Sheet>

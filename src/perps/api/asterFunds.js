@@ -71,6 +71,10 @@ export const getDepositWalletState = async (user) =>
     };
   });
 
+// Wallet nonces (read-only), used to time "Deposit sent" and to resume after a relaunch.
+export const getPendingNonce = (user) => withProvider((provider) => provider.getTransactionCount(user, "pending"));
+export const getLatestNonce = (user) => withProvider((provider) => provider.getTransactionCount(user, "latest"));
+
 // Public: deposit asset config (min deposit) for USDT on BSC perps.
 export const fetchDepositAsset = async () => {
   const { data, error } = await asterFetch(
@@ -130,8 +134,20 @@ export const prepareDeposit = async (user, amount, minDeposit = "0") => {
     depositSimError: est.depositSimError,
     state,
   };
-  if (state.usdtWei.lt(amountWei)) return { ok: false, plan, state, error: "Not enough USDT" };
-  if (state.bnbWei.lt(gasCostWei)) return { ok: false, plan, state, error: "Need a little BNB for gas" };
+  if (state.usdtWei.lt(amountWei)) {
+    return { ok: false, plan, state, error: `Not enough USDT. Your wallet has ${toPlain(state.usdt)} USDT.` };
+  }
+  if (state.bnbWei.lt(gasCostWei)) {
+    return {
+      ok: false,
+      plan,
+      state,
+      lowGas: true,
+      error: `Not enough BNB for gas. ${needsApprove ? "Approve + deposit need" : "The deposit needs"} about ${toPlain(
+        plan.gasCostBnb
+      )} BNB; you have ${toPlain(state.bnb)} BNB.`,
+    };
+  }
   return { ok: true, plan, state, error: null };
 };
 

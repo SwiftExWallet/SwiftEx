@@ -7,14 +7,14 @@ import Icon from "../../icon";
 // Neutral colors; green only when the funds are in the wallet, red only if Aster reports a failure.
 // tracking: { amount, fee, receive, requestedAt, processingAt, sentAt, receivedAt, status, txHash, failed }
 
-const short = (h) => (h ? `${h.slice(0, 8)}…${h.slice(-6)}` : "");
-const hhmm = (t) => {
+export const shortHash = (h) => (h ? `${h.slice(0, 8)}…${h.slice(-6)}` : "");
+export const hhmm = (t) => {
   if (!t) return "";
   const d = new Date(t);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 
-const Step = ({ theme, label, sub, state, time, last }) => {
+export const Step = ({ theme, label, sub, state, time, last, extra }) => {
   // state: done | active | todo | success | failed
   const iconColor =
     state === "success" ? theme.success : state === "failed" ? theme.fail : state === "done" ? theme.headingTx : theme.inactiveTx;
@@ -53,6 +53,7 @@ const Step = ({ theme, label, sub, state, time, last }) => {
           {time ? <Text style={[styles.time, { color: theme.inactiveTx }]}>{time}</Text> : null}
         </View>
         {sub ? <Text style={[styles.stepSub, { color: theme.inactiveTx }]}>{sub}</Text> : null}
+        {extra || null}
       </View>
     </View>
   );
@@ -135,7 +136,7 @@ const WithdrawStatusCard = ({ theme, tracking }) => {
       {txHash ? (
         <View style={[styles.txRow, { borderTopColor: theme.inactiveTx }]}>
           <Text style={[styles.txLabel, { color: theme.inactiveTx }]}>Tx</Text>
-          <Text style={[styles.txHash, { color: theme.headingTx }]}>{short(txHash)}</Text>
+          <Text style={[styles.txHash, { color: theme.headingTx }]}>{shortHash(txHash)}</Text>
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Copy transaction hash"

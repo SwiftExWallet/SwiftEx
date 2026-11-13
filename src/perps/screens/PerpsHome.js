@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -29,12 +29,12 @@ import { useAppActive } from "../hooks/useAppActive";
 import PositionsSection from "../components/PositionsSection";
 import { DepositSheet, WithdrawSheet } from "../components/FundsSheets";
 import { usePerpsAccount } from "../hooks/usePerpsAccount";
+import { useDepositTracker, onPerpsBalance, clearDeposit } from "../storage/depositTracker";
 import { cancelOrder, placeOrder } from "../api/asterTrade";
 import { buildCloseOrder } from "../utils/orderMath";
 import { friendlyAsterError } from "../utils/asterErrors";
 import CustomInfoProvider from "../../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 
-const DEPOSIT_WAIT_MS = 10 * 60 * 1000; // show "deposit on its way" for up to 10 min
 
 const MarketRow = React.memo(({ item, theme, onPress }) => {
   const change = Number(item.priceChangePercent);
@@ -95,9 +95,21 @@ const PerpsHome = () => {
     onAgentInvalid: agentState.reset,
   });
   const [sheet, setSheet] = useState(null); // 'deposit' | 'withdraw' | null
-  const [depositSentAt, setDepositSentAt] = useState(null);
-  const depositPending =
-    !!depositSentAt && accountState.noDeposit && Date.now() - depositSentAt < DEPOSIT_WAIT_MS;
+  const deposit = useDepositTracker();
+  const depositPending = deposit.active;
+  const perpsBalance = accountState.account ? accountState.account.walletBalance : null;
+  // "Credited in Perps": feed each balance from the shared account poller into the tracker.
+  useEffect(() => {
+    if (deposit.active) onPerpsBalance(agentState.user, perpsBalance);
+  }, [deposit.active, agentState.user, perpsBalance]);
+  // Credited while the sheet was closed: say so once and clear the record.
+  const depositCredited = !!deposit.record && !!deposit.record.creditedAt;
+  useEffect(() => {
+    if (depositCredited && sheet !== "deposit") {
+      CustomInfoProvider.show("success", "Deposit credited", `${deposit.record.amount} USDT is now in your Perps balance.`);
+      clearDeposit();
+    }
+  }, [depositCredited, sheet]);
 
   const runAction = async (title, fn) => {
     const res = await fn();
@@ -214,6 +226,27 @@ const PerpsHome = () => {
             : null
         }
       />
+      {tradingEnabled && depositPending ? (
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Deposit in progress, show status"
+          onPress={() => setSheet("deposit")}
+          style={[styles.pill, { backgroundColor: theme.cardBg, borderColor: theme.inactiveTx }]}
+        >
+          <ActivityIndicator size="small" color={theme.buttonColor} />
+          <Text style={[styles.pillTxt, { color: theme.headingTx }]}>
+            Deposit in progress · {deposit.record.amount} USDT ·{" "}
+            {deposit.record.confirmedAt
+              ? "waiting for credit"
+              : deposit.record.sentAt
+              ? "confirming"
+              : deposit.record.needsApprove && !deposit.record.approvedAt
+              ? "approving"
+              : "sending"}
+          </Text>
+          <Icon name="chevron-forward" type="ionicon" size={16} color={theme.inactiveTx} />
+        </TouchableOpacity>
+      ) : null}
       {tradingEnabled ? (
         <PositionsSection
           theme={theme}
@@ -311,10 +344,7 @@ const PerpsHome = () => {
             onClose={() => setSheet(null)}
             theme={theme}
             user={agentState.user}
-            onDeposited={() => {
-              setDepositSentAt(Date.now());
-              accountState.refresh();
-            }}
+            perpsBalance={perpsBalance}
           />
           <WithdrawSheet
             visible={sheet === "withdraw"}
@@ -479,5 +509,21 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 12,
     alignItems: "center",
+  },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  pillTxt: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginLeft: 8,
   },
 });
