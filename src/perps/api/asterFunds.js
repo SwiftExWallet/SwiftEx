@@ -11,9 +11,9 @@
 import { ethers } from "ethers";
 import { CHAINS } from "../../utilities/TokenUtils";
 import { fustionEvmTxManager } from "../../utilities/evmTxManager";
-import { nativeSign } from "../../utilities/NativeSign";
+import { signAsterWithdrawRequest } from "./asterWithdrawSigner";
 import { asterFetch } from "./asterPublic";
-import { asterSignedRequest, getServerNowMs, syncServerTime } from "./asterSigned";
+import { asterSignedRequest, getServerNowMs, syncServerTime, nextNonceMicros } from "./asterSigned";
 import { toTokenUnits, fromTokenUnits, toPlain, fromUnits, toUnits, isPositive } from "../utils/decimal";
 
 export const ASTER_VAULT_BSC = "0x128463A60784c4D3f46c23Af3f65Ed859Ba87974";
@@ -206,14 +206,35 @@ export const fetchWithdrawInfo = async (agent, user) => {
   };
 };
 
-// Main wallet signs the withdraw Action (native signer, PIN/biometric if enabled), then we verify
-// locally with ethers that it recovers the user. Returns { userNonce, userSignature, message }.
-export const signWithdraw = async (user, amount, fee) => {
+const MESSAGE_DOMAIN = {
+  name: "AsterSignTransaction",
+  version: "1",
+  chainId: 1666,
+  verifyingContract: "0x0000000000000000000000000000000000000000",
+};
+const MESSAGE_TYPES = { Message: [{ name: "msg", type: "string" }] };
+
+const recovers = (fn, user) => {
+  try {
+    return fn().toLowerCase() === user.toLowerCase();
+  } catch (e) {
+    return false;
+  }
+};
+
+// Withdraw signed ENTIRELY by the main wallet (no agent / trading key):
+//  - EIP-712 "Action" (domain Aster, chainId 56) -> userSignature
+//  - the v3 request itself with user = signer = main wallet (Message{msg}, chainId 1666)
+// Both signatures come from ONE native call (one PIN/biometric prompt) that only accepts an
+// own-address USDT withdraw. Both are checked locally with ethers before anything is sent.
+// POST /fapi/v3/aster/user-withdraw. Resolves { data, error, code } (never throws for API errors).
+export const withdrawWithMainWallet = async (user, amount, fee) => {
+  const owner = ethers.utils.getAddress(user);
   await syncServerTime();
-  const userNonce = Math.trunc(getServerNowMs()) * 1000; // docs: ms * 1000
+  const userNonce = String(Math.trunc(getServerNowMs()) * 1000); // docs: ms * 1000
   const message = {
     type: "Withdraw",
-    destination: ethers.utils.getAddress(user),
+    destination: owner,
     "destination Chain": "BSC",
     token: "USDT",
     amount: plainAmount(amount),
@@ -221,45 +242,57 @@ export const signWithdraw = async (user, amount, fee) => {
     nonce: userNonce,
     "aster chain": "Mainnet",
   };
-  const { signature } = await nativeSign({
-    type: "eip712",
-    chainName: "bsc",
-    walletAddress: user,
+  const query = new URLSearchParams({
+    user: owner,
+    signer: owner,
+    chainId: "56",
+    asset: "USDT",
+    amount: message.amount,
+    fee: message.fee,
+    receiver: owner,
+    userNonce,
+    nonce: String(nextNonceMicros()),
+  }).toString();
+
+  const signed = await signAsterWithdrawRequest({
+    walletAddress: owner,
     typedData: {
       primaryType: "Action",
       types: { EIP712Domain: EIP712_DOMAIN_TYPE, ...ACTION_TYPES },
       domain: WITHDRAW_DOMAIN,
       message,
     },
+    requestQuery: query,
   });
-  let recovered = null;
-  try {
-    recovered = ethers.utils.verifyTypedData(WITHDRAW_DOMAIN, ACTION_TYPES, message, signature);
-  } catch (e) {
-    recovered = null;
-  }
-  if (!recovered || recovered.toLowerCase() !== user.toLowerCase()) {
+
+  const okAction = recovers(
+    () => ethers.utils.verifyTypedData(WITHDRAW_DOMAIN, ACTION_TYPES, message, signed.userSignature),
+    owner
+  );
+  const okRequest =
+    signed.msg === `${query}&userSignature=${signed.userSignature}` &&
+    recovers(() => ethers.utils.verifyTypedData(MESSAGE_DOMAIN, MESSAGE_TYPES, { msg: signed.msg }, signed.signature), owner);
+  if (!okAction || !okRequest) {
     const err = new Error("Local signature check failed. Nothing was sent.");
     err.step = "verify";
     throw err;
   }
-  return { userNonce: String(userNonce), userSignature: signature, message };
+
+  const res = await asterFetch("/fapi/v3/aster/user-withdraw", {
+    method: "POST",
+    body: `${signed.msg}&signature=${signed.signature}`,
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  });
+  return { data: res.error ? null : res.data, error: res.error, code: res.code };
 };
 
-// POST /fapi/v3/aster/user-withdraw (agent-signed request). Receiver is always the user.
-export const submitWithdraw = (agent, user, { amount, fee, userNonce, userSignature }) =>
-  asterSignedRequest({
-    agent,
-    user,
-    method: "POST",
-    path: "/fapi/v3/aster/user-withdraw",
-    params: {
-      chainId: "56",
-      asset: "USDT",
-      amount: plainAmount(amount),
-      fee: plainAmount(fee),
-      receiver: ethers.utils.getAddress(user),
-      userNonce,
-      userSignature,
-    },
-  });
+// POST /fapi/v3/aster/deposit-withdraw-history (agent-signed). Returns the perp WITHDRAW rows,
+// newest first: [{ id, amount, state: PROCESSING|SUCCESS|FAILED, txHash, time }].
+export const fetchWithdrawHistory = async (agent, user) => {
+  const res = await asterSignedRequest({ agent, user, method: "POST", path: "/fapi/v3/aster/deposit-withdraw-history" });
+  if (res.error) return { data: null, error: res.error, code: res.code, agentInvalid: res.agentInvalid };
+  const rows = (Array.isArray(res.data) ? res.data : [])
+    .filter((r) => r && r.type === "WITHDRAW")
+    .sort((a, b) => Number(b.time) - Number(a.time));
+  return { data: rows, error: null, code: null };
+};

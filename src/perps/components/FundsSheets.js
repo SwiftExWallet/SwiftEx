@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import Modal from "react-native-modal";
 import {
@@ -7,10 +7,11 @@ import {
   prepareDeposit,
   executeDeposit,
   fetchWithdrawInfo,
-  signWithdraw,
-  submitWithdraw,
+  fetchWithdrawHistory,
+  withdrawWithMainWallet,
 } from "../api/asterFunds";
-import { gt, isPositive, sub, min as dMin, lte, toPlain } from "../utils/decimal";
+import { isAsterWithdrawSigningAvailable } from "../api/asterWithdrawSigner";
+import { gt, isPositive, sub, mul, min as dMin, lte, toPlain, floorToStep } from "../utils/decimal";
 import { formatNumber } from "../utils/format";
 import { friendlyAsterError } from "../utils/asterErrors";
 
@@ -18,10 +19,6 @@ import { friendlyAsterError } from "../utils/asterErrors";
 const cleanInput = (t) =>
   t.replace(/,/g, ".").replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1").replace(/^(\d*\.\d{0,8}).*$/, "$1");
 
-// The native signer (web3j StructuredDataEncoder) rejects Aster's EIP-712 withdraw type because its
-// field names contain spaces ("Invalid Identifier destination Chain in Action"). Keep withdraw
-// submission off until the native signer supports it (TODO Hunny: native fix in TransactionSigner).
-const WITHDRAW_SIGNING_SUPPORTED = false;
 const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "");
 
 const Sheet = ({ visible, onClose, busy, theme, title, children }) => (
@@ -198,17 +195,40 @@ export const DepositSheet = ({ visible, onClose, theme, user, onDeposited }) => 
 };
 
 // ------------------------------------------------------------------ Withdraw
+const TRACK_EVERY_MS = 10000;
+const TRACK_FOR_MS = 15 * 60 * 1000;
+const WITHDRAW_STEP_TEXT = {
+  checking: "Checking the fee…",
+  signing: "Signing with your wallet and sending to Aster…",
+  sending: "Sending the withdrawal to Aster…",
+};
+
+// Withdrawable perps USDT -> the user's OWN wallet on BSC. The main wallet signs Aster's EIP-712
+// withdraw Action (Aster-only native method, PIN/biometric gate); the request is sent with the
+// agent's v3 signature. Receiver is always the user's own address.
 export const WithdrawSheet = ({ visible, onClose, theme, agent, user, available, onWithdrawn }) => {
+  const signingSupported = isAsterWithdrawSigningAvailable();
   const [info, setInfo] = useState(null);
   const [infoNote, setInfoNote] = useState(null);
   const [amount, setAmount] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
+  const [reviewing, setReviewing] = useState(false); // review screen before PIN
+  const [step, setStep] = useState(null); // checking | signing | sending
+  const [result, setResult] = useState(null); // { ok, text }
+  const [tracking, setTracking] = useState(null); // { amount, receive, startUsdt, since, status, txHash, arrived }
+  const trackRef = useRef(null);
+
+  const stopTracking = () => {
+    if (trackRef.current) clearInterval(trackRef.current);
+    trackRef.current = null;
+  };
 
   useEffect(() => {
-    if (!visible || !agent || !user) return;
+    if (!visible || !agent || !user) return undefined;
     setAmount("");
     setResult(null);
+    setReviewing(false);
+    setStep(null);
+    setTracking(null);
     setInfo(null);
     setInfoNote(null);
     fetchWithdrawInfo(agent, user).then((r) => {
@@ -216,71 +236,185 @@ export const WithdrawSheet = ({ visible, onClose, theme, agent, user, available,
       if (r.error && r.data) setInfoNote("Using Aster's estimated fee.");
       else if (r.error) setInfoNote(friendlyAsterError(r));
     });
+    return stopTracking;
   }, [visible, agent, user]);
 
   const fee = info && info.fee !== undefined && info.fee !== null ? info.fee : null;
+  // Withdrawable = Aster's per-chain max (excludes margin locked by open positions), capped by
+  // the account's available balance.
   const maxAllowed =
     info && info.maxAmount !== null && info.maxAmount !== undefined && available !== null
       ? dMin(info.maxAmount, available)
+      : info && info.maxAmount !== null && info.maxAmount !== undefined
+      ? info.maxAmount
       : available;
   const receive = fee !== null && isPositive(amount) && gt(amount, fee) ? sub(amount, fee) : null;
 
   let inline = null;
   if (amount && !isPositive(amount)) inline = "Enter an amount";
-  else if (amount && (maxAllowed === null || gt(amount, maxAllowed))) inline = "Not enough available balance";
+  else if (amount && (maxAllowed === null || gt(amount, maxAllowed))) inline = "More than you can withdraw right now";
   else if (amount && fee !== null && lte(amount, fee)) inline = "Amount must be more than the fee";
 
+  const startTracking = (t) => {
+    stopTracking();
+    const poll = async () => {
+      if (Date.now() - t.since > TRACK_FOR_MS) {
+        stopTracking();
+        return;
+      }
+      const [wallet, hist] = await Promise.all([
+        getDepositWalletState(user).catch(() => null),
+        fetchWithdrawHistory(agent, user),
+      ]);
+      const row =
+        hist.data &&
+        hist.data.find((r) => Number(r.time) >= t.since - 120000 && lte(r.amount, t.amount) && lte(t.amount, r.amount));
+      // Arrived when the wallet's USDT grew by at least the expected amount (0.1% tolerance).
+      const arrived =
+        !!wallet && t.startUsdt !== null && !gt(mul(t.receive, "0.999"), sub(wallet.usdt, t.startUsdt));
+      setTracking((prev) => {
+        if (!prev) return prev;
+        const next = {
+          ...prev,
+          status: row ? row.state : prev.status,
+          txHash: (row && row.txHash) || prev.txHash,
+          arrived: prev.arrived || arrived,
+          walletUsdt: wallet ? wallet.usdt : prev.walletUsdt,
+        };
+        if (next.arrived || next.status === "FAILED") stopTracking();
+        return next;
+      });
+    };
+    poll();
+    trackRef.current = setInterval(poll, TRACK_EVERY_MS);
+  };
+
   const doWithdraw = async () => {
-    setBusy(true);
     setResult(null);
     try {
-      const sig = await signWithdraw(user, amount, fee);
-      const res = await submitWithdraw(agent, user, { amount, fee, ...sig });
-      if (res.error) {
-        setResult({ ok: false, text: friendlyAsterError(res) });
-      } else {
-        setResult({ ok: true, text: "Withdrawal requested. It can take a few minutes to arrive." });
-        if (onWithdrawn) onWithdrawn();
+      // Fee can change: re-read it right before signing and stop if it moved.
+      setStep("checking");
+      const fresh = await fetchWithdrawInfo(agent, user);
+      const freshFee = fresh.data && fresh.data.fee;
+      if (freshFee === null || freshFee === undefined) {
+        setStep(null);
+        setResult({ ok: false, text: friendlyAsterError(fresh) || "Couldn't get the withdrawal fee. Try again." });
+        return;
       }
+      if (!(lte(freshFee, fee) && lte(fee, freshFee))) {
+        setInfo(fresh.data);
+        setStep(null);
+        setReviewing(false);
+        setResult({ ok: false, text: `The network fee changed to ${freshFee} USDT. Please check and confirm again.` });
+        return;
+      }
+      const before = await getDepositWalletState(user).catch(() => null);
+      setStep("signing");
+      // Signed entirely by the main wallet (one PIN/biometric prompt); then sent to Aster.
+      const res = await withdrawWithMainWallet(user, amount, fee);
+      setStep(null);
+      if (res.error) {
+        // Show Aster's own code + message (no agent involved, so no "trading key" wording).
+        const code = res.code !== null && res.code !== undefined ? ` (${res.code})` : "";
+        setResult({ ok: false, text: `Aster didn't accept the withdrawal: ${res.error}${code}` });
+        return;
+      }
+      setResult({ ok: true, text: "Withdrawal requested." });
+      const t = {
+        amount,
+        receive: sub(amount, fee),
+        startUsdt: before ? before.usdt : null,
+        since: Date.now(),
+        status: "PROCESSING",
+        txHash: null,
+        arrived: false,
+      };
+      setTracking(t);
+      startTracking(t);
+      if (onWithdrawn) onWithdrawn();
     } catch (e) {
+      setStep(null);
       setResult({ ok: false, text: e && e.message ? e.message : "Withdrawal failed" });
     }
-    setBusy(false);
   };
+
+  const busy = !!step;
+  const trackingText = tracking
+    ? tracking.arrived
+      ? `Arrived: ${tracking.receive} USDT is in your wallet.`
+      : tracking.status === "FAILED"
+      ? "Aster reports the withdrawal failed. Your balance stays in Perps."
+      : tracking.status === "SUCCESS"
+      ? "Sent by Aster · waiting for it to show in your wallet…"
+      : "Processing · usually a few minutes…"
+    : null;
 
   return (
     <Sheet visible={visible} onClose={onClose} busy={busy} theme={theme} title="Withdraw USDT">
       <Text style={[styles.note, { color: theme.inactiveTx }]}>
-        To your own wallet {short(user)} on BNB Smart Chain.
+        From your Perps balance to your own wallet on BNB Smart Chain.
       </Text>
-      <Row theme={theme} label="Available" value={available !== null ? `${formatNumber(available, 2)} USDT` : "…"} />
-      <AmountInput
-        theme={theme}
-        value={amount}
-        onChange={setAmount}
-        onMax={() => maxAllowed !== null && setAmount(toPlain(maxAllowed))}
-      />
-      {inline ? <Text style={[styles.err, { color: theme.fail }]}>{inline}</Text> : null}
+      <Row theme={theme} label="Withdrawable" value={maxAllowed !== null ? `${formatNumber(maxAllowed, 2)} USDT` : "…"} />
+      {!reviewing && !tracking ? (
+        <>
+          <AmountInput
+            theme={theme}
+            value={amount}
+            onChange={setAmount}
+            onMax={() => maxAllowed !== null && setAmount(floorToStep(toPlain(maxAllowed), "0.01"))}
+          />
+          {inline ? <Text style={[styles.err, { color: theme.fail }]}>{inline}</Text> : null}
+        </>
+      ) : (
+        <Row theme={theme} label="Amount" value={`${amount} USDT`} />
+      )}
       <Row theme={theme} label="Network fee" value={fee !== null ? `${fee} USDT` : "…"} />
       <Row theme={theme} label="You receive" value={receive !== null ? `${receive} USDT` : "—"} />
+      <Row theme={theme} label="Network · token" value="BNB Smart Chain · USDT" />
+      <View style={styles.row}>
+        <Text style={[styles.rowLabel, { color: theme.inactiveTx }]}>To (your wallet)</Text>
+      </View>
+      <Text selectable style={[styles.address, { color: theme.headingTx }]}>{user}</Text>
       {infoNote ? <Text style={[styles.note, { color: theme.inactiveTx }]}>{infoNote}</Text> : null}
+      {step ? <Text style={[styles.note, { color: theme.headingTx }]}>{WITHDRAW_STEP_TEXT[step]}</Text> : null}
       {result ? (
         <Text style={[styles.note, { color: result.ok ? theme.success : theme.fail }]}>{result.text}</Text>
       ) : null}
-      {!WITHDRAW_SIGNING_SUPPORTED ? (
-        <Text style={[styles.note, { color: theme.warn }]}>
-          Withdrawals from the app are coming soon.
+      {trackingText ? (
+        <Text style={[styles.note, { color: tracking.arrived ? theme.success : theme.headingTx }]}>
+          {trackingText}
+          {tracking.txHash ? `\nTx ${short(tracking.txHash)}` : ""}
         </Text>
       ) : null}
-      {result && result.ok ? (
+      {!signingSupported ? (
+        <Text style={[styles.note, { color: theme.warn }]}>
+          Withdrawals need the latest app version.
+        </Text>
+      ) : null}
+
+      {tracking ? (
         <PrimaryButton theme={theme} label="Done" onPress={onClose} />
+      ) : reviewing ? (
+        <>
+          <PrimaryButton
+            theme={theme}
+            label={`Confirm withdrawal of ${amount} USDT`}
+            onPress={doWithdraw}
+            busy={busy}
+          />
+          <TouchableOpacity disabled={busy} onPress={() => setReviewing(false)} style={styles.secondary}>
+            <Text style={[styles.secondaryTxt, { color: theme.inactiveTx }]}>Back</Text>
+          </TouchableOpacity>
+        </>
       ) : (
         <PrimaryButton
           theme={theme}
-          label={WITHDRAW_SIGNING_SUPPORTED ? "Confirm withdrawal" : "Withdraw coming soon"}
-          onPress={doWithdraw}
-          busy={busy}
-          disabled={!WITHDRAW_SIGNING_SUPPORTED || !amount || !!inline || fee === null}
+          label={signingSupported ? "Review" : "Withdraw coming soon"}
+          onPress={() => {
+            setResult(null);
+            setReviewing(true);
+          }}
+          disabled={!signingSupported || !amount || !!inline || fee === null}
         />
       )}
     </Sheet>
@@ -304,4 +438,7 @@ const styles = StyleSheet.create({
   block: { marginTop: 10 },
   primary: { marginTop: 16, alignItems: "center", justifyContent: "center", paddingVertical: 15, borderRadius: 14, minHeight: 50 },
   primaryTxt: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  address: { fontSize: 13, fontWeight: "600", marginBottom: 4 },
+  secondary: { alignItems: "center", paddingVertical: 12 },
+  secondaryTxt: { fontSize: 15, fontWeight: "600" },
 });
