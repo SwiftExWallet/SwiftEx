@@ -82,8 +82,10 @@ const TradingCard = ({ theme, agentState, funds }) => {
             </Text>
           </View>
         ) : null}
-        {balanceError ? (
-          <Text style={[styles.note, styles.left, { color: theme.warn }]}>{balanceError}</Text>
+        {balanceError || (funds && funds.error && !acc) ? (
+          <Text style={[styles.note, styles.left, { color: theme.warn }]}>
+            {balanceError || funds.error}
+          </Text>
         ) : null}
         {funds ? (
           <View style={styles.btnRow}>

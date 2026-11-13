@@ -15,18 +15,54 @@ const TIME_RESYNC_MS = 60000;
 let serverTimeOffset = 0; // serverTime - localTime (ms)
 let lastTimeSync = 0;
 let lastNonce = 0;
+let timeSyncInFlight = null;
+let lastTimeSyncAttempt = 0;
 
-// Keep the local clock aligned with Aster's (re-synced at most every 60s).
-export const syncServerTime = async (force = false) => {
-  if (!force && Date.now() - lastTimeSync < TIME_RESYNC_MS) return;
-  const t0 = Date.now();
-  const { data } = await fetchServerTime();
-  const t1 = Date.now();
-  if (data) {
-    serverTimeOffset = data - Math.round((t0 + t1) / 2);
-    lastTimeSync = Date.now();
+const runTimeSync = () => {
+  if (!timeSyncInFlight) {
+    timeSyncInFlight = (async () => {
+      const t0 = Date.now();
+      const { data } = await fetchServerTime();
+      const t1 = Date.now();
+      if (data) {
+        serverTimeOffset = data - Math.round((t0 + t1) / 2);
+        lastTimeSync = Date.now();
+      }
+    })().finally(() => {
+      timeSyncInFlight = null;
+    });
   }
+  return timeSyncInFlight;
 };
+
+// Keep the local clock aligned with Aster's: ONE global offset for the app session.
+// The first signed request waits for the first sync; afterwards the offset is refreshed in the
+// background when older than 60s (requests don't wait for it). `force` waits for a fresh sync.
+export const syncServerTime = async (force = false) => {
+  if (force) return runTimeSync();
+  if (!lastTimeSync) {
+    if (timeSyncInFlight) return timeSyncInFlight; // first sync running: wait for it
+    // Never synced: wait once. If that failed recently, use the local clock and retry in background.
+    if (Date.now() - lastTimeSyncAttempt < TIME_RESYNC_MS) {
+      runTimeSync();
+      return undefined;
+    }
+    lastTimeSyncAttempt = Date.now();
+    return runTimeSync();
+  }
+  if (Date.now() - lastTimeSync >= TIME_RESYNC_MS) runTimeSync();
+  return undefined;
+};
+
+// Signing wallet for the agent key, created once (deriving the public key is slow in JS).
+let cachedSigner = null;
+const signerFor = (pk) => {
+  if (!cachedSigner || cachedSigner.pk !== pk) cachedSigner = { pk, wallet: new ethers.Wallet(pk) };
+  return cachedSigner.wallet;
+};
+
+// Identical GET requests that are already in flight share one request (no second signature).
+const inflightGets = new Map();
 
 export const getServerNowMs = () => Date.now() + serverTimeOffset;
 
@@ -41,7 +77,23 @@ export const nextNonceMicros = () => {
 const toParamString = (value) => String(value);
 
 // Signs and sends one agent request. Resolves to { data, error, code, agentInvalid }.
-export const asterSignedRequest = async ({ agent, user, method = "GET", path, params = {} }) => {
+// GETs with the same user/agent/path/params that are already running are shared.
+export const asterSignedRequest = (req) => {
+  const { agent, user, method = "GET", path, params = {} } = req;
+  if (method !== "GET" || !agent || !agent.address) return signedRequestOnce(req);
+  const dedupeKey = `${user}|${agent.address}|${path}|${JSON.stringify(
+    Object.keys(params)
+      .sort()
+      .map((k) => [k, params[k]])
+  )}`;
+  const existing = inflightGets.get(dedupeKey);
+  if (existing) return existing;
+  const p = signedRequestOnce(req).finally(() => inflightGets.delete(dedupeKey));
+  inflightGets.set(dedupeKey, p);
+  return p;
+};
+
+const signedRequestOnce = async ({ agent, user, method = "GET", path, params = {} }) => {
   if (!agent || !agent.pk || !agent.address) {
     return { data: null, error: "Trading is not enabled", code: null, agentInvalid: true };
   }
@@ -55,8 +107,7 @@ export const asterSignedRequest = async ({ agent, user, method = "GET", path, pa
 
   let signature;
   try {
-    const signer = new ethers.Wallet(agent.pk);
-    signature = await signer._signTypedData(AGENT_DOMAIN, MESSAGE_TYPES, { msg: qs });
+    signature = await signerFor(agent.pk)._signTypedData(AGENT_DOMAIN, MESSAGE_TYPES, { msg: qs });
   } catch (e) {
     return { data: null, error: "Could not sign request", code: null, agentInvalid: false };
   }

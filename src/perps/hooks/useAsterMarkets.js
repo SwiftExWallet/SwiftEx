@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { fetchPerpMarkets, fetchTickers24h, primeMarketMeta } from "../api/asterPublic";
+import { fetchPerpMarkets, fetchTickers24h, primeMarketMeta, cacheTicker } from "../api/asterPublic";
 import { asterWs } from "../api/asterWs";
 
 const FLUSH_MS = 1000; // batch live ticker updates into one render per second
@@ -87,6 +87,7 @@ export const useAsterMarkets = (active) => {
     } else {
       hasDataRef.current = true;
       hasFreshRef.current = true;
+      res.data.forEach((m) => cacheTicker(m));
       setMarkets(res.data);
       setError(null);
       writeCache(res.data, res.fetchedAt);
@@ -106,6 +107,7 @@ export const useAsterMarkets = (active) => {
       if (!cached || !mountedRef.current || hasFreshRef.current) return;
       primeMarketMeta(cached.markets, Number(cached.fetchedAt));
       hasDataRef.current = true;
+      cached.markets.forEach((m) => cacheTicker(m, Number(cached.fetchedAt) || 0));
       setMarkets(cached.markets);
       setLoading(false);
       setUpdating(!firstLoadDone);
@@ -130,6 +132,7 @@ export const useAsterMarkets = (active) => {
       const pending = pendingRef.current;
       if (Object.keys(pending).length === 0) return;
       pendingRef.current = {};
+      Object.keys(pending).forEach((s) => cacheTicker({ symbol: s, ...pending[s] }));
       setMarkets((prev) =>
         prev.map((m) => (pending[m.symbol] ? { ...m, ...pending[m.symbol] } : m))
       );

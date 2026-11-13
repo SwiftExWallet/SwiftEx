@@ -204,6 +204,7 @@ const PerpsHome = () => {
             ? {
                 account: accountState.account,
                 noDeposit: accountState.noDeposit,
+                error: accountState.error,
                 depositPending,
                 onDeposit: () => setSheet("deposit"),
                 onWithdraw: () => setSheet("withdraw"),

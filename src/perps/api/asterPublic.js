@@ -59,7 +59,17 @@ export const PUBLIC_TIMEOUT_MS = 30000;
 const PUBLIC_RETRY_DELAY_MS = 1500;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export const asterGet = async (path, opts) => {
+// Identical public GETs already in flight share one request.
+const inflightPublic = new Map();
+export const asterGet = (path, opts) => {
+  const existing = inflightPublic.get(path);
+  if (existing) return existing;
+  const p = asterGetOnce(path, opts).finally(() => inflightPublic.delete(path));
+  inflightPublic.set(path, p);
+  return p;
+};
+
+const asterGetOnce = async (path, opts) => {
   const { retries = 1, ...rest } = opts || {};
   const fetchOpts = { timeoutMs: PUBLIC_TIMEOUT_MS, ...rest, method: "GET" };
   let res = await asterFetch(path, fetchOpts);
@@ -81,6 +91,35 @@ const filterValue = (filters, type, key) => {
 let marketMetaCache = null;
 let marketMetaFetchedAt = 0;
 export const getCachedMarketMeta = () => marketMetaCache;
+
+// Last known 24h ticker / mark price per symbol (from the market list, REST or WS), so the
+// market screen can show a price immediately. Display only — orders use fresh rules/prices.
+// Only values younger than CACHED_PRICE_MAX_AGE_MS are handed out.
+const CACHED_PRICE_MAX_AGE_MS = 60000;
+const tickerCache = {};
+const premiumCache = {};
+const fresh = (entry) =>
+  entry && Date.now() - entry.at <= CACHED_PRICE_MAX_AGE_MS ? entry.value : null;
+export const getCachedTicker = (symbol) => fresh(tickerCache[symbol]);
+export const getCachedPremium = (symbol) => fresh(premiumCache[symbol]);
+export const cacheTicker = (t, at = Date.now()) => {
+  if (t && t.symbol && Number.isFinite(Number(t.lastPrice))) {
+    tickerCache[t.symbol] = {
+      at,
+      value: {
+        symbol: t.symbol,
+        lastPrice: Number(t.lastPrice),
+        priceChangePercent: Number(t.priceChangePercent),
+        quoteVolume: Number(t.quoteVolume),
+        highPrice: Number(t.highPrice),
+        lowPrice: Number(t.lowPrice),
+      },
+    };
+  }
+};
+export const cachePremium = (symbol, p) => {
+  if (symbol && p && Number.isFinite(Number(p.markPrice))) premiumCache[symbol] = { at: Date.now(), value: p };
+};
 
 const indexBySymbol = (markets) =>
   markets.reduce((acc, m) => {

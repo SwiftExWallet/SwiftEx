@@ -91,6 +91,9 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
   // What Aster has now for this market (leverage, margin type, whether a position is open).
   const [server, setServer] = useState({ leverage: null, marginType: null, hasPosition: false });
   const [serverTick, setServerTick] = useState(0);
+  // True once Aster answered (or failed) for this market's leverage / margin / position, so the
+  // pre-warnings below never run on defaults. The form itself is usable right away.
+  const [serverLoaded, setServerLoaded] = useState(false);
   const [multiAssets, setMultiAssets] = useState(null); // account Multi-Assets mode (null = unknown)
   const marginTouchedRef = useRef(false);
   const leverageTouchedRef = useRef(false);
@@ -152,7 +155,9 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
     let cancelled = false;
     if (!agent || !user) return undefined;
     fetchPositions(agent, user, symbol).then((res) => {
-      if (cancelled || res.error) return;
+      if (cancelled) return;
+      setServerLoaded(true);
+      if (res.error) return;
       const p = (Array.isArray(res.data) ? res.data : [res.data]).find((x) => x && x.symbol === symbol);
       if (p) {
         const serverLev = Number(p.leverage) || null;
@@ -202,7 +207,8 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
 
   const available = account && account.available !== undefined ? account.available : null;
   let blockReason = null;
-  if (!amount) blockReason = "Enter an amount";
+  if (!serverLoaded) blockReason = "Loading your settings for this market…";
+  else if (!amount) blockReason = "Enter an amount";
   else if (!preview.ok) blockReason = preview.error;
   else if (account && account.noDeposit) blockReason = "Deposit USDT to start trading";
   else if (available !== null && gt(preview.marginUsed, available)) blockReason = "Not enough available balance";
@@ -330,7 +336,7 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
       ) : null}
       <Field
         theme={theme}
-        label={`Amount (margin)${available !== null ? ` · Available $${formatNumber(available, 2)}` : ""}`}
+        label={`Amount (margin) · Available ${available !== null ? `$${formatNumber(available, 2)}` : "…"}`}
         value={amount}
         onChangeText={(t) => setAmount(cleanInput(t))}
         placeholder="0.00"
