@@ -28,6 +28,7 @@ import { useAssetLogos } from "../hooks/useAssetLogos";
 import { useAppActive } from "../hooks/useAppActive";
 import PositionsSection from "../components/PositionsSection";
 import { DepositSheet, WithdrawSheet } from "../components/FundsSheets";
+import PerpsHistory from "../components/PerpsHistory";
 import { usePerpsAccount } from "../hooks/usePerpsAccount";
 import { useDepositTracker, onPerpsBalance, clearDeposit } from "../storage/depositTracker";
 import { cancelOrder, placeOrder } from "../api/asterTrade";
@@ -95,6 +96,7 @@ const PerpsHome = () => {
     onAgentInvalid: agentState.reset,
   });
   const [sheet, setSheet] = useState(null); // 'deposit' | 'withdraw' | null
+  const [historyOpen, setHistoryOpen] = useState(false);
   const deposit = useDepositTracker();
   const depositPending = deposit.active;
   const perpsBalance = accountState.account ? accountState.account.walletBalance : null;
@@ -257,6 +259,19 @@ const PerpsHome = () => {
           onCancelOrder={onCancelOrder}
         />
       ) : null}
+      {tradingEnabled ? (
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="History"
+          onPress={() => setHistoryOpen(true)}
+          style={[styles.historyRow, { backgroundColor: theme.cardBg }]}
+        >
+          <Icon name="time-outline" type="ionicon" size={20} color={theme.headingTx} />
+          <Text style={[styles.historyTxt, { color: theme.headingTx }]}>History</Text>
+          <Text style={[styles.historySub, { color: theme.inactiveTx }]}>Trades · Funding · Transfers</Text>
+          <Icon name="chevron-forward" type="ionicon" size={18} color={theme.inactiveTx} />
+        </TouchableOpacity>
+      ) : null}
       <View style={[styles.search, { backgroundColor: theme.cardBg }]}>
         <Icon name="search" type="ionicon" size={20} color={theme.inactiveTx} />
         <TextInput
@@ -346,6 +361,16 @@ const PerpsHome = () => {
             user={agentState.user}
             perpsBalance={perpsBalance}
           />
+          {historyOpen ? (
+            <PerpsHistory
+              visible={historyOpen}
+              onClose={() => setHistoryOpen(false)}
+              theme={theme}
+              isDark={isDark}
+              agent={agentState.agent}
+              user={agentState.user}
+            />
+          ) : null}
           <WithdrawSheet
             visible={sheet === "withdraw"}
             onClose={() => setSheet(null)}
@@ -520,6 +545,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  historyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 2,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+  },
+  historyTxt: {
+    fontSize: 15,
+    fontWeight: "700",
+    marginLeft: 10,
+  },
+  historySub: {
+    flex: 1,
+    fontSize: 12,
+    marginLeft: 8,
   },
   pillTxt: {
     fontSize: 13,
