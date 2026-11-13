@@ -18,7 +18,7 @@ import Icon from "../../icon";
 import CoinLogo from "./CoinLogo";
 import { shortHash, hhmm } from "./WithdrawStatusCard";
 import { chainById, txUrl, displayName } from "../api/asterAssets";
-import { usePerpsHistory, HISTORY_MAX_DAYS } from "../hooks/usePerpsHistory";
+import { usePerpsHistory } from "../hooks/usePerpsHistory";
 import { fetchTradesAround } from "../api/asterHistory";
 import { useDepositTracker, isDepositActive } from "../storage/depositTracker";
 import { add, isValid, toPlain } from "../utils/decimal";
@@ -29,7 +29,8 @@ const DAY = 24 * 60 * 60 * 1000;
 const PERIODS = [
   { key: "7D", days: 7 },
   { key: "30D", days: 30 },
-  { key: "90D", days: HISTORY_MAX_DAYS },
+  { key: "90D", days: 90 },
+  { key: "All", days: null }, // as far back as Aster has data (row paging on scroll)
 ];
 const TABS = ["Trades", "Funding & Fees", "Transfers"];
 const TRADE_TYPES = ["REALIZED_PNL", "COMMISSION"];
@@ -305,7 +306,8 @@ const TransferRow = ({ theme, t }) => {
   );
 };
 
-const Summary = ({ theme, pnl, fees, funding }) => (
+const Summary = ({ theme, pnl, fees, funding, pending, note }) => (
+  <View>
   <View style={[styles.summary, { backgroundColor: theme.cardBg }]}>
     {[
       ["Realized PnL", pnl, true],
@@ -322,11 +324,13 @@ const Summary = ({ theme, pnl, fees, funding }) => (
               { color: colored && n > 0 ? theme.success : colored && n < 0 ? theme.fail : theme.headingTx },
             ]}
           >
-            {signed(v)}
+            {pending ? "…" : signed(v)}
           </Text>
         </View>
       );
     })}
+  </View>
+  {note ? <Text style={[styles.sumNote, { color: theme.inactiveTx }]}>{note}</Text> : null}
   </View>
 );
 
@@ -338,12 +342,14 @@ const PerpsHistory = ({ visible, onClose, theme, isDark, agent, user }) => {
   const h = usePerpsHistory({ agent, user, active: visible });
   const { record: deposit } = useDepositTracker();
 
-  const periodStart = Date.now() - period.days * DAY;
-  // Make sure the selected period is loaded (chains 30-day chunks via coveredFrom).
+  // "All" = no lower bound: rows load 200 at a time as the list scrolls.
+  const periodStart = period.days === null ? 0 : Date.now() - period.days * DAY;
+  const periodCovered = h.reachedEnd || (h.coveredFrom !== null && h.coveredFrom <= periodStart);
+  // A fixed period must be fully loaded for correct totals (bounded paged loads).
   useEffect(() => {
-    if (visible && h.hasData && !h.loading && h.coveredFrom && h.coveredFrom > periodStart + 60000) h.loadOlder(periodStart);
+    if (visible && h.hasData && !h.loading && period.days !== null && !periodCovered) h.ensureCovered(periodStart);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, period, h.coveredFrom, h.hasData, h.loading]);
+  }, [visible, period.key, h.hasData, h.loading]);
 
   const inPeriod = useMemo(() => h.items.filter((it) => it.time >= periodStart), [h.items, periodStart]);
   const symbols = useMemo(
@@ -395,7 +401,17 @@ const PerpsHistory = ({ visible, onClose, theme, isDark, agent, user }) => {
 
   const listData = tab === 0 ? trades : tab === 1 ? funding : transfers;
   const sections = useMemo(() => groupByDay(listData), [listData]);
-  const canLoadOlder = !!h.coveredFrom && h.coveredFrom > periodStart + 60000;
+  // Scroll loads older rows: always for "All"; for a period only if it isn't fully loaded yet.
+  const canLoadOlder = !h.reachedEnd && (period.days === null || !periodCovered);
+  const sinceText = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  const summaryNote =
+    period.days !== null && !periodCovered && (h.covering || h.loading)
+      ? "Calculating totals for this period…"
+      : period.days !== null && !periodCovered && h.coveredFrom
+      ? `Partial: totals since ${sinceText(h.coveredFrom)}. Scroll to load more.`
+      : period.days === null && !h.reachedEnd && h.coveredFrom
+      ? `Totals for loaded history (since ${sinceText(h.coveredFrom)}). Scroll for older.`
+      : null;
 
   const renderItem = ({ item }) =>
     tab === 0 ? (
@@ -478,7 +494,14 @@ const PerpsHistory = ({ visible, onClose, theme, isDark, agent, user }) => {
             stickySectionHeadersEnabled={false}
             ListHeaderComponent={
               <>
-                {tab !== 2 ? <Summary theme={theme} {...totals} /> : null}
+                {tab !== 2 ? (
+                  <Summary
+                    theme={theme}
+                    {...totals}
+                    pending={period.days !== null && !periodCovered && (h.covering || h.loading)}
+                    note={summaryNote}
+                  />
+                ) : null}
                 {h.error ? (
                   <Text style={[styles.inlineErr, { color: theme.warn }]}>
                     Couldn't refresh: {friendlyAsterError(h.error)}. Showing saved history.
@@ -490,19 +513,19 @@ const PerpsHistory = ({ visible, onClose, theme, isDark, agent, user }) => {
               <Text style={[styles.day, { color: theme.inactiveTx }]}>{section.title}</Text>
             )}
             ListEmptyComponent={
-              canLoadOlder || h.loadingOlder ? null : (
+              canLoadOlder || h.loadingOlder || h.covering ? null : (
                 <Text style={[styles.empty, { color: theme.inactiveTx }]}>{emptyText}</Text>
               )
             }
             ListFooterComponent={
-              h.loadingOlder || canLoadOlder ? (
+              h.loadingOlder || h.covering || canLoadOlder ? (
                 <ActivityIndicator style={styles.footer} color={theme.buttonColor} />
-              ) : sections.length > 0 && period.days === HISTORY_MAX_DAYS ? (
-                <Text style={[styles.footerTxt, { color: theme.inactiveTx }]}>Showing the last {HISTORY_MAX_DAYS} days</Text>
+              ) : sections.length > 0 && h.reachedEnd ? (
+                <Text style={[styles.footerTxt, { color: theme.inactiveTx }]}>Beginning of your history</Text>
               ) : null
             }
             onEndReachedThreshold={0.4}
-            onEndReached={() => canLoadOlder && h.loadOlder(periodStart)}
+            onEndReached={() => canLoadOlder && !h.covering && h.loadOlder()}
             refreshControl={
               <RefreshControl refreshing={h.refreshing} tintColor="#4CA6EA" onRefresh={() => h.refresh({ pull: true })} />
             }
@@ -533,6 +556,7 @@ const styles = StyleSheet.create({
   summary: { flexDirection: "row", borderRadius: 16, padding: 14, marginTop: 12 },
   sumLabel: { fontSize: 12 },
   sumValue: { fontSize: 15, fontWeight: "700", marginTop: 4 },
+  sumNote: { fontSize: 12, marginTop: 6 },
   listPad: { paddingHorizontal: 16, paddingBottom: 40 },
   day: { fontSize: 13, fontWeight: "700", marginTop: 16, marginBottom: 6 },
   card: { borderRadius: 14, padding: 12, marginBottom: 8 },
