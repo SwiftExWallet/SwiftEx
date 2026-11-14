@@ -5,6 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ethers } from "ethers";
 import { RPC, WSS } from "../../../Dashboard/constants";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
+import { upsertStellarKey } from "../../../utilities/stellarKeyMap";
 import { NativeModules } from 'react-native';
 import { getWalletBalance } from '../../../Dashboard/exchange/crypto-exchange-front-end-main/src/utils/getWalletInfo/EtherWalletService';
 import store from '../Store';
@@ -250,24 +251,8 @@ async function AddToAllWallets(wallets, user) {
     if (wallets[0].walletType === "Multi-coin") {
 
       allWallets.push(buildPublicWallet(wallets[0]));
-         const Ether_address= wallets[0].address;
-        const publicKey = wallets[0].stellarWallet.publicKey;
-      
         try {
-          let userTransactions = [];
-          const transactions = await AsyncStorageLib.getItem('myDataKey');
-          if (transactions) {
-            userTransactions = JSON.parse(transactions);
-            if (!Array.isArray(userTransactions)) {
-              userTransactions = [];
-            }
-          }
-          const newTransaction = {
-            Ether_address,
-            publicKey,
-          };
-          userTransactions.push(newTransaction);
-          await AsyncStorageLib.setItem('myDataKey', JSON.stringify(userTransactions));
+          await upsertStellarKey(wallets[0].address, wallets[0].stellarWallet.publicKey);
         } catch (error) {
           console.error('Error saving payout:', error);
           throw error;
@@ -279,28 +264,6 @@ async function AddToAllWallets(wallets, user) {
     }
     
     AsyncStorage.setItem(`${user}-wallets`, JSON.stringify(allWallets));
-    try {
-      const Ether_address= wallets[0].address;
-      const publicKey = wallets[0].stellarWallet.publicKey;
-      let userTransactions = [];
-      const transactions = await AsyncStorageLib.getItem('myDataKey');
-      if (transactions) {
-        userTransactions = JSON.parse(transactions);
-        if (!Array.isArray(userTransactions)) {
-          userTransactions = [];
-        }
-      }
-      const newTransaction = {
-        Ether_address,
-        publicKey,
-      };
-      userTransactions.push(newTransaction);
-      await AsyncStorageLib.setItem('myDataKey', JSON.stringify(userTransactions));
-      // return userTransactions;
-    } catch (error) {
-      console.error('Error saving payout:', error);
-      throw error;
-    }
     return {
       status: "success",
       message: "Wallet import successful",

@@ -17,6 +17,7 @@ import { colors } from '../Screens/ThemeColorsConfig';
 import { CHAINS, GetWalletTokens, TemporaryTokens } from '../utilities/TokenUtils';
 import CustomInfoProvider from './exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { resolveStellarKey } from '../utilities/stellarKeyMap';
 import InfoComponent from './exchange/crypto-exchange-front-end-main/src/components/InfoComponent';
 import { useAssetManager } from '../utilities/TokenManageHook';
 
@@ -72,12 +73,10 @@ function InvestmentChart() {
     const initService = async () => {
       await fetchDataDispatch();
       try {
-        const storedData = await AsyncStorage.getItem('myDataKey');
-        const parsedData = storedData ? JSON.parse(storedData) : [];
-        let matchedData = parsedData.find((item) => item.Ether_address === wallet?.address);
+        let matchedData = await resolveStellarKey(wallet?.address);
         if (!matchedData) {
           const preser_backup = await AsyncStorage.getItem('wallet_backup');
-          matchedData = parsedData.find((item) => item.Ether_address === preser_backup);
+          matchedData = await resolveStellarKey(preser_backup);
         }
 
         if (wallet && wallet.address && state && state.STELLAR_PUBLICK_KEY) {
@@ -143,12 +142,10 @@ function InvestmentChart() {
       const freshState = store.getState();
 
         try {
-          const storedData = await AsyncStorage.getItem('myDataKey');
-          const parsedData = storedData ? JSON.parse(storedData) : [];
-          let matchedData = parsedData.find((item) => item.Ether_address === wallet.address);
+          let matchedData = await resolveStellarKey(wallet.address);
           if (!matchedData) {
             const preser_backup = await AsyncStorage.getItem('wallet_backup');
-            matchedData = parsedData.find((item) => item.Ether_address === preser_backup);
+            matchedData = await resolveStellarKey(preser_backup);
           }
 
           const stellarKeyToUse = matchedData ? matchedData.publicKey : freshState.STELLAR_PUBLICK_KEY;
@@ -233,17 +230,10 @@ function InvestmentChart() {
   const fetchDataDispatch = useCallback(async () => {
     try {
       const user = await AsyncStorage.getItem("user");
-      const storedData = await AsyncStorage.getItem('myDataKey');
-      if (!storedData) {
-        console.log('No data found for key stellar keys to dispatch');
-        return;
-      }
-      const parsedData = JSON.parse(storedData);
-      let matchedData = parsedData.find((item) => item.Ether_address === wallet.address);
-
+      let matchedData = await resolveStellarKey(wallet.address);
       if (!matchedData) {
         const preser_backup = await AsyncStorage.getItem('wallet_backup');
-        matchedData = parsedData.find((item) => item.Ether_address === preser_backup);
+        matchedData = await resolveStellarKey(preser_backup);
       }
 
       if (matchedData) {

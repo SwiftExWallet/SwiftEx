@@ -12,4 +12,9 @@ RCT_EXTERN_METHOD(signTransaction:(NSString *)transactionXDR
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(signTransactionForNetwork:(NSString *)transactionXDR
+                  network:(NSString *)network
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 @end

@@ -8,17 +8,15 @@ class AccessNativeStorage {
             if (!StorageModule) {
                 throw new Error('StorageModule not available');
             }
-            const Id=Math.floor(1000 + Math.random() * 9000).toString();
-            const value = {
-                ...walletValue,
-                walletId:Id
-            };
+            // The native module assigns a unique walletId (UUID) and returns it.
+            const { walletId: _ignored, ...value } = walletValue || {};
             if(Platform.OS==="ios"){
 
                 const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
                 const saveResponse = await StorageModule.saveWallet(stringValue);
                 if(saveResponse.success){
-                    await this.updateActiveWallet(Id.toString())
+                    if (!saveResponse.walletId) throw new Error('Native saveWallet returned no walletId');
+                    await this.updateActiveWallet(saveResponse.walletId)
                     const recoveryPin = consumeRecoveryPin();
                     if (recoveryPin) {
                         await StorageModule.createPinRecoveryBackup(recoveryPin);
@@ -29,7 +27,8 @@ class AccessNativeStorage {
                 const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
                 const saveResponse = await StorageModule.saveWallet(stringValue);
                 if (saveResponse.success) {
-                    await this.updateActiveWallet(Id.toString())
+                    if (!saveResponse.walletId) throw new Error('Native saveWallet returned no walletId');
+                    await this.updateActiveWallet(saveResponse.walletId)
                     const recoveryPin = consumeRecoveryPin();
                     if (recoveryPin) {
                         await StorageModule.createPinRecoveryBackup(recoveryPin);

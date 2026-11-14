@@ -21,21 +21,30 @@ class EthereumWalletModule(reactContext: ReactApplicationContext) : ReactContext
         return "EthereumWallet"
     }
 
-    private fun walletId(): String = (1000 + SecureRandom().nextInt(9000)).toString()
+    private fun walletId(): String = java.util.UUID.randomUUID().toString()
 
     private fun saveWalletAndActivate(wallet: JSONObject) {
+        val taken = HashSet<String>()
         val usersArray = JSONArray().apply {
             val existing = prefs.all["appAllWallet"]?.toString()
             if (!existing.isNullOrEmpty()) {
                 val arr = JSONArray(existing)
-                for (i in 0 until arr.length()) put(arr.get(i))
+                for (i in 0 until arr.length()) {
+                    put(arr.get(i))
+                    arr.optJSONObject(i)?.optString("walletId")?.let { taken.add(it) }
+                }
+            }
+            while (wallet.optString("walletId").isEmpty() || wallet.optString("walletId") in taken) {
+                wallet.put("walletId", walletId())
             }
             put(wallet)
         }
-        prefs.edit()
-            .putString("appAllWallet", usersArray.toString())
-            .putString("activeUserWallet", wallet.toString())
-            .apply()
+        check(
+            prefs.edit()
+                .putString("appAllWallet", usersArray.toString())
+                .putString("activeUserWallet", wallet.toString())
+                .commit()
+        ) { "Could not save wallet" }
     }
 
     private fun publicWalletResponse(wallet: JSONObject): WritableMap {

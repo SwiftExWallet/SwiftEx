@@ -22,10 +22,8 @@ export async function ensureFusionAllowance(tokenAddress, walletAddress, amountB
     }
 
     const iface = new ethers.utils.Interface(erc20AllowanceAbi);
-    const data = iface.encodeFunctionData('approve', [
-      limitOrderProtocol,
-      ethers.constants.MaxUint256,
-    ]);
+    const sendApprove = async (approveAmount) => {
+      const data = iface.encodeFunctionData('approve', [limitOrderProtocol, approveAmount]);
 
     let gasLimit = ethers.BigNumber.from('100000');
     try {
@@ -77,8 +75,16 @@ export async function ensureFusionAllowance(tokenAddress, walletAddress, amountB
       rawTransaction = rawTransaction.replace(/^0x/, '');
     }
 
-    const txHash = await rpcProvider.send('eth_sendRawTransaction', [rawTransaction]);
-    await rpcProvider.waitForTransaction(txHash, 2, 60_000);
+      const hash = await rpcProvider.send('eth_sendRawTransaction', [rawTransaction]);
+      await rpcProvider.waitForTransaction(hash, 2, 60_000);
+      return hash;
+    };
+
+    // Tokens like USDT reject changing a non-zero allowance to another non-zero value.
+    if (!ethers.BigNumber.from(allowance).isZero()) {
+      await sendApprove(0);
+    }
+    const txHash = await sendApprove(ethers.BigNumber.from(amountBN));
     return { status: true, txHash };
   } catch (error) {
     console.error('[ensureFusionAllowance] Error:', error);

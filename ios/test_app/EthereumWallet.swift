@@ -255,7 +255,7 @@ class EthereumWallet: NSObject {
     }
 
     private func walletId() -> String {
-        return String(Int.random(in: 1000...9999))
+        return UUID().uuidString
     }
 
     private func storedWallet(
@@ -297,6 +297,11 @@ class EthereumWallet: NSObject {
            let data = existing.data(using: .utf8),
            let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
             usersArray = arr
+        }
+        var wallet = wallet
+        let taken = Set(usersArray.compactMap { $0["walletId"] as? String })
+        while (wallet["walletId"] as? String).map({ $0.isEmpty || taken.contains($0) }) ?? true {
+            wallet["walletId"] = walletId()
         }
         usersArray.append(wallet)
 

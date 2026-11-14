@@ -1,5 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
+import DeviceInfo from "react-native-device-info";
 import { REACT_APP_HOST } from "../../Dashboard/exchange/crypto-exchange-front-end-main/src/ExchangeConstants";
+import { isUpdateRequired } from "./appVersionUtils";
 
 export const SERVICE_SCREEN_MAP = {
     home: "Home",
@@ -68,6 +71,22 @@ export const CheckAppAvailable = async () => {
     }
 };
 
+export const getUpdateInfo = (appStatus) => {
+    const platform = Platform.OS === "ios" ? "ios" : "android";
+    const currentVersion = DeviceInfo.getVersion();
+    const latestVersion = appStatus?.appVersion?.[platform]?.latestVersion;
+
+    if (!isUpdateRequired(currentVersion, latestVersion)) {
+        return null;
+    }
+
+    return {
+        currentVersion,
+        latestVersion,
+        platform,
+    };
+};
+
 const hasPersistedUser = user => {
     return Boolean(user && user !== "null" && user !== "undefined");
 };
@@ -99,16 +118,25 @@ export const runBiometricStartup = async ({
 export const AppNavigation = async (props) => {
     let destination = "Welcome";
     try {
-        const [storedStatus, user] = await Promise.all([
+        const [storedStatus, user, freshStatus] = await Promise.all([
             AsyncStorage.getItem("AppStatusChecks"),
             AsyncStorage.getItem("user"),
+            CheckAppAvailable(),
         ]);
         destination = hasPersistedUser(user) ? "HomeScreen" : "Welcome";
-        if (!storedStatus) {
+        const persistedResponse = storedStatus ? JSON.parse(storedStatus) : null;
+        const response = freshStatus?.appVersion ? freshStatus : persistedResponse;
+
+        const updateInfo = getUpdateInfo(response);
+        if (updateInfo) {
+            props.navigation.navigate("AppCheck", { info: 2, updateInfo });
+            return;
+        }
+
+        if (!response) {
             props.navigation.navigate(destination);
             return;
         }
-        const response = JSON.parse(storedStatus);
         if (response?.isRestricted || response?.maintenance === true || response?.maintenance === "true") {
             props.navigation.navigate("AppCheck", { info: response?.isRestricted ? 0 : 1, });
             return;

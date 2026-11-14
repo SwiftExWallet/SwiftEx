@@ -791,6 +791,70 @@ class StorageModule: NSObject {
         }
     }
 
+    private static let walletListLock = NSLock()
+
+    private func newWalletId(taken: Set<String>) -> String {
+        var id: String
+        repeat { id = UUID().uuidString } while taken.contains(id)
+        return id
+    }
+
+    private func saveWalletList(_ arr: [[String: Any]]) throws {
+        let data = try JSONSerialization.data(withJSONObject: arr)
+        guard let str = String(data: data, encoding: .utf8) else { throw SecureStorageError.encodingError }
+        try saveToKeychainSecure(key: "appAllWallet", value: str)
+    }
+
+    private func sameKeys(_ a: [String: Any], _ b: [String: Any]) -> Bool {
+        (a["address"] as? String) == (b["address"] as? String) &&
+        (a["stellarPublicKey"] as? String) == (b["stellarPublicKey"] as? String) &&
+        (a["privatekey"] as? String) == (b["privatekey"] as? String)
+    }
+
+    private func loadWalletsWithUniqueIds() throws -> [[String: Any]]? {
+        StorageModule.walletListLock.lock()
+        defer { StorageModule.walletListLock.unlock() }
+
+        guard let s = try getFromKeychain(key: "appAllWallet"),
+              let d = s.data(using: .utf8),
+              var arr = try JSONSerialization.jsonObject(with: d) as? [[String: Any]]
+        else { return nil }
+
+        var taken = Set(arr.compactMap { $0["walletId"] as? String })
+        var seen = Set<String>()
+        var changed = false
+        for i in arr.indices {
+            let id = arr[i]["walletId"] as? String ?? ""
+            if id.isEmpty || seen.contains(id) {
+                let fresh = newWalletId(taken: taken)
+                taken.insert(fresh); seen.insert(fresh)
+                arr[i]["walletId"] = fresh
+                changed = true
+            } else {
+                seen.insert(id)
+            }
+        }
+        guard changed else { return arr }
+
+        try saveWalletList(arr)
+        if let activeStr = try? getFromKeychain(key: "activeUserWallet"),
+           let ad = activeStr.data(using: .utf8),
+           let active = try? JSONSerialization.jsonObject(with: ad) as? [String: Any],
+           let match = arr.first(where: { sameKeys($0, active) }) {
+            let md = try JSONSerialization.data(withJSONObject: match)
+            if let ms = String(data: md, encoding: .utf8) {
+                try saveToKeychainSecure(key: "activeUserWallet", value: ms)
+            }
+        }
+        return arr
+    }
+
+    private func indexOfWallet(_ arr: [[String: Any]], id: String) throws -> Int? {
+        let matches = arr.indices.filter { (arr[$0]["walletId"] as? String) == id }
+        if matches.count > 1 { throw SecureStorageError.decodingError }
+        return matches.first
+    }
+
     @objc
     func saveWallet(_ value: String,
                     resolver resolve: @escaping RCTPromiseResolveBlock,
@@ -798,20 +862,16 @@ class StorageModule: NSObject {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 guard let data = value.data(using: .utf8),
-                      let newUser = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                      var newUser = try JSONSerialization.jsonObject(with: data) as? [String: Any]
                 else { throw SecureStorageError.decodingError }
 
-                var usersArray: [[String: Any]] = []
-                if let existing = try? self.getFromKeychain(key: "appAllWallet"),
-                   let d = existing.data(using: .utf8),
-                   let arr = try? JSONSerialization.jsonObject(with: d) as? [[String: Any]] {
-                    usersArray = arr
-                }
+                var usersArray = (try? self.loadWalletsWithUniqueIds()) ?? []
+
+                let id = self.newWalletId(taken: Set(usersArray.compactMap { $0["walletId"] as? String }))
+                newUser["walletId"] = id
                 usersArray.append(newUser)
-                let updated = try JSONSerialization.data(withJSONObject: usersArray)
-                guard let str = String(data: updated, encoding: .utf8) else { throw SecureStorageError.encodingError }
-                try self.saveToKeychainSecure(key: "appAllWallet", value: str)
-                DispatchQueue.main.async { resolve(["success": true]) }
+                try self.saveWalletList(usersArray)
+                DispatchQueue.main.async { resolve(["success": true, "walletId": id]) }
             } catch { DispatchQueue.main.async { reject("SAVE_WALLET_ERROR", error.localizedDescription, error) } }
         }
     }
@@ -822,14 +882,12 @@ class StorageModule: NSObject {
                             rejecter reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                guard let s = try self.getFromKeychain(key: "appAllWallet"),
-                      let d = s.data(using: .utf8),
-                      let arr = try JSONSerialization.jsonObject(with: d) as? [[String: Any]]
-                else { throw SecureStorageError.decodingError }
+                guard let arr = try self.loadWalletsWithUniqueIds() else { throw SecureStorageError.decodingError }
 
-                guard let matched = arr.first(where: { ($0["walletId"] as? String) == id }) else {
+                guard let idx = try self.indexOfWallet(arr, id: id) else {
                     return DispatchQueue.main.async { reject("WALLET_ID_NOT_FOUND", "Wallet \(id) not found", nil) }
                 }
+                let matched = arr[idx]
                 let info = try JSONSerialization.data(withJSONObject: matched)
                 guard let str = String(data: info, encoding: .utf8) else { throw SecureStorageError.encodingError }
                 try self.saveToKeychainSecure(key: "activeUserWallet", value: str)
@@ -843,10 +901,7 @@ class StorageModule: NSObject {
                       rejecter reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                guard let s = try self.getFromKeychain(key: "appAllWallet"),
-                      let d = s.data(using: .utf8),
-                      let arr = try JSONSerialization.jsonObject(with: d) as? [[String: Any]]
-                else {
+                guard let arr = try self.loadWalletsWithUniqueIds() else {
                     return DispatchQueue.main.async { resolve(["success": false, "wallets": []]) }
                 }
                 let filtered = arr.map { w -> [String: Any] in [
@@ -991,18 +1046,13 @@ class StorageModule: NSObject {
                 rejecter reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                guard let s = try self.getFromKeychain(key: "appAllWallet"),
-                      let d = s.data(using: .utf8),
-                      var arr = try JSONSerialization.jsonObject(with: d) as? [[String: Any]]
-                else { throw SecureStorageError.decodingError }
+                guard var arr = try self.loadWalletsWithUniqueIds() else { throw SecureStorageError.decodingError }
 
-                guard arr.contains(where: { ($0["walletId"] as? String) == id }) else {
+                guard let idx = try self.indexOfWallet(arr, id: id) else {
                     return DispatchQueue.main.async { reject("WALLET_ID_NOT_FOUND", "Wallet \(id) not found", nil) }
                 }
-                arr.removeAll { ($0["walletId"] as? String) == id }
-                let updated = try JSONSerialization.data(withJSONObject: arr)
-                guard let str = String(data: updated, encoding: .utf8) else { throw SecureStorageError.encodingError }
-                try self.saveToKeychainSecure(key: "appAllWallet", value: str)
+                arr.remove(at: idx)
+                try self.saveWalletList(arr)
                 DispatchQueue.main.async { resolve(["success": true, "wallet_removed": "wallet_removed","mode": "remove"]) }
             } catch { DispatchQueue.main.async { reject("REMOVE_WALLET_ERROR", error.localizedDescription, error) } }
         }
@@ -1014,18 +1064,13 @@ class StorageModule: NSObject {
                       rejecter reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                guard let s = try self.getFromKeychain(key: "appAllWallet"),
-                      let d = s.data(using: .utf8),
-                      var arr = try JSONSerialization.jsonObject(with: d) as? [[String: Any]]
-                else { throw SecureStorageError.decodingError }
+                guard var arr = try self.loadWalletsWithUniqueIds() else { throw SecureStorageError.decodingError }
 
-                guard let idx = arr.firstIndex(where: { ($0["walletId"] as? String) == id }) else {
+                guard let idx = try self.indexOfWallet(arr, id: id) else {
                     return DispatchQueue.main.async { reject("WALLET_ID_NOT_FOUND", "Wallet \(id) not found", nil) }
                 }
                 arr[idx]["name"] = name
-                let updated = try JSONSerialization.data(withJSONObject: arr)
-                guard let str = String(data: updated, encoding: .utf8) else { throw SecureStorageError.encodingError }
-                try self.saveToKeychainSecure(key: "appAllWallet", value: str)
+                try self.saveWalletList(arr)
                 DispatchQueue.main.async { resolve(["success": true, "mode": "replace"]) }
             } catch { DispatchQueue.main.async { reject("UPDATE_WALLET_ERROR", error.localizedDescription, error) } }
         }

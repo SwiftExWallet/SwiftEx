@@ -182,7 +182,7 @@ const Offers_manages = () => {
         .build();
 
       const txXDR = transaction.toXdr();
-      const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
+      const signedTx = await NativeModules.StellarSigner.signTransactionForNetwork(txXDR, ENVIRONMENT === "TESTNET" ? "testnet" : "public");
       const signedXDR = signedTx?.signedXDR;
       if (!signedXDR || typeof signedXDR !== "string") {
         throw new Error("Invalid signed XDR");
@@ -251,16 +251,15 @@ const Offers_manages = () => {
   
     try {
       const account = await server.loadAccount(state.STELLAR_PUBLICK_KEY);
-  
-      const selling =
-        sellingAssetCode === "XLM" || sellingAssetCode === "native"
+      if (!selectedOffer?.selling || !selectedOffer?.buying || !selectedOffer?.id) {
+        throw new Error("No offer selected");
+      }
+      const toAsset = (a) =>
+        a.asset_type === "native"
           ? StellarSdk.Asset.native()
-          : new StellarSdk.Asset(sellingAssetCode, sellingAssetIssuer);
-  
-      const buying =
-        buyingAssetCode === "XLM" || buyingAssetCode === "native"
-          ? StellarSdk.Asset.native()
-          : new StellarSdk.Asset(buyingAssetCode, buyingAssetIssuer);
+          : new StellarSdk.Asset(a.asset_code, a.asset_issuer);
+      const selling = toAsset(selectedOffer.selling);
+      const buying = toAsset(selectedOffer.buying);
       const transaction = new StellarSdk.TransactionBuilder(account, {
         fee: await server.fetchBaseFee(),
         networkPassphrase: STELLAR_NETWORK,
@@ -278,7 +277,7 @@ const Offers_manages = () => {
         .build();
   
       const txXDR = transaction.toXdr();
-      const signedTx = await NativeModules.StellarSigner.signTransaction(txXDR);
+      const signedTx = await NativeModules.StellarSigner.signTransactionForNetwork(txXDR, ENVIRONMENT === "TESTNET" ? "testnet" : "public");
       const signedXDR = signedTx?.signedXDR;
       if (!signedXDR || typeof signedXDR !== "string") {
         throw new Error("Invalid signed XDR");
