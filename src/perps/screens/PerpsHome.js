@@ -1,0 +1,753 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  StatusBar,
+  Platform,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator,
+} from "react-native";
+import { useSelector } from "react-redux";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
+import {
+  widthPercentageToDP as wp,
+  heightPercentageToDP as hp,
+} from "react-native-responsive-screen";
+import Icon from "../../icon";
+import { colors } from "../../Screens/ThemeColorsConfig";
+import { useAsterMarkets } from "../hooks/useAsterMarkets";
+import { formatPrice, formatPercent, formatCompactUsd } from "../utils/format";
+import { usePerpsAgent } from "../hooks/usePerpsAgent";
+import TradingCard from "../components/TradingCard";
+import CoinLogo from "../components/CoinLogo";
+import { useAssetLogos } from "../hooks/useAssetLogos";
+import { useAppActive } from "../hooks/useAppActive";
+import PositionsSection from "../components/PositionsSection";
+import { DepositSheet, WithdrawSheet } from "../components/FundsSheets";
+import PerpsHistory from "../components/PerpsHistory";
+import { usePerpsAccount } from "../hooks/usePerpsAccount";
+import { useDepositTracker, onPerpsBalance, clearDeposit, watchCredit, mayBeCredited } from "../storage/depositTracker";
+import { useWithdrawTracker, watchWithdraw, clearWithdraw } from "../storage/withdrawTracker";
+import { chainById, displayName } from "../api/asterAssets";
+import { cancelOrder, placeOrder, fetchMultiAssetsMode } from "../api/asterTrade";
+import { buildCloseOrder } from "../utils/orderMath";
+import { friendlyAsterError } from "../utils/asterErrors";
+import { showInfo } from "../utils/modalSafe";
+import { startMultiAssetsFlow } from "../api/multiAssetsFlow";
+import { logPerpsError, getPerpsErrors, formatPerpsErrors, clearPerpsErrors } from "../utils/perpsLog";
+import { withTimeout } from "../utils/async";
+import { useFocusRequest, consumeFocus, findFocusTarget, getFocusRequest } from "../utils/positionFocus";
+
+
+const MarketRow = React.memo(({ item, theme, onPress }) => {
+  const change = Number(item.priceChangePercent);
+  const up = !(change < 0);
+  return (
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={`${item.symbol} perp`}
+      style={[styles.row, { backgroundColor: theme.cardBg }]}
+      onPress={() => onPress(item)}
+    >
+      <CoinLogo asset={item.baseAsset} size={40} theme={theme} />
+      <View style={styles.nameCol}>
+        <View style={styles.nameLine}>
+          <Text numberOfLines={1} style={[styles.symbol, { color: theme.headingTx }]}>
+            {item.baseAsset}
+          </Text>
+          <View style={[styles.tag, { borderColor: theme.inactiveTx }]}>
+            <Text style={[styles.tagTxt, { color: theme.inactiveTx }]}>Perp</Text>
+          </View>
+          {item.maxLeverage ? (
+            <Text style={[styles.lev, { color: theme.buttonColor }]}>{item.maxLeverage}x</Text>
+          ) : null}
+        </View>
+        <Text style={[styles.vol, { color: theme.inactiveTx }]}>
+          Vol {formatCompactUsd(item.quoteVolume)}
+        </Text>
+      </View>
+      <View style={styles.priceCol}>
+        <Text style={[styles.price, { color: theme.headingTx }]}>
+          ${formatPrice(item.lastPrice, item.tickSize)}
+        </Text>
+        <Text style={[styles.change, { color: up ? theme.success : theme.fail }]}>
+          {formatPercent(change)}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+const PerpsHome = () => {
+  const navigation = useNavigation();
+  const appActive = useAppActive();
+  const isFocused = useIsFocused() && appActive; // live only on screen AND in the foreground
+  const isDark = useSelector((state) => state.THEME.THEME) !== false;
+  const theme = isDark ? colors.dark : colors.light;
+  const [query, setQuery] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const deposit = useDepositTracker();
+  // The full-screen History covers this list: pause its market stream + account poller meanwhile
+  // (the poller keeps running if a deposit is waiting for its credit).
+  const listActive = isFocused && !historyOpen;
+  const { markets, loading, refreshing, updating, error, retry, refresh } = useAsterMarkets(listActive);
+  useAssetLogos(); // start loading coin logos as soon as the tab mounts
+  const agentState = usePerpsAgent(isFocused);
+  const { leverage } = agentState;
+  const tradingEnabled = agentState.status === "enabled";
+  const accountState = usePerpsAccount({
+    agent: agentState.agent,
+    user: agentState.user,
+    active: isFocused && tradingEnabled && (!historyOpen || deposit.active),
+    onAgentInvalid: agentState.reset,
+  });
+  const [sheet, setSheet] = useState(null); // 'deposit' | 'withdraw' | null
+  const depositPending = deposit.active;
+  const perpsBalance = accountState.account ? accountState.account.walletBalance : null;
+  // "Credited in Perps": feed each balance from the shared account poller into the tracker.
+  useEffect(() => {
+    if (deposit.active) onPerpsBalance(agentState.user, perpsBalance);
+  }, [deposit.active, agentState.user, perpsBalance]);
+  // Credited while the sheet was closed: say so once and clear the record.
+  const depositCredited = !!deposit.record && !!deposit.record.creditedAt;
+  useEffect(() => {
+    if (depositCredited && sheet !== "deposit") {
+      showInfo(
+        "success",
+        "Deposit credited",
+        `${deposit.record.amount} ${displayName(deposit.record.asset || "USDT")} is now in your Perps balance.`
+      );
+      clearDeposit();
+      accountState.refresh();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [depositCredited, sheet]);
+  // Aster deposit-history check for the credit (any asset): only while this tab is open + app in front.
+  const depositWaiting = deposit.active && mayBeCredited(deposit.record) && !deposit.record.interrupted;
+  useEffect(() => {
+    if (!isFocused || !depositWaiting || !agentState.agent) return undefined;
+    return watchCredit(agentState.agent, agentState.user);
+  }, [isFocused, depositWaiting, agentState.agent, agentState.user]);
+
+  // Withdrawal tracking (Aster history + on-chain receipt), same rules.
+  const withdraw = useWithdrawTracker();
+  useEffect(() => {
+    if (!isFocused || !withdraw.active || !agentState.agent) return undefined;
+    return watchWithdraw(agentState.agent, agentState.user);
+  }, [isFocused, withdraw.active, agentState.agent, agentState.user]);
+  const withdrawReceived = !!withdraw.record && !!withdraw.record.receivedAt;
+  useEffect(() => {
+    if (withdrawReceived && sheet !== "withdraw") {
+      const r = withdraw.record;
+      showInfo(
+        "success",
+        "Withdrawal received",
+        `${r.receive} ${displayName(r.asset)} arrived in your wallet on ${chainById(r.chainId).name}.`
+      );
+      clearWithdraw();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [withdrawReceived, sheet]);
+
+  // Account margin mode (Multi-Assets on/off) for the deposit sheet. Switching always asks first.
+  const [multiAssets, setMultiAssets] = useState(null);
+  useEffect(() => {
+    if (sheet !== "deposit" || !agentState.agent) return undefined;
+    let cancelled = false;
+    fetchMultiAssetsMode(agentState.agent, agentState.user).then((res) => {
+      if (cancelled || res.error || !res.data) return;
+      setMultiAssets(res.data.multiAssetsMargin === true || res.data.multiAssetsMargin === "true");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sheet, agentState.agent, agentState.user]);
+  // Opened from the Deposit sheet: close the sheet first; the dialog shows once it has hidden (iOS).
+  const enableMultiAssets = () => {
+    setSheet(null); // the guided dialogs open once the sheet has hidden (iOS-safe)
+    startMultiAssetsFlow({
+      agent: agentState.agent,
+      user: agentState.user,
+      onDone: (enabled) => {
+        if (enabled) setMultiAssets(true);
+        accountState.refresh();
+      },
+    });
+  };
+
+  // Close position / cancel order. Never leaves the UI waiting; a lost reply is "unknown",
+  // not "failed" (refresh and check before trying again).
+  const actionBusy = useRef(false);
+  const runAction = async (title, fn) => {
+    if (actionBusy.current) return;
+    actionBusy.current = true;
+    try {
+      const res = await withTimeout(fn(), 60000).catch((e) => ({ error: (e && e.message) || "timeout", transport: true }));
+      if (res && res.agentInvalid) agentState.reset();
+      if (res && res.error) {
+        logPerpsError({ step: `action:${title}`, code: res.code, msg: res.error });
+        if (res.transport) {
+          showInfo("info", `${title}: status unknown`, "We didn't get an answer from Aster. Your positions and orders are refreshing — check them before trying again.");
+        } else showInfo("error", title, friendlyAsterError(res));
+      } else showInfo("success", title, "Done.");
+    } catch (e) {
+      logPerpsError({ step: `action:${title}:exception`, msg: e && e.message });
+      showInfo("error", title, "Something went wrong. Check your positions and orders.");
+    } finally {
+      actionBusy.current = false;
+      accountState.refresh();
+    }
+  };
+
+  // Hidden diagnostics: long-press the "Perps" title to read the last 20 Perps errors (no secrets).
+  const showErrorLog = async () => {
+    const list = await getPerpsErrors().catch(() => []);
+    showInfo("info", `Perps error log (${list.length})`, formatPerpsErrors(list), [
+      { text: "Close", style: "cancel" },
+      { text: "Clear log", onPress: () => clearPerpsErrors() },
+    ]);
+  };
+
+  const onClosePosition = (p) => {
+    const order = buildCloseOrder({ symbol: p.symbol, positionAmt: p.positionAmt });
+    if (!order) return;
+    showInfo(
+      "info",
+      "Close position?",
+      `Market ${order.side === "SELL" ? "sell" : "buy"} ${order.quantity} to close your ${p.symbol} position.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Close",
+          onPress: () => runAction("Close position", () => placeOrder(agentState.agent, agentState.user, order)),
+        },
+      ]
+    );
+  };
+
+  const onCancelOrder = (o) => {
+    showInfo("info", "Cancel order?", `${o.symbol} ${o.type}`, [
+      { text: "Keep", style: "cancel" },
+      {
+        text: "Cancel order",
+        onPress: () =>
+          runAction("Cancel order", () =>
+            cancelOrder(agentState.agent, agentState.user, { symbol: o.symbol, orderId: o.orderId })
+          ),
+      },
+    ]);
+  };
+
+  // "View position" / "Done" after an order: scroll to the new row and glow it briefly.
+  const listRef = useRef(null);
+  const sectionY = useRef(0);
+  const rowY = useRef({});
+  const [highlight, setHighlight] = useState(null); // { key, pulse, strength }
+  const refreshedFor = useRef(null);
+  const focusReq = useFocusRequest();
+  const positions = accountState.positions;
+  const openOrders = accountState.openOrders;
+  useEffect(() => {
+    if (!focusReq || !isFocused || !tradingEnabled) return undefined;
+    if (!getFocusRequest()) {
+      consumeFocus(focusReq); // expired (row never appeared)
+      return undefined;
+    }
+    const key = findFocusTarget(focusReq, positions, openOrders);
+    if (!key) {
+      // The new row may not be in the last poll yet: one extra refresh per request, then the
+      // normal 5s poll.
+      if (refreshedFor.current !== focusReq.at) {
+        refreshedFor.current = focusReq.at;
+        accountState.refresh();
+      }
+      return undefined;
+    }
+    // Wait one frame so the row has been laid out, then scroll + glow.
+    const id = setTimeout(() => {
+      const y = rowY.current[key];
+      if (listRef.current && y !== undefined) {
+        listRef.current.scrollToOffset({ offset: Math.max(0, sectionY.current + y - 60), animated: true });
+      }
+      setHighlight({ key, pulse: Date.now(), strength: focusReq.strength });
+      consumeFocus(focusReq);
+    }, 250);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusReq, isFocused, tradingEnabled, positions, openOrders]);
+
+  // Tab badge: number of open positions (shared account poller; no extra requests).
+  const positionCount = tradingEnabled ? positions.length : 0;
+  useEffect(() => {
+    navigation.setOptions({
+      tabBarBadge: positionCount > 0 ? positionCount : undefined,
+      tabBarBadgeStyle: { backgroundColor: theme.buttonColor, color: "#FFFFFF", fontSize: 11 },
+    });
+  }, [navigation, positionCount, theme.buttonColor]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toUpperCase();
+    const list = q
+      ? markets.filter((m) => m.symbol.includes(q) || (m.baseAsset || "").toUpperCase().includes(q))
+      : markets;
+    if (!leverage || Object.keys(leverage).length === 0) return list;
+    return list.map((m) => (leverage[m.symbol] ? { ...m, maxLeverage: leverage[m.symbol] } : m));
+  }, [markets, query, leverage]);
+
+  const onRefresh = useCallback(() => {
+    refresh();
+    agentState.refreshAccount();
+    accountState.refresh();
+  }, [refresh, agentState, accountState]);
+
+  const confirmReset = () => {
+    setMenuOpen(false);
+    showInfo(
+      "info",
+      "Reset trading key?",
+      "This removes the trading key from this device. You can enable trading again at any time.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Reset", onPress: () => agentState.reset() },
+      ]
+    );
+  };
+
+  const openMarket = useCallback(
+    (item) => navigation.navigate("PerpsMarket", { symbol: item.symbol }),
+    [navigation]
+  );
+
+  const renderItem = useCallback(
+    ({ item }) => <MarketRow item={item} theme={theme} onPress={openMarket} />,
+    [theme, openMarket]
+  );
+
+  const header = (
+    <View>
+      <View style={styles.titleRow}>
+        <Text
+          onLongPress={showErrorLog}
+          delayLongPress={1200}
+          style={[styles.title, { color: theme.headingTx }]}
+        >
+          Perps
+        </Text>
+        {agentState.status === "enabled" ? (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="More options"
+            onPress={() => setMenuOpen(!menuOpen)}
+            style={styles.menuBtn}
+          >
+            <Icon name="ellipsis-horizontal" type="ionicon" size={24} color={theme.headingTx} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      {menuOpen && agentState.status === "enabled" ? (
+        <View style={[styles.menu, { backgroundColor: theme.cardBg, borderColor: theme.smallCardBorderColor }]}>
+          <TouchableOpacity accessibilityRole="button" onPress={confirmReset} style={styles.menuItem}>
+            <Icon name="key-outline" type="ionicon" size={18} color={theme.fail} />
+            <Text style={[styles.menuTxt, { color: theme.fail }]}>Reset trading key</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      <TradingCard
+        theme={theme}
+        agentState={agentState}
+        funds={
+          tradingEnabled
+            ? {
+                account: accountState.account,
+                noDeposit: accountState.noDeposit,
+                error: accountState.error,
+                depositPending,
+                onDeposit: () => setSheet("deposit"),
+                onWithdraw: () => setSheet("withdraw"),
+              }
+            : null
+        }
+      />
+      {tradingEnabled && depositPending ? (
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Deposit in progress, show status"
+          onPress={() => setSheet("deposit")}
+          style={[styles.pill, { backgroundColor: theme.cardBg, borderColor: theme.inactiveTx }]}
+        >
+          {deposit.record.interrupted ? (
+            <Icon name="pause-circle-outline" type="ionicon" size={20} color={theme.headingTx} />
+          ) : (
+            <ActivityIndicator size="small" color={theme.buttonColor} />
+          )}
+          <Text style={[styles.pillTxt, { color: theme.headingTx }]}>
+            {deposit.record.interrupted ? "Deposit paused" : "Deposit in progress"} · {deposit.record.amount}{" "}
+            {displayName(deposit.record.asset || "USDT")} ·{" "}
+            {deposit.record.interrupted
+              ? "tap to continue"
+              : deposit.record.unknownStatus && !deposit.record.confirmedAt
+              ? "status unknown"
+              : deposit.record.confirmedAt
+              ? "waiting for credit"
+              : deposit.record.sentAt
+              ? "confirming"
+              : deposit.record.needsApprove && !deposit.record.approvedAt
+              ? "approving"
+              : "sending"}
+          </Text>
+          <Icon name="chevron-forward" type="ionicon" size={16} color={theme.inactiveTx} />
+        </TouchableOpacity>
+      ) : null}
+      {tradingEnabled && withdraw.active ? (
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Withdrawal in progress, show status"
+          onPress={() => setSheet("withdraw")}
+          style={[styles.pill, { backgroundColor: theme.cardBg, borderColor: theme.inactiveTx }]}
+        >
+          <ActivityIndicator size="small" color={theme.buttonColor} />
+          <Text style={[styles.pillTxt, { color: theme.headingTx }]}>
+            Withdrawal in progress · {withdraw.record.amount} {displayName(withdraw.record.asset)} ·{" "}
+            {withdraw.record.txHash ? "sending on-chain" : "processing"}
+          </Text>
+          <Icon name="chevron-forward" type="ionicon" size={16} color={theme.inactiveTx} />
+        </TouchableOpacity>
+      ) : null}
+      {tradingEnabled ? (
+        <PositionsSection
+          theme={theme}
+          positions={accountState.positions}
+          openOrders={accountState.openOrders}
+          marks={accountState.marks}
+          onClosePosition={onClosePosition}
+          onCancelOrder={onCancelOrder}
+          highlight={highlight}
+          onLayout={(e) => {
+            sectionY.current = e.nativeEvent.layout.y;
+          }}
+          onRowLayout={(key, y) => {
+            rowY.current[key] = y;
+          }}
+        />
+      ) : null}
+      {tradingEnabled ? (
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="History"
+          onPress={() => setHistoryOpen(true)}
+          style={[styles.historyRow, { backgroundColor: theme.cardBg }]}
+        >
+          <Icon name="time-outline" type="ionicon" size={20} color={theme.headingTx} />
+          <Text style={[styles.historyTxt, { color: theme.headingTx }]}>History</Text>
+          <Text style={[styles.historySub, { color: theme.inactiveTx }]}>Trades · Funding · Transfers</Text>
+          <Icon name="chevron-forward" type="ionicon" size={18} color={theme.inactiveTx} />
+        </TouchableOpacity>
+      ) : null}
+      <View style={[styles.search, { backgroundColor: theme.cardBg }]}>
+        <Icon name="search" type="ionicon" size={20} color={theme.inactiveTx} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search markets"
+          placeholderTextColor={theme.inactiveTx}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          style={[styles.searchInput, { color: theme.headingTx }]}
+        />
+        {query ? (
+          <Icon
+            name="close-circle"
+            type="ionicon"
+            size={20}
+            color={theme.inactiveTx}
+            onPress={() => setQuery("")}
+          />
+        ) : null}
+      </View>
+      {updating && !error && markets.length > 0 ? (
+        <Text style={[styles.updating, { color: theme.inactiveTx }]}>Updating…</Text>
+      ) : null}
+    </View>
+  );
+
+  const empty = loading ? (
+    <View style={styles.state}>
+      <ActivityIndicator color={theme.buttonColor} size="large" />
+      <Text style={[styles.stateTxt, { color: theme.inactiveTx }]}>Loading markets…</Text>
+    </View>
+  ) : error ? (
+    <View style={styles.state}>
+      <Icon name="cloud-offline-outline" type="ionicon" size={40} color={theme.inactiveTx} />
+      <Text style={[styles.stateTxt, { color: theme.headingTx }]}>Couldn't load markets</Text>
+      <Text style={[styles.stateSub, { color: theme.inactiveTx }]}>{error}</Text>
+      <TouchableOpacity
+        style={[styles.retryBtn, { backgroundColor: theme.buttonColor }]}
+        onPress={retry}
+      >
+        <Text style={styles.retryTxt}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  ) : (
+    <View style={styles.state}>
+      <Text style={[styles.stateTxt, { color: theme.inactiveTx }]}>
+        {query ? "No markets match your search" : "No markets available"}
+      </Text>
+    </View>
+  );
+
+  return (
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: theme.bg, paddingTop: Platform.OS === "ios" ? hp(6) : hp(2) },
+      ]}
+    >
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.bg} />
+      {error && markets.length > 0 ? (
+        <TouchableOpacity onPress={retry} style={[styles.banner, { backgroundColor: theme.cardBg }]}>
+          <Text style={{ color: theme.warn }}>Live data may be out of date. Tap to retry.</Text>
+        </TouchableOpacity>
+      ) : null}
+      <FlatList
+        ref={listRef}
+        data={loading || (error && markets.length === 0) ? [] : filtered}
+        keyExtractor={(item) => item.symbol}
+        renderItem={renderItem}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={15}
+        maxToRenderPerBatch={20}
+        windowSize={11}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} tintColor="#4CA6EA" onRefresh={onRefresh} />
+        }
+        contentContainerStyle={{ paddingBottom: hp(12) }}
+      />
+      {tradingEnabled ? (
+        <>
+          <DepositSheet
+            visible={sheet === "deposit"}
+            onClose={() => setSheet(null)}
+            theme={theme}
+            user={agentState.user}
+            perpsBalance={perpsBalance}
+            multiAssets={multiAssets}
+            onEnableMultiAssets={enableMultiAssets}
+          />
+          {historyOpen ? (
+            <PerpsHistory
+              visible={historyOpen}
+              onClose={() => setHistoryOpen(false)}
+              theme={theme}
+              isDark={isDark}
+              agent={agentState.agent}
+              user={agentState.user}
+            />
+          ) : null}
+          <WithdrawSheet
+            visible={sheet === "withdraw"}
+            onClose={() => setSheet(null)}
+            theme={theme}
+            agent={agentState.agent}
+            user={agentState.user}
+            available={accountState.account ? accountState.account.available : null}
+            onWithdrawn={accountState.refresh}
+          />
+        </>
+      ) : null}
+    </View>
+  );
+};
+
+export default PerpsHome;
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "700",
+    paddingHorizontal: 19,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingRight: 12,
+  },
+  menuBtn: {
+    padding: 6,
+  },
+  menu: {
+    position: "absolute",
+    right: 14,
+    top: 40,
+    zIndex: 10,
+    elevation: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 4,
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  menuTxt: {
+    fontSize: 15,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  search: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 12,
+    marginTop: 14,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    height: 46,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    marginLeft: 8,
+    paddingVertical: 0,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+  },
+  nameCol: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  nameLine: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  symbol: {
+    fontSize: 16,
+    fontWeight: "700",
+    maxWidth: wp(30),
+  },
+  tag: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    marginLeft: 6,
+  },
+  tagTxt: {
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  lev: {
+    fontSize: 12,
+    fontWeight: "700",
+    marginLeft: 6,
+  },
+  vol: {
+    fontSize: 12,
+    marginTop: 3,
+  },
+  priceCol: {
+    alignItems: "flex-end",
+  },
+  price: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  change: {
+    fontSize: 13,
+    marginTop: 3,
+    fontWeight: "600",
+  },
+  state: {
+    alignItems: "center",
+    paddingVertical: hp(6),
+    paddingHorizontal: 24,
+  },
+  stateTxt: {
+    fontSize: 16,
+    marginTop: 10,
+    textAlign: "center",
+  },
+  stateSub: {
+    fontSize: 13,
+    marginTop: 6,
+    textAlign: "center",
+  },
+  retryBtn: {
+    marginTop: 14,
+    paddingHorizontal: 28,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  retryTxt: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  updating: {
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: -2,
+    marginBottom: 6,
+  },
+  banner: {
+    marginHorizontal: 12,
+    marginBottom: 6,
+    padding: 10,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  historyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 2,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+  },
+  historyTxt: {
+    fontSize: 15,
+    fontWeight: "700",
+    marginLeft: 10,
+  },
+  historySub: {
+    flex: 1,
+    fontSize: 12,
+    marginLeft: 8,
+  },
+  pillTxt: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+});

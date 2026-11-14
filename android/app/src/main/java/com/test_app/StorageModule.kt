@@ -1141,6 +1141,44 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
         } catch (e: Exception) { promise.reject("GET_ALL_KEYS_ERROR", e.message) }
     }
 
+    // --- Perps: Aster agent (trading-only) key ------------------------------------------
+    // Stored in the same EncryptedSharedPreferences as the wallets, but ONLY for keys with the
+    // perps prefix, so these methods can never read or overwrite wallet data. Not included in
+    // the PIN recovery backup (that copies appAllWallet/activeUserWallet only). Never log values.
+    private val PERPS_SECURE_PREFIX = "perps_aster_agent_"
+
+    private fun isPerpsSecureKey(key: String?): Boolean =
+        key != null && key.length > PERPS_SECURE_PREFIX.length && key.length <= 128 &&
+            key.startsWith(PERPS_SECURE_PREFIX)
+
+    @ReactMethod
+    fun setSecureItem(key: String, value: String, promise: Promise) {
+        if (!isPerpsSecureKey(key)) return promise.reject("SECURE_ITEM_KEY", "Key not allowed")
+        try {
+            val ok = prefs.edit().putString(key, value).commit()
+            if (!ok) return promise.reject("SECURE_ITEM_WRITE", "Write failed")
+            promise.resolve(true)
+        } catch (e: Exception) { promise.reject("SECURE_ITEM_WRITE", "Write failed") }
+    }
+
+    @ReactMethod
+    fun getSecureItem(key: String, promise: Promise) {
+        if (!isPerpsSecureKey(key)) return promise.reject("SECURE_ITEM_KEY", "Key not allowed")
+        try {
+            promise.resolve(prefs.getString(key, null))
+        } catch (e: Exception) { promise.reject("SECURE_ITEM_READ", "Read failed") }
+    }
+
+    @ReactMethod
+    fun removeSecureItem(key: String, promise: Promise) {
+        if (!isPerpsSecureKey(key)) return promise.reject("SECURE_ITEM_KEY", "Key not allowed")
+        try {
+            val ok = prefs.edit().remove(key).commit()
+            if (!ok) return promise.reject("SECURE_ITEM_DELETE", "Delete failed")
+            promise.resolve(true)
+        } catch (e: Exception) { promise.reject("SECURE_ITEM_DELETE", "Delete failed") }
+    }
+
     @ReactMethod
     fun clearAll(promise: Promise) {
         try {

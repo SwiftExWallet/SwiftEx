@@ -36,6 +36,7 @@ export const SERVICE_SCREEN_MAP = {
     tokens_management: "TokensManagement",
     wallet_network_selection: "WalletNetworkSelection",
     discover: "Discover",
+    perps: "Perps",
     buy_crypto: "buycrypto",
     ramp_provider: "RampProvider",
     banxa_ramp_provider: "BanxaRampProvider",
