@@ -253,11 +253,11 @@ export const HomeView = () => {
           <View style={st.abstractCircle} />
 
           <View style={Platform.OS==="android"?st.actRow:st.actRowIOS}>
-            <TouchableOpacity style={[Platform.OS==="android"?st.actSmall:st.actSmallIOS, { backgroundColor: ACCENT }]} onPress={() => nav(0)}>
-              <Icon name="candlestick-chart" type="material" size={Platform.OS==="android"?22:18} color="#FFF" />
+            <TouchableOpacity style={[Platform.OS==="android"?st.actSmall:st.actSmallIOS, { backgroundColor: theme.bg }]} onPress={() => nav(0)}>
+              <Icon name="candlestick-chart" type="material" size={Platform.OS==="android"?22:18} color={theme.headingTx} />
               <View style={{ marginLeft: 10 }}>
-                <Text style={st.actTitle}>Trade</Text>
-                <Text style={st.actSub}>Trade Assets</Text>
+                <Text style={[st.actTitle,{color:theme.headingTx}]}>Trade</Text>
+                <Text style={[st.actSub,{color:theme.inactiveTx}]}>Trade Assets</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity style={[Platform.OS==="android"?st.actSmall:st.actSmallIOS,{backgroundColor:theme.bg}]} onPress={() => nav(1)}>
@@ -421,7 +421,9 @@ const getStyles = (theme) => StyleSheet.create({
     padding: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: "row"
+    flexDirection: "row",
+    borderWidth: 0.8,
+    borderColor: theme.inactiveTx,
   },
   actSmallIOS: {
     flex: 1,
@@ -431,7 +433,9 @@ const getStyles = (theme) => StyleSheet.create({
     paddingHorizontal:wp(2.3),
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: "row"
+    flexDirection: "row",
+    borderWidth: 0.8,
+    borderColor: theme.inactiveTx,
   },
   statsRow: {
     flexDirection: "row",

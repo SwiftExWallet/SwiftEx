@@ -9,6 +9,7 @@ import { ensureFusionAllowance } from './FusionAllowance';
 import { fustionEvmTxManager } from './evmTxManager';
 import { getSafeErrorMessage } from './errorSanitizer';
 import { ENVIRONMENT } from '../Dashboard/constants';
+import { assertFusionOrder, assertNativeOrderTx } from './swapGuard';
 
 export const GetFusionSwapQuote = async (fromBlockchain, fromTokenAddress, toBlockchain, toTokenAddress, amount, walletAddress, fromSymbol, toSymbol) => {
     try {
@@ -79,6 +80,23 @@ export async function PerformeFusionSwap(quoteId, state, fromToken, toToken, amo
         }
 
         const { primaryType, types, domain, message } =responses.response.typedData;
+        // Refuse to sign a backend-built order that sells a different token/amount or
+        // isn't for this wallet. (Dst-side receiver lives in the extension and is not
+        // checked here.)
+        try {
+            assertFusionOrder(responses.response.typedData, {
+                wallet: state?.wallet?.address,
+                fromToken,
+                toToken,
+                amountWei: ethers.utils.parseUnits(amount, fromToken?.decimals),
+                chainId: ENVIRONMENT === "TESTNET" ? domain?.chainId : fromToken.chainId,
+                crossChain: true,
+                skipContractCheck: ENVIRONMENT === "TESTNET",
+            });
+        } catch (guardError) {
+            CustomInfoProvider.show("error", "!Opps", guardError.message);
+            return { status: false, error: guardError.message };
+        }
         let finalTypes = types;
         let finalMessage = message;
 
@@ -262,6 +280,11 @@ export async function PerformeFusionPlusNativeSwap(state, fromToken, toToken, am
         const txData = fusionPlusNative.response.transaction.data;
         const toAddress = fusionPlusNative.response.transaction.to;
         const amountInWei = fusionPlusNative.response.transaction.value || "0";
+        // Only deposit to a known order contract, and only the amount the user entered.
+        assertNativeOrderTx(fusionPlusNative.response.transaction, {
+            chainId: fromToken.chainId,
+            amountWei: ethers.utils.parseUnits(amount, fromToken?.decimals),
+        });
 
         console.info(`Initiating transaction via Native Signer on ${chainName}...`);
         const result = await fustionEvmTxManager(
@@ -274,7 +297,7 @@ export async function PerformeFusionPlusNativeSwap(state, fromToken, toToken, am
 
         if (!result.status) {
             console.info(`${chainName} Transaction Failed:`, result.error);
-            throw new error(result.error)
+            throw new Error(result.error)
         } 
         console.info(`${chainName} Transaction Success:`, result.txResponse);
 

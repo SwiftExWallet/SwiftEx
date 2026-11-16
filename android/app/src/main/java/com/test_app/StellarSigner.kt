@@ -125,6 +125,20 @@ class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJav
 
     @ReactMethod
     fun signTransaction(transactionXDR: String, promise: Promise) {
+        signForNetwork(transactionXDR, Network.PUBLIC, promise)
+    }
+
+    @ReactMethod
+    fun signTransactionForNetwork(transactionXDR: String, network: String, promise: Promise) {
+        val resolved = when (network) {
+            "public" -> Network.PUBLIC
+            "testnet" -> Network.TESTNET
+            else -> return promise.reject("INVALID_NETWORK", "Unsupported Stellar network: $network")
+        }
+        signForNetwork(transactionXDR, resolved, promise)
+    }
+
+    private fun signForNetwork(transactionXDR: String, network: Network, promise: Promise) {
     authenticateForSigning(promise) {
         Thread {
             try {
@@ -134,7 +148,6 @@ class StellarSigner(reactContext: ReactApplicationContext) : ReactContextBaseJav
                 }
 
                 val sourceKeyPair = KeyPair.fromSecretSeed(secretKey)
-                val network = Network.PUBLIC
                 val envelope = Transaction.fromEnvelopeXdr(
                     transactionXDR,
                     network

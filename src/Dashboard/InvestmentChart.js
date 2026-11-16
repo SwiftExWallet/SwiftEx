@@ -7,7 +7,7 @@ import {
 import { useDispatch, useSelector, useStore } from "react-redux";
 import Icon from "../icon";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
-import { PORTFOLIO_CONFIG, RAPID_STELLAR, SET_ASSET_DATA, WALLET_ACTIVATION_SHOW } from "../components/Redux/actions/type";
+import { PORTFOLIO_CONFIG, PORTFOLIO_LOAD_STATUS, RAPID_STELLAR, SET_ASSET_DATA, WALLET_ACTIVATION_SHOW } from "../components/Redux/actions/type";
 import { enableBiometrics } from "../biometrics/biometric";
 import { ENVIRONMENT, STELLAR_URL } from "./constants";
 import LinearGradient from "react-native-linear-gradient";
@@ -17,6 +17,7 @@ import { colors } from '../Screens/ThemeColorsConfig';
 import { CHAINS, GetWalletTokens, TemporaryTokens } from '../utilities/TokenUtils';
 import CustomInfoProvider from './exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { resolveStellarKey } from '../utilities/stellarKeyMap';
 import InfoComponent from './exchange/crypto-exchange-front-end-main/src/components/InfoComponent';
 import { useAssetManager } from '../utilities/TokenManageHook';
 
@@ -72,12 +73,10 @@ function InvestmentChart() {
     const initService = async () => {
       await fetchDataDispatch();
       try {
-        const storedData = await AsyncStorage.getItem('myDataKey');
-        const parsedData = storedData ? JSON.parse(storedData) : [];
-        let matchedData = parsedData.find((item) => item.Ether_address === wallet?.address);
+        let matchedData = await resolveStellarKey(wallet?.address);
         if (!matchedData) {
           const preser_backup = await AsyncStorage.getItem('wallet_backup');
-          matchedData = parsedData.find((item) => item.Ether_address === preser_backup);
+          matchedData = await resolveStellarKey(preser_backup);
         }
 
         if (wallet && wallet.address && state && state.STELLAR_PUBLICK_KEY) {
@@ -137,24 +136,34 @@ function InvestmentChart() {
       setLoading(true);
     }
 
+    const isReadyForWallet = () => {
+      const load = store.getState().portfolioLoad;
+      return load?.walletKey === requestForWallet && load?.status === "ready";
+    };
+    const setPortfolioLoad = (status) => {
+      if (activeRequestWalletRef.current !== requestForWallet) return;
+      if (status !== "ready" && isReadyForWallet()) return;
+      dispatch({ type: PORTFOLIO_LOAD_STATUS, payload: { status, walletKey: requestForWallet } });
+    };
+    setPortfolioLoad("loading");
+
     const initService = async () => {
       await fetchDataDispatch();
 
       const freshState = store.getState();
 
         try {
-          const storedData = await AsyncStorage.getItem('myDataKey');
-          const parsedData = storedData ? JSON.parse(storedData) : [];
-          let matchedData = parsedData.find((item) => item.Ether_address === wallet.address);
+          let matchedData = await resolveStellarKey(wallet.address);
           if (!matchedData) {
             const preser_backup = await AsyncStorage.getItem('wallet_backup');
-            matchedData = parsedData.find((item) => item.Ether_address === preser_backup);
+            matchedData = await resolveStellarKey(preser_backup);
           }
 
           const stellarKeyToUse = matchedData ? matchedData.publicKey : freshState.STELLAR_PUBLICK_KEY;
 
         if (!stellarKeyToUse) {
           if (isActive) setLoading(false);
+          setPortfolioLoad("error");
           return;
         }
 
@@ -166,6 +175,7 @@ function InvestmentChart() {
             const userCustomTokens = await getCustomTokens();
             const margeArray = [...walletInfo.tokens, ...(userCustomTokens.status ? userCustomTokens.data : []), avilableSoonAsset];
             await mergeWithApiTokens(margeArray);
+            setPortfolioLoad("ready");
             setTokenInfoList(margeArray);
             setLoading(false);
             hasLoadedOnceRef.current = true;
@@ -178,12 +188,15 @@ function InvestmentChart() {
                 totalStellarInUSD: walletInfo.totalSTRUSD,
               }
             });
+          } else {
+            setPortfolioLoad("error");
           }
         } catch (error) {
           console.error("walletInfo_error", error);
         if (isActive && activeRequestWalletRef.current === requestForWallet) {
           setLoading(false);
           setPortfolioError(true);
+          setPortfolioLoad("error");
           CustomInfoProvider.show("info", "Portfolio currently unavailable, please try again.");
         }
       }
@@ -233,17 +246,10 @@ function InvestmentChart() {
   const fetchDataDispatch = useCallback(async () => {
     try {
       const user = await AsyncStorage.getItem("user");
-      const storedData = await AsyncStorage.getItem('myDataKey');
-      if (!storedData) {
-        console.log('No data found for key stellar keys to dispatch');
-        return;
-      }
-      const parsedData = JSON.parse(storedData);
-      let matchedData = parsedData.find((item) => item.Ether_address === wallet.address);
-
+      let matchedData = await resolveStellarKey(wallet.address);
       if (!matchedData) {
         const preser_backup = await AsyncStorage.getItem('wallet_backup');
-        matchedData = parsedData.find((item) => item.Ether_address === preser_backup);
+        matchedData = await resolveStellarKey(preser_backup);
       }
 
       if (matchedData) {

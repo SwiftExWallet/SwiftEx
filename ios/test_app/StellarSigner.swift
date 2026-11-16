@@ -161,11 +161,39 @@ class StellarSigner: NSObject {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
+    sign(transactionXDR, network: Network.public, resolver: resolve, rejecter: reject)
+  }
+
+  @objc
+  func signTransactionForNetwork(
+    _ transactionXDR: String,
+    network: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    let resolved: Network
+    switch network {
+    case "public": resolved = Network.public
+    case "testnet": resolved = Network.testnet
+    default:
+      reject("INVALID_NETWORK", "Unsupported Stellar network: \(network)", nil)
+      return
+    }
+    sign(transactionXDR, network: resolved, resolver: resolve, rejecter: reject)
+  }
+
+  private func sign(
+    _ transactionXDR: String,
+    network: Network,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
     authenticateForSigning { authResult in
       do {
         try authResult.get()
         self.signTransactionAfterAuthentication(
           transactionXDR,
+          network: network,
           resolver: resolve,
           rejecter: reject
         )
@@ -177,6 +205,7 @@ class StellarSigner: NSObject {
 
   private func signTransactionAfterAuthentication(
     _ transactionXDR: String,
+    network: Network,
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
@@ -184,7 +213,6 @@ class StellarSigner: NSObject {
       do {
         let secretKey = try getPrivateKey(chain: "stellar")!
         let sourceKeyPair = try KeyPair(secretSeed: secretKey)
-        let network = Network.public
         let transaction = try Transaction(envelopeXdr: transactionXDR)
         try transaction.sign(keyPair: sourceKeyPair, network: network)
         let signedXDR = try transaction.encodedEnvelope()

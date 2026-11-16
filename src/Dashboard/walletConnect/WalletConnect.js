@@ -21,6 +21,10 @@ import { ethers } from "ethers";
 import { WALLET_CONNECT_INFO, WALLET_CONNECT_PROJECT_ID } from "../constants";
 import { CHAINS } from "../../utilities/TokenUtils";
 import { nativeSign } from "../../utilities/NativeSign";
+import {
+  normalizeDappTx, assertReasonableFee, maxNetworkFee, decodeTokenCall,
+  decodeTypedData, decodeStellarTx, stellarNetworkFromChainId, stellarPassphrase, shortAddr,
+} from "../../utilities/signingReview";
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
 import DeviceInfo from "react-native-device-info";
 import messaging from "@react-native-firebase/messaging";
@@ -96,6 +100,119 @@ const forwardRpcCall = async (wcChainId, method, params = []) => {
 const isEthAddress = (v) =>
   typeof v === "string" && /^0x[0-9a-fA-F]{40}$/.test(v);
 
+const sameAddr = (a, b) =>
+  typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
+
+const extractStellarXdr = (p) => {
+  if (typeof p === "string") return p;
+  if (Array.isArray(p)) return p[0];
+  return p?.xdr ?? p?.transaction ?? p?.envelope_xdr ?? p?.signedXDR;
+};
+
+/** Hex → readable text when it is printable UTF-8, otherwise return the hex unchanged. */
+const decodePersonalMessage = (msg) => {
+  if (typeof msg !== "string") return String(msg);
+  if (!/^0x[0-9a-fA-F]*$/.test(msg)) return msg;
+  try {
+    const text = ethers.utils.toUtf8String(msg);
+    return /^[\x09\x0A\x0D\x20-\x7E -￿]*$/.test(text) ? text : msg;
+  } catch (_) {
+    return msg;
+  }
+};
+
+/**
+ * Build everything the approval screen shows AND everything the signer will use.
+ * Approve signs exactly `review.*`, so screen and signature cannot disagree.
+ * Throws when the request must be refused.
+ */
+const prepareReview = async (event, walletAddress, stellarKey) => {
+  const { request: rpc, chainId } = event.params;
+  const m = rpc.method;
+
+  if (STELLAR_METHODS.includes(m) || chainId?.startsWith("stellar:")) {
+    if (!STELLAR_METHODS.includes(m)) throw new Error(`Unsupported Stellar method: ${m}`);
+    if (!stellarKey) throw new Error("No Stellar account in this wallet");
+    const network = stellarNetworkFromChainId(chainId); // throws for anything but pubnet/testnet
+    const txXdr = extractStellarXdr(rpc.params);
+    if (!txXdr) throw new Error("Invalid Stellar XDR params");
+    const decoded = decodeStellarTx(txXdr, network, stellarKey);
+    return { kind: "stellar", network, txXdr, decoded, danger: decoded.danger };
+  }
+
+  const chainConfig = getChainConfig(chainId);
+  if (!chainConfig) throw new Error(`Unsupported chain: ${chainId}`);
+
+  switch (m) {
+    case "eth_sendTransaction":
+    case "eth_signTransaction": {
+      const tx = normalizeDappTx(rpc.params?.[0], walletAddress);
+      const provider = new ethers.providers.JsonRpcProvider(chainConfig.rpcUrl);
+      const feeData = await provider.getFeeData();
+      const networkGasPrice = feeData.gasPrice ?? feeData.maxFeePerGas;
+      if (!networkGasPrice) throw new Error("Could not read the network gas price");
+
+      // NativeSign signs a legacy transaction, where gasPrice is paid in full. Ignore
+      // dApp EIP-1559 fields and use the network price; keep a dApp legacy gasPrice only
+      // if it passes the cap below.
+      if (tx.maxFeePerGas || !tx.gasPrice) tx.gasPrice = networkGasPrice;
+      delete tx.maxFeePerGas;
+      delete tx.maxPriorityFeePerGas;
+
+      if (tx.nonce === undefined) tx.nonce = await provider.getTransactionCount(walletAddress, "latest");
+      if (!tx.gasLimit) {
+        try {
+          const est = await provider.estimateGas({ to: tx.to, value: tx.value, data: tx.data, from: walletAddress });
+          tx.gasLimit = est.mul(120).div(100);
+        } catch (_) {
+          tx.gasLimit = ethers.BigNumber.from(300000);
+        }
+      }
+      assertReasonableFee(tx, networkGasPrice);
+      tx.chainId = chainConfig.chainId;
+
+      const fee = maxNetworkFee(tx);
+      const balance = await provider.getBalance(walletAddress).catch(() => null);
+      const token = decodeTokenCall(tx.data);
+      return {
+        kind: "evmTx", chainConfig, tx, fee, balance, token,
+        total: tx.value.add(fee),
+        danger: !!(token?.unlimited || (token?.kind === "approveAll" && token.approved)),
+      };
+    }
+
+    case "eth_sendRawTransaction": {
+      const parsed = ethers.utils.parseTransaction(rpc.params?.[0]);
+      if (Number(parsed.chainId) !== Number(chainConfig.chainId)) throw new Error("Raw transaction is for another chain");
+      return { kind: "raw", chainConfig, raw: rpc.params[0], parsed };
+    }
+
+    case "personal_sign":
+    case "eth_sign": {
+      let message, addr;
+      if (m === "eth_sign") { [addr, message] = rpc.params; }
+      else if (isEthAddress(rpc.params[0]) && !isEthAddress(rpc.params[1])) { [addr, message] = rpc.params; }
+      else { [message, addr] = rpc.params; }
+      if (addr && !sameAddr(addr, walletAddress)) throw new Error("Request is for a different address");
+      return { kind: "message", chainConfig, message, text: decodePersonalMessage(message) };
+    }
+
+    case "eth_signTypedData":
+    case "eth_signTypedData_v3":
+    case "eth_signTypedData_v4": {
+      const [addr, raw] = rpc.params;
+      if (addr && !sameAddr(addr, walletAddress)) throw new Error("Request is for a different address");
+      const typedData = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const decoded = decodeTypedData(typedData, chainId);
+      if (decoded.error) throw new Error(decoded.error);
+      return { kind: "typed", chainConfig, typedData, decoded, danger: decoded.danger };
+    }
+
+    default:
+      throw new Error(`Unsupported method: ${m}`);
+  }
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 const WalletSyncComponent = ({ visible, onClose, isDark }) => {
   const { hasPermission, requestPermission } = useCameraPermission();
@@ -113,6 +230,9 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
   const [activeSessions, setActiveSessions] = useState([]);
   const [activeView, setActiveView] = useState("scanner");
   const [loading, setLoading] = useState(false);
+  // Decoded + fully prepared request: { requestId, status: "loading"|"ready"|"error", data, error }
+  const [review, setReview] = useState(null);
+  const [riskAck, setRiskAck] = useState(false);
 
   const device = useCameraDevice("back");
   const state = useSelector((s) => s);
@@ -211,6 +331,16 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
             return;
           }
           setTimeout(() => handleClose(), 1400);
+          setRiskAck(false);
+          setReview({ requestId: event.id, status: "loading" });
+          prepareReview(event, walletAddressRef.current, stellarKeyRef.current)
+            .then((data) => setReview((r) => (r?.requestId === event.id ? { requestId: event.id, status: "ready", data } : r)))
+            .catch((e) => {
+              console.error("prepareReview:", e);
+              setReview((r) => (r?.requestId === event.id
+                ? { requestId: event.id, status: "error", error: e?.message || "Request could not be verified" }
+                : r));
+            });
           setTransactionRequest(event);
           setScanned(false);
           setSessionModalVisible(false);
@@ -336,7 +466,6 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
     const { topic, params, id } = req;
     const { request: rpc } = params;
     const method = rpc.method;
-    const wcChainId = params.chainId;
     const walletAddress = walletAddressRef.current;
 
     const respondOk = async (result) =>
@@ -348,35 +477,25 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
       setLoading(true);
       let result;
 
-      // ── Stellar signing ─────────────────────────────────────────────────
-      if (wcChainId?.startsWith("stellar:") || STELLAR_METHODS.includes(method)) {
-        const normXDR = (p) => {
-          if (typeof p === "string") return { txXdr: p };
-          if (Array.isArray(p)) return { txXdr: p[0] };
-          return { txXdr: p.xdr ?? p.transaction ?? p.envelope_xdr ?? p.signedXDR };
-        };
-        const { txXdr } = normXDR(rpc.params);
-        if (!txXdr) throw new Error("Invalid Stellar XDR params");
+      // Sign only what the screen showed. Never re-read rpc.params here.
+      if (!review || review.requestId !== id || review.status !== "ready") {
+        throw new Error("Request was not verified");
+      }
+      const r = review.data;
+      if (r.danger && !riskAck) throw new Error("Risk not acknowledged");
 
-        const network = wcChainId === "stellar:testnet" ? "testnet" : "public";
+      if (r.kind === "stellar") {
+        // Network comes from the verified chain id and is enforced natively.
+        const signed = await nativeSign({ type: "stellar_xdr", xdr: r.txXdr, submit: false, network: r.network });
 
         if (method === "stellar_signAndSubmitXDR") {
-          const signed = await nativeSign({
-            type: "stellar_xdr",
-            xdr: txXdr,
-            submit: false,
-            network,
-          });
-
-
-          const { Horizon, TransactionBuilder, Networks } = require("@stellar/stellar-sdk/axios");
-          const networkPass = network === "testnet" ? Networks.TESTNET : Networks.PUBLIC;
-          const horizonUrl = network === "testnet"
+          const { Horizon, TransactionBuilder } = require("@stellar/stellar-sdk/axios");
+          const horizonUrl = r.network === "testnet"
             ? "https://horizon-testnet.stellar.org"
             : "https://horizon.stellar.org";
           const server = new Horizon.Server(horizonUrl);
           const horizonResult = await server.submitTransaction(
-            TransactionBuilder.fromXdr(signed.signedXDR, networkPass)
+            TransactionBuilder.fromXdr(signed.signedXDR, stellarPassphrase(r.network))
           );
 
           await respondOk({ hash: horizonResult.hash ?? signed.hash });
@@ -387,133 +506,40 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
           CustomInfoProvider.show("success", "Approved", "Transaction signed & submitted");
           return;
         }
-
-        const signed = await nativeSign({
-          type: "stellar_xdr",
-          xdr: txXdr,
-          submit: false,
-          network,
-        });
         result = { signedXDR: signed.signedXDR };
 
       } else {
-        // ── EVM signing ─────────────────────────────────────────────────────
-        const chainConfig = getChainConfig(wcChainId);
-        if (!chainConfig) throw new Error(`Unsupported chain: ${wcChainId}`);
-
+        const chainConfig = r.chainConfig;
         const chainName = chainConfig.nativeChainKey;  // "eth", "bnb", "matic"…
 
-        switch (method) {
-
-          // ── Send / Sign transaction ───────────────────────────────────────
-          case "eth_sendTransaction":
-          case "eth_signTransaction": {
-            const raw = { ...rpc.params[0] };
-
-            // Normalise: gas → gasLimit, remove from
-            if (raw.gas && !raw.gasLimit) { raw.gasLimit = raw.gas; }
-            delete raw.gas;
-            delete raw.from;
-
-            // Populate missing fields using chain RPC (no private key involved)
-            const provider = new ethers.providers.JsonRpcProvider(chainConfig.rpcUrl);
-
-            if (raw.nonce === undefined || raw.nonce === null) {
-              raw.nonce = await provider.getTransactionCount(walletAddress, "latest");
-            }
-
-            if (!raw.gasPrice && !raw.maxFeePerGas) {
-              const feeData = await provider.getFeeData();
-              if (feeData.maxFeePerGas) {
-                raw.maxFeePerGas = feeData.maxFeePerGas;
-                raw.maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
-              } else {
-                raw.gasPrice = feeData.gasPrice;
-              }
-            }
-
-            if (!raw.gasLimit) {
-              try {
-                raw.gasLimit = await provider.estimateGas({ ...raw, from: walletAddress });
-              } catch (_) {
-                raw.gasLimit = 300000; // conservative fallback
-              }
-            }
-
-            raw.chainId = chainConfig.chainId;
-
+        switch (r.kind) {
+          case "evmTx": {
             if (method === "eth_signTransaction") {
-              const { signedTx } = await nativeSign({
-                type: "evm_sign_only",
-                chainConfig,
-                walletAddress,
-                tx: raw,
-              });
+              const { signedTx } = await nativeSign({ type: "evm_sign_only", chainConfig, walletAddress, tx: r.tx });
               result = signedTx;
             } else {
-              const { txHash } = await nativeSign({
-                type: "evm_tx",
-                chainConfig,
-                walletAddress,
-                tx: raw,
-              });
+              const { txHash } = await nativeSign({ type: "evm_tx", chainConfig, walletAddress, tx: r.tx });
               result = txHash;
             }
             break;
           }
 
-          // ── Send pre-signed raw tx ────────────────────────────────────────
-          case "eth_sendRawTransaction": {
+          // Pre-signed by someone else; we only relay it.
+          case "raw": {
             const provider = new ethers.providers.JsonRpcProvider(chainConfig.rpcUrl);
-            const txRes = await provider.sendTransaction(rpc.params[0]);
+            const txRes = await provider.sendTransaction(r.raw);
             result = txRes.hash;
             break;
           }
 
-          // ── personal_sign ─────────────────────────────────────────────────
-          // WalletConnect v2 spec: [message, address]
-          // Some older dApps:      [address, message]
-          case "personal_sign": {
-            const message = (isEthAddress(rpc.params[0]) && !isEthAddress(rpc.params[1]))
-              ? rpc.params[1]  // old: [address, message]
-              : rpc.params[0]; // std: [message, address]
-
-            const { signature } = await nativeSign({
-              type: "personal_msg",
-              chainName,
-              walletAddress,
-              message,
-            });
+          case "message": {
+            const { signature } = await nativeSign({ type: "personal_msg", chainName, walletAddress, message: r.message });
             result = signature;
             break;
           }
 
-          // ── eth_sign ──────────────────────────────────────────────────────
-          // Spec: [address, message]
-          case "eth_sign": {
-            const { signature } = await nativeSign({
-              type: "personal_msg",
-              chainName,
-              walletAddress,
-              message: rpc.params[1],
-            });
-            result = signature;
-            break;
-          }
-
-          // ── EIP-712 typed data ────────────────────────────────────────────
-          case "eth_signTypedData":
-          case "eth_signTypedData_v3":
-          case "eth_signTypedData_v4": {
-            const raw = rpc.params[1];
-            const typedData = typeof raw === "string" ? JSON.parse(raw) : raw;
-
-            const { signature } = await nativeSign({
-              type: "eip712",
-              chainName,
-              walletAddress,
-              typedData,
-            });
+          case "typed": {
+            const { signature } = await nativeSign({ type: "eip712", chainName, walletAddress, typedData: r.typedData });
             result = signature;
             break;
           }
@@ -542,6 +568,8 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
       CustomInfoProvider.show('error', '!Oops', 'Transaction failed. Please try again.');
     } finally {
       setLoading(false);
+      setReview(null);
+      setRiskAck(false);
     }
   };
 
@@ -559,6 +587,8 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
     finally {
       setTxModalVisible(false);
       setTransactionRequest(null);
+      setReview(null);
+      setRiskAck(false);
       setLoading(false);
     }
   };
@@ -682,74 +712,119 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
   const getNativeSymbol = (wcChainId) =>
     getChainConfig(wcChainId)?.nativeToken?.symbol ?? 'ETH';
 
+  const fmtNative = (wei, symbol) => `${ethers.utils.formatEther(wei)} ${symbol}`;
+
+  /**
+   * Everything here comes from `review.data`, the same object approveTransaction signs.
+   * rows: [label, value, { mono, danger }]
+   */
   const getDisplayData = () => {
     if (!transactionRequest) return {};
     const { request, chainId } = transactionRequest.params;
     const m = request.method;
+    const isStellar = chainId?.startsWith("stellar:") || STELLAR_METHODS.includes(m);
+    const base = {
+      chain: chainIdToName(chainId),
+      isStellar,
+      accentColor: isStellar ? C.purple : C.orange,
+      rows: [],
+      warnings: [],
+    };
 
-    if (chainId?.startsWith("stellar:") || STELLAR_METHODS.includes(m)) {
-      return {
-        type: m === "stellar_signAndSubmitXDR" ? "Sign & Submit" : "Sign Transaction",
-        chain: `Stellar ${chainId === "stellar:testnet" ? "Testnet" : "Mainnet"}`,
-        message: m === "stellar_signAndSubmitXDR"
-          ? "Transaction will be signed and submitted to the Stellar network immediately."
-          : "Transaction will be signed only. Submission is handled by the dApp.",
-        isStellar: true,
-        accentColor: C.purple,
-      };
+    if (!review || review.status === "loading") return { ...base, type: "Checking request…", loadingReview: true };
+    if (review.status === "error") {
+      return { ...base, type: "Request blocked", accentColor: C.red, blocked: true, warnings: [review.error] };
     }
 
-    if (["eth_sendTransaction", "eth_sendRawTransaction", "eth_signTransaction"].includes(m)) {
-      const p = request.params[0] ?? {};
-      const nativeSymbol = getNativeSymbol(chainId);
-      const valueWei = p.value ? parseInt(p.value, 16) : 0;
-      const valueFormatted = (valueWei / 1e18).toFixed(6);
-      const txType = getTxType(p, m);
-      const isSignOnly = m === 'eth_signTransaction';
+    const r = review.data;
+    switch (r.kind) {
+      case "stellar": {
+        const d = r.decoded;
+        const rows = [
+          ["Network", r.network === "testnet" ? "Stellar Testnet" : "Stellar Mainnet"],
+          ["Source", d.source, { mono: true }],
+          ["Fee", `${d.fee} stroops`],
+        ];
+        if (d.memo) rows.push(["Memo", d.memo]);
+        if (d.feeBump) rows.push(["Fee bump by", d.feeBump.feeSource, { mono: true }]);
+        return {
+          ...base,
+          type: m === "stellar_signAndSubmitXDR" ? "Sign & Submit" : "Sign Transaction",
+          rows,
+          operations: d.operations,
+          warnings: [
+            ...(d.danger ? ["This transaction contains operations that can take control of, or empty, your account."] : []),
+            m === "stellar_signAndSubmitXDR"
+              ? "Transaction will be signed and submitted immediately."
+              : "Transaction will be signed only. The dApp can submit it.",
+          ],
+        };
+      }
 
-      return {
-        type: txType,
-        chain: chainIdToName(chainId),
-        nativeSymbol,
-        isEvmTx: true,
-        isSignOnly,
-        to: p.to ?? 'Contract Interaction',
-        value: valueFormatted,
-        showValue: valueWei > 0,
-        data: p.data && p.data !== '0x' ? `${p.data.substring(0, 20)}…` : null,
-        message: isSignOnly ? "Transaction will be signed only. It will NOT be broadcast automatically." : null,
-        accentColor: C.orange,
-      };
-    }
-
-    if (m === "personal_sign" || m === "eth_sign") {
-      return {
-        type: "Sign Message",
-        chain: chainIdToName(chainId),
-        message: "Verifies your wallet ownership. No transaction will be broadcast.",
-        accentColor: C.blue,
-      };
-    }
-
-    if (["eth_signTypedData", "eth_signTypedData_v3", "eth_signTypedData_v4"].includes(m)) {
-      let label = "Sign Typed Data", extra = null;
-      try {
-        const raw = request.params[1];
-        const d = typeof raw === "string" ? JSON.parse(raw) : raw;
-        if (d?.domain?.name) {
-          extra = `Domain: ${d.domain.name}`;
+      case "evmTx": {
+        const sym = r.chainConfig?.nativeToken?.symbol ?? "ETH";
+        const rows = [["To", r.tx.to, { mono: true }]];
+        rows.push(["Amount", fmtNative(r.tx.value, sym), { danger: r.tx.value.gt(0) }]);
+        rows.push(["Max network fee", fmtNative(r.fee, sym)]);
+        rows.push(["Max total", fmtNative(r.total, sym), { danger: true }]);
+        const warnings = [];
+        if (r.token?.kind === "approve") {
+          rows.push(["Approves spender", r.token.spender, { mono: true, danger: true }]);
+          rows.push(["Allowance", r.token.unlimited ? "UNLIMITED" : r.token.amount.toString(), { danger: r.token.unlimited }]);
+          warnings.push(r.token.unlimited
+            ? "UNLIMITED approval: the spender can take your entire balance of this token at any time."
+            : "Token approval: the spender can move this amount of your tokens.");
+        } else if (r.token?.kind === "approveAll") {
+          rows.push(["Operator", r.token.spender, { mono: true, danger: true }]);
+          if (r.token.approved) warnings.push("Gives the operator control of ALL your NFTs in this collection.");
+        } else if (r.token?.kind === "transfer" || r.token?.kind === "transferFrom") {
+          rows.push(["Token recipient", r.token.to, { mono: true }]);
+          rows.push(["Token amount (raw)", r.token.amount.toString()]);
         }
-      } catch (_) { }
-      return {
-        type: label,
-        extra,
-        chain: chainIdToName(chainId),
-        message: "EIP-712 structured signature. No transaction will be broadcast.",
-        accentColor: C.blueLight,
-      };
-    }
+        if (r.tx.data && r.tx.data !== "0x") rows.push(["Data", `${r.tx.data.substring(0, 20)}…`, { mono: true }]);
+        if (r.balance && r.balance.lt(r.total)) warnings.push("Your balance is lower than the max total. The transaction may fail.");
+        if (m === "eth_signTransaction") warnings.push("Transaction will be signed only. The dApp can broadcast it.");
+        return { ...base, type: getTxType({ data: r.tx.data }, m), rows, warnings };
+      }
 
-    return { type: m, chain: chainIdToName(chainId), message: "Review carefully before approving.", accentColor: C.orange };
+      case "raw": {
+        const sym = r.chainConfig?.nativeToken?.symbol ?? "ETH";
+        return {
+          ...base,
+          type: "Send Raw Transaction",
+          rows: [
+            ["From", r.parsed.from ?? "unknown", { mono: true }],
+            ["To", r.parsed.to ?? "Contract creation", { mono: true }],
+            ["Amount", fmtNative(r.parsed.value, sym)],
+          ],
+          warnings: ["Already signed by the dApp. The wallet only broadcasts it."],
+        };
+      }
+
+      case "message":
+        return {
+          ...base,
+          type: "Sign Message",
+          accentColor: C.blue,
+          messageText: r.text,
+          warnings: ["Read the message. Only sign it if you understand and expect it."],
+        };
+
+      case "typed": {
+        const d = r.decoded;
+        return {
+          ...base,
+          type: d.title ?? "Sign Typed Data",
+          accentColor: d.danger ? C.red : C.blueLight,
+          rows: d.rows.map(([k, v]) => [k, String(v), { mono: /^0x/.test(String(v)), danger: v === "UNLIMITED" }]),
+          messageText: d.messageJson,
+          warnings: d.warnings,
+        };
+      }
+
+      default:
+        return { ...base, type: m, warnings: ["Review carefully before approving."] };
+    }
   };
 
   const chainIdToName = (id) => ({
@@ -981,6 +1056,8 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
     if (!transactionRequest) return null;
     const d = getDisplayData();
     const accent = d.accentColor ?? C.blue;
+    const needsAck = review?.status === "ready" && !!review.data?.danger;
+    const canApprove = review?.status === "ready" && review.requestId === transactionRequest.id && (!needsAck || riskAck);
     return (
       <Modal isVisible={txModalVisible} onBackdropPress={() => !loading && setTxModalVisible(false)} style={s.modalStyle} backdropOpacity={0.75}>
         <ScrollView style={[s.sheet, { backgroundColor: T.card }]} contentContainerStyle={{ paddingBottom: 36 }} bounces={false}>
@@ -1000,31 +1077,53 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
             )}
           </View>
 
-          <SectionCard title="DETAILS">
-            {d.isEvmTx && !d.isStellar ? (
-              <>
-                <InfoRow label="To" value={d.to} mono />
-                {d.showValue && <InfoRow label="Amount" value={`${d.value} ${d.nativeSymbol}`} />}
-                {d.data && <InfoRow label="Data" value={d.data} mono />}
-                {d.message && (
-                  <View style={[s.msgBox, { backgroundColor: C.orange + "10", borderColor: C.orange + "30" }]}>
-                    <Icon type={"materialCommunity"} name="information-outline" size={14} color={C.orange} />
-                    <Text style={[s.msgTxt, { color: C.orange }]}>{d.message}</Text>
-                  </View>
-                )}
-              </>
-            ) : (
-              <>
-                {d.extra && <InfoRow label="Info" value={d.extra} last={!d.message} />}
-                {d.message && (
-                  <View style={[s.msgBox, { backgroundColor: accent + "10", borderColor: accent + "30" }]}>
-                    <Icon type={"materialCommunity"} name="information-outline" size={14} color={accent} />
-                    <Text style={[s.msgTxt, { color: accent }]}>{d.message}</Text>
-                  </View>
-                )}
-              </>
-            )}
-          </SectionCard>
+          {d.loadingReview && (
+            <View style={{ alignItems: "center", paddingVertical: 20 }}>
+              <ActivityIndicator color={accent} />
+            </View>
+          )}
+
+          {d.rows?.length > 0 && (
+            <SectionCard title="DETAILS">
+              {d.rows.map(([label, value, opt = {}], i) => (
+                <View key={i} style={[s.detailRow, i < d.rows.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: T.border }]}>
+                  <Text style={[s.infoLbl, { color: T.sub }]}>{label}</Text>
+                  {/* Never truncated: addresses and amounts are shown in full. */}
+                  <Text selectable style={[s.detailVal, { color: opt.danger ? C.red : T.text }, opt.mono && s.mono]}>{value}</Text>
+                </View>
+              ))}
+            </SectionCard>
+          )}
+
+          {d.operations?.length > 0 && (
+            <SectionCard title={`OPERATIONS (${d.operations.length})`}>
+              {d.operations.map((op, i) => (
+                <View key={i} style={[s.detailRow, i < d.operations.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: T.border }]}>
+                  <Text selectable style={[s.detailVal, { color: op.dangerous ? C.red : T.text, textAlign: "left" }]}>
+                    {i + 1}. {op.text}
+                  </Text>
+                  <Text style={[s.infoLbl, { color: op.fromYou ? C.orange : T.sub }]}>
+                    {op.fromYou ? "From your account" : `Source: ${shortAddr(op.source)}`}
+                  </Text>
+                </View>
+              ))}
+            </SectionCard>
+          )}
+
+          {d.messageText != null && (
+            <SectionCard title="FULL MESSAGE">
+              <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
+                <Text selectable style={[s.mono, { color: T.text, fontSize: 12 }]}>{d.messageText}</Text>
+              </ScrollView>
+            </SectionCard>
+          )}
+
+          {d.warnings?.map((w, i) => (
+            <View key={i} style={[s.msgBox, { backgroundColor: accent + "10", borderColor: accent + "30", marginBottom: 10 }]}>
+              <Icon type={"materialCommunity"} name="alert-outline" size={14} color={accent} />
+              <Text style={[s.msgTxt, { color: accent }]}>{w}</Text>
+            </View>
+          ))}
 
           <SectionCard title="SIGNING WITH">
             {d.isStellar
@@ -1039,13 +1138,22 @@ const WalletSyncComponent = ({ visible, onClose, isDark }) => {
             </Text>
           </View>
 
+          {needsAck && (
+            <TouchableOpacity style={[s.ackRow, { borderColor: C.red + "60" }]} onPress={() => setRiskAck((v) => !v)}>
+              <Icon type={"materialCommunity"} name={riskAck ? "checkbox-marked" : "checkbox-blank-outline"} size={20} color={C.red} />
+              <Text style={[s.msgTxt, { color: C.red }]}>I understand this can move my funds and I trust this dApp.</Text>
+            </TouchableOpacity>
+          )}
+
           <View style={s.btnRow}>
             <TouchableOpacity style={[s.rejectBtn, { backgroundColor: T.card2, borderColor: T.border }, loading && s.disabled]} onPress={rejectTransaction} disabled={loading}>
-              <Text style={[s.rejectTxt, { color: T.sub }]}>Reject</Text>
+              <Text style={[s.rejectTxt, { color: T.sub }]}>{d.blocked ? "Close" : "Reject"}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[s.approveBtn, { backgroundColor: accent }, loading && s.disabled]} onPress={approveTransaction} disabled={loading}>
-              {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.approveTxt}>Approve</Text>}
-            </TouchableOpacity>
+            {!d.blocked && (
+              <TouchableOpacity style={[s.approveBtn, { backgroundColor: accent }, (loading || !canApprove) && s.disabled]} onPress={approveTransaction} disabled={loading || !canApprove}>
+                {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.approveTxt}>Approve</Text>}
+              </TouchableOpacity>
+            )}
           </View>
         </ScrollView>
       </Modal>
@@ -1168,6 +1276,9 @@ const s = StyleSheet.create({
   rejectTxt: { fontSize: 14, fontWeight: "600" },
   approveBtn: { flex: 1, backgroundColor: C.blue, borderRadius: 14, paddingVertical: 13, alignItems: "center" },
   approveTxt: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  detailRow: { paddingVertical: 9, gap: 4 },
+  detailVal: { fontSize: 13, fontWeight: "600" },
+  ackRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 14 },
 });
 
 export default WalletSyncComponent;

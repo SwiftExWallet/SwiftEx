@@ -25,6 +25,7 @@ import { createGuestUser } from "./exchange/crypto-exchange-front-end-main/src/a
 import { useDispatch } from "react-redux";
 import { AddToAllWallets, Generate_Wallet2, getBalance, setCurrentWallet, setUser, setWalletType } from "../components/Redux/actions/auth";
 import AsyncStorageLib from "@react-native-async-storage/async-storage";
+import { upsertStellarKey } from "../utilities/stellarKeyMap";
 import { alert } from "./reusables/Toasts";
 import { useNavigation } from "@react-navigation/native";
 import apiHelper from "./exchange/crypto-exchange-front-end-main/src/apiHelper";
@@ -226,16 +227,7 @@ const Welcome = (props) => {
 
   const genrateStellarKeypair =async(etherAddress,publicKey) => {
     try {
-      let userTransactions = [];
-      const transactions = await AsyncStorageLib.getItem('myDataKey');
-      if (transactions) {
-        userTransactions = JSON.parse(transactions);
-        if (!Array.isArray(userTransactions)) {
-          userTransactions = [];
-        }
-      }
-      userTransactions.push({etherAddress,publicKey});
-      await AsyncStorageLib.setItem('myDataKey', JSON.stringify(userTransactions));
+      await upsertStellarKey(etherAddress, publicKey);
     } catch (error) {
       setLoading(false);
       console.log('-->Error saving payout:', error);

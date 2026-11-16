@@ -2,6 +2,7 @@ import { NativeModules } from 'react-native';
 import { ethers } from 'ethers';
 import { PPOST, proxyRequest } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/api';
 import { TransactionBuilder, Networks, Horizon } from '@stellar/stellar-sdk/axios';
+import { parseQuantity } from './signingReview';
 const { TransactionSigner, StellarSigner } = NativeModules;
 
 const assertModule = (mod, name) => {
@@ -51,14 +52,16 @@ const normalizeTx = (tx) => {
 };
 
 const buildHexTx = (tx) => {
-    const bn = (v) => ethers.BigNumber.from(v ?? 0);
+    // Strict parsing (same helper the approval screens use) so a value can't be read
+    // one way for display and another way for signing.
     const hl = (v) => ethers.utils.hexlify(v);
+    if (!tx.to || !ethers.utils.isAddress(tx.to)) throw new Error('Invalid or missing "to" address');
     return {
-        nonce: hl(bn(tx.nonce)),
-        gasPrice: hl(bn(tx.gasPrice ?? tx.maxFeePerGas ?? 0)),
-        gasLimit: hl(bn(tx.gasLimit ?? 21000)),
-        to: tx.to ?? '0x0000000000000000000000000000000000000000',
-        value: hl(bn(tx.value ?? 0)),
+        nonce: hl(parseQuantity(tx.nonce, 'nonce')),
+        gasPrice: hl(parseQuantity(tx.gasPrice ?? tx.maxFeePerGas, 'gasPrice')),
+        gasLimit: hl(parseQuantity(tx.gasLimit ?? 21000, 'gasLimit')),
+        to: tx.to,
+        value: hl(parseQuantity(tx.value, 'value')),
         data: tx.data || '0x',
         chainId: Number(tx.chainId),
     };
@@ -151,8 +154,16 @@ const _signPersonalMessage = async ({ chainName, walletAddress, message }) => {
 
 const _signStellarXDR = async ({ xdr, submit = false, network = 'public' }) => {
     assertModule(StellarSigner, 'StellarSigner');
+    if (network !== 'public' && network !== 'testnet') {
+        throw new Error(`Unsupported Stellar network: ${network}`);
+    }
+    if (typeof StellarSigner.signTransactionForNetwork !== 'function') {
+        throw new Error('Native StellarSigner is outdated: signTransactionForNetwork missing');
+    }
 
-    const result = await StellarSigner.signTransaction(xdr);
+    // The native side signs with the passphrase for `network`, so a Testnet request
+    // can never yield a Mainnet-valid signature.
+    const result = await StellarSigner.signTransactionForNetwork(xdr, network);
 
     let signedXDR = result?.signedXDR;
 

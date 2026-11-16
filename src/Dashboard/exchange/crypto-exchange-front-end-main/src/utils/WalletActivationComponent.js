@@ -100,6 +100,36 @@ function pickDefaultFromPortfolio(portfolio, activationChains) {
   return best;
 }
 
+const USER_SOURCED_ACTIVATION_OPS = new Set([
+  'changeTrust',
+  'endSponsoringFutureReserves',
+]);
+
+export function assertSafeActivationTx(transaction, userKey) {
+  if (!userKey) throw new Error('No Stellar account');
+  if (transaction instanceof StellarSdk.FeeBumpTransaction || !Array.isArray(transaction.operations)) {
+    throw new Error('Activation blocked: unexpected transaction type');
+  }
+  if (transaction.source === userKey) {
+    throw new Error('Activation blocked: transaction would be paid from your account');
+  }
+  if (transaction.operations.length === 0 || transaction.operations.length > 10) {
+    throw new Error('Activation blocked: unexpected number of operations');
+  }
+  for (const op of transaction.operations) {
+    const source = op.source ?? transaction.source;
+    if (source === userKey && !USER_SOURCED_ACTIVATION_OPS.has(op.type)) {
+      throw new Error(`Activation blocked: unexpected "${op.type}" from your account`);
+    }
+    if (op.type === 'changeTrust' && source === userKey && op.line?.isNative?.()) {
+      throw new Error('Activation blocked: invalid trustline');
+    }
+    if (op.type === 'beginSponsoringFutureReserves' && op.sponsoredId !== userKey) {
+      throw new Error('Activation blocked: sponsorship is for another account');
+    }
+  }
+}
+
 export async function activateStellarAccountFlow({
   state,
   dispatch,
@@ -135,7 +165,12 @@ export async function activateStellarAccountFlow({
     networkPassphrase,
   );
 
-  const signedTx = await NativeModules.StellarSigner.signTransaction(xdr);
+  assertSafeActivationTx(transaction, state.STELLAR_PUBLICK_KEY);
+
+  const signedTx = await NativeModules.StellarSigner.signTransactionForNetwork(
+    xdr,
+    ENVIRONMENT === 'TESTNET' ? 'testnet' : 'public',
+  );
 
   let signedXDR = signedTx?.signedXDR;
   if (!signedXDR && signedTx?.signature && signedTx?.publicKey) {

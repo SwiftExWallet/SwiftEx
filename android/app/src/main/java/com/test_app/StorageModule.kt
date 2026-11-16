@@ -889,37 +889,95 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
         }
     }
 
+
+    private fun walletIds(arr: JSONArray): MutableSet<String> {
+        val ids = HashSet<String>()
+        for (i in 0 until arr.length()) arr.optJSONObject(i)?.optString("walletId")?.let { if (it.isNotEmpty()) ids.add(it) }
+        return ids
+    }
+
+    private fun newWalletId(taken: Set<String>): String {
+        var id: String
+        do { id = java.util.UUID.randomUUID().toString() } while (id in taken)
+        return id
+    }
+
+    private fun sameKeys(a: JSONObject, b: JSONObject): Boolean =
+        a.optString("address") == b.optString("address") &&
+            a.optString("stellarPublicKey") == b.optString("stellarPublicKey") &&
+            a.optString("privatekey") == b.optString("privatekey")
+
+    @Synchronized
+    private fun loadWalletsWithUniqueIds(): JSONArray? {
+        val data = prefs.all["appAllWallet"]?.toString()
+        if (data.isNullOrEmpty()) return null
+        val arr = JSONArray(data)
+        val taken = walletIds(arr)
+        val seen = HashSet<String>()
+        var changed = false
+        for (i in 0 until arr.length()) {
+            val w = arr.getJSONObject(i)
+            val id = w.optString("walletId")
+            if (id.isEmpty() || !seen.add(id)) {
+                val fresh = newWalletId(taken)
+                taken.add(fresh); seen.add(fresh)
+                w.put("walletId", fresh)
+                changed = true
+            }
+        }
+        if (!changed) return arr
+
+        val editor = prefs.edit().putString("appAllWallet", arr.toString())
+        prefs.all["activeUserWallet"]?.toString()?.takeIf { it.isNotEmpty() }?.let { s ->
+            val active = JSONObject(s)
+            for (i in 0 until arr.length()) {
+                val w = arr.getJSONObject(i)
+                if (sameKeys(w, active)) { editor.putString("activeUserWallet", w.toString()); break }
+            }
+        }
+        check(editor.commit()) { "Could not persist repaired wallet IDs" }
+        Log.w(TAG, "Repaired duplicate wallet IDs")
+        return arr
+    }
+
+    /** Index of the single wallet with this ID; -1 if none. Throws if ambiguous. */
+    private fun indexOfWallet(arr: JSONArray, id: String): Int {
+        var idx = -1
+        for (i in 0 until arr.length()) {
+            if (arr.getJSONObject(i).optString("walletId") == id) {
+                check(idx == -1) { "Duplicate wallet ID" }
+                idx = i
+            }
+        }
+        return idx
+    }
+
     @ReactMethod
     fun saveWallet(value: String, promise: Promise) {
         try {
             val newUser = try { JSONObject(value) } catch (_: Exception) {
                 JSONArray(value).getJSONObject(0)
             }
-            val usersArray = JSONArray().apply {
-                val existing = prefs.all["appAllWallet"]?.toString()
-                if (!existing.isNullOrEmpty()) {
-                    val arr = JSONArray(existing)
-                    for (i in 0 until arr.length()) put(arr.get(i))
-                }
-                put(newUser)
-            }
-            prefs.edit().putString("appAllWallet", usersArray.toString()).apply()
-            promise.resolve(Arguments.createMap().apply { putBoolean("success", true) })
+            val usersArray = loadWalletsWithUniqueIds() ?: JSONArray()
+            // Native side always assigns the ID; never trust a caller-supplied one.
+            val id = newWalletId(walletIds(usersArray))
+            newUser.put("walletId", id)
+            usersArray.put(newUser)
+            check(prefs.edit().putString("appAllWallet", usersArray.toString()).commit()) { "Could not save wallet" }
+            promise.resolve(Arguments.createMap().apply {
+                putBoolean("success", true); putString("walletId", id)
+            })
         } catch (e: Exception) { promise.reject("SAVE_WALLET_ERROR", e.message) }
     }
 
     @ReactMethod
     fun updateActiveWallet(id: String, promise: Promise) {
         try {
-            val walletDataString = prefs.all["appAllWallet"]?.toString()
-            if (walletDataString.isNullOrEmpty()) return promise.reject("DECODING_ERROR", "No wallets found")
-            val walletArray = JSONArray(walletDataString)
-            var matched: JSONObject? = null
-            for (i in 0 until walletArray.length()) {
-                val w = walletArray.getJSONObject(i)
-                if (w.optString("walletId") == id) { matched = w; break }
-            }
-            matched ?: return promise.reject("WALLET_ID_NOT_FOUND", "Wallet $id not found")
+            val walletArray = loadWalletsWithUniqueIds()
+                ?: return promise.reject("DECODING_ERROR", "No wallets found")
+            val idx = indexOfWallet(walletArray, id)
+            if (idx == -1) return promise.reject("WALLET_ID_NOT_FOUND", "Wallet $id not found")
+            val matched = walletArray.getJSONObject(idx)
             prefs.edit().putString("activeUserWallet", matched.toString()).apply()
             promise.resolve(Arguments.createMap().apply {
                 putBoolean("success", true); putString("mode", "replace"); putString("walletId", id)
@@ -930,13 +988,10 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     @ReactMethod
     fun getAllWallets(promise: Promise) {
         try {
-            val data = prefs.all["appAllWallet"]?.toString()
-            if (data.isNullOrEmpty()) {
-                return promise.resolve(Arguments.createMap().apply {
+            val arr = loadWalletsWithUniqueIds()
+                ?: return promise.resolve(Arguments.createMap().apply {
                     putBoolean("success", false); putArray("wallets", Arguments.createArray())
                 })
-            }
-            val arr = JSONArray(data)
             val list = Arguments.createArray()
             for (i in 0 until arr.length()) {
                 val w = arr.getJSONObject(i)
@@ -1043,16 +1098,12 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     @ReactMethod
     fun delete(key: String, promise: Promise) {
         try {
-            val data = prefs.all["appAllWallet"]?.toString()
-            if (data.isNullOrEmpty()) return promise.reject("DECODING_ERROR", "No wallets found")
-            val arr = JSONArray(data)
-            var idx = -1
-            for (i in (arr.length() - 1) downTo 0) {
-                if (arr.getJSONObject(i).optString("walletId") == key) { idx = i; break }
-            }
+            val arr = loadWalletsWithUniqueIds()
+                ?: return promise.reject("DECODING_ERROR", "No wallets found")
+            val idx = indexOfWallet(arr, key)
             if (idx != -1) {
                 arr.remove(idx)
-                prefs.edit().putString("appAllWallet", arr.toString()).apply()
+                check(prefs.edit().putString("appAllWallet", arr.toString()).commit()) { "Could not delete wallet" }
                 promise.resolve("wallet_removed")
             } else {
                 promise.reject("DELETE_ERROR", "wallet delete failed")
@@ -1063,13 +1114,9 @@ class StorageModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
     @ReactMethod
     fun renameWallet(key: String, walletName: String, promise: Promise) {
         try {
-            val data = prefs.all["appAllWallet"]?.toString()
-            if (data.isNullOrEmpty()) return promise.reject("DECODING_ERROR", "No wallet found")
-            val arr = JSONArray(data)
-            var idx = -1
-            for (i in 0 until arr.length()) {
-                if (arr.getJSONObject(i).optString("walletId") == key) { idx = i; break }
-            }
+            val arr = loadWalletsWithUniqueIds()
+                ?: return promise.reject("DECODING_ERROR", "No wallet found")
+            val idx = indexOfWallet(arr, key)
             if (idx != -1) {
                 arr.getJSONObject(idx).put("name", walletName)
                 prefs.edit().putString("appAllWallet", arr.toString()).apply()

@@ -543,13 +543,12 @@ const Market = (props) => {
     setData,
   ) => {
       const result = await proxyRequest('/v1/market-data', PGET);
-      if (result.success) {
-        setData(result.data.marketData);
-         setUpdatedData(result.data.marketData)
+      if (result.res.marketData) {
+        setData(result.res.marketData);
+         setUpdatedData(result.res.marketData)
          setLoad_new_data(false)
       } else {
-        console.log(error);
-        alert("error", error);
+        alert("error","Unable to load discover.");
       }
   };
 

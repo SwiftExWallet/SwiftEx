@@ -1,8 +1,12 @@
-import { View, Text, StyleSheet, Image, TouchableOpacity, BackHandler } from 'react-native';
+import { useEffect } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, BackHandler, Linking } from 'react-native';
 import darkBlue from '../../../assets/darkBlue.png'
 import { widthPercentageToDP as wp, heightPercentageToDP as hp } from "react-native-responsive-screen";
+import { getAppStoreUrl } from './appVersionUtils';
 export const AppCheck = ({ route }) => {
-  const indexId = route.params?.info || 0;
+  const indexId = route.params?.info ?? 0;
+  const updateInfo = route.params?.updateInfo;
+  const isUpdateRequired = indexId === 2;
   const info = [
     {
       heading: "Currently Unavailable in Your Area",
@@ -11,17 +15,42 @@ export const AppCheck = ({ route }) => {
     {
       heading: "We're Currently Experiencing Issues",
       subHeading: "We are currently investigating a service disruption affecting some users. We apologize for the inconvenience and appreciate your understanding while we resolve this issue."
+    },
+    {
+      heading: "App Update Required",
+      subHeading: "Please update SwiftEx Wallet to the latest version to continue using the app."
     }
   ]
+
+  useEffect(() => {
+    if (!isUpdateRequired) {
+      return undefined;
+    }
+
+    const backSubscription = BackHandler.addEventListener("hardwareBackPress", () => true);
+    return () => backSubscription.remove();
+  }, [isUpdateRequired]);
+
+  const openStore = async () => {
+    const storeUrl = getAppStoreUrl(updateInfo?.platform);
+    if (storeUrl) {
+      await Linking.openURL(storeUrl);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.upperCon}>
         <Image source={darkBlue} style={styles.imageCon} />
         <Text style={styles.headingText}>{info[indexId].heading}</Text>
-        <Text style={styles.subHeadingText}>{info[indexId].subHeading}</Text>
+        <Text style={styles.subHeadingText}>
+          {isUpdateRequired
+            ? `${info[indexId].subHeading}\n\nCurrent version: ${updateInfo?.currentVersion || "—"}\nLatest version: ${updateInfo?.latestVersion || "—"}`
+            : info[indexId].subHeading}
+        </Text>
       </View>
-      <TouchableOpacity style={styles.btnCon} onPress={() =>  BackHandler.exitApp() }>
-        <Text style={styles.btnTxt}>Okay</Text>
+      <TouchableOpacity style={styles.btnCon} onPress={isUpdateRequired ? openStore : () => BackHandler.exitApp()}>
+        <Text style={styles.btnTxt}>{isUpdateRequired ? "Update" : "Okay"}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -29,6 +58,7 @@ export const AppCheck = ({ route }) => {
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     alignItems: "center",
     backgroundColor: "black"
   },

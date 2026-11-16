@@ -11,12 +11,14 @@ import { MULTICHAIN_PORTFOLIO } from "../components/Redux/actions/type";
 import { getAssetId, useAssetManager } from "../utilities/TokenManageHook";
 import Icon from "../icon";
 import { getCachedTokenList } from "../utilities/TokenListCache";
+import { TokenListSkeleton, isPortfolioPending, PORTFOLIO_SKELETON_MAX_MS, shouldShowListSkeleton, useDelayedTrue } from "./reusables/TokenListSkeleton";
 
 export const GetCryptoList = async (chainId, state) => {
     try {
         const getListPath = await CHAINS[chainId].supportedTokenList;
         const cryptoList = await getCachedTokenList(getListPath);
-        const activeWalletTokens = (state.activeWalletPortFolio || state.activeWalletPortFolio.tokens)
+        const portfolio = state.activeWalletPortFolio;
+        const activeWalletTokens = (Array.isArray(portfolio) ? portfolio : (portfolio?.tokens || []))
             .filter(addr => addr.active)
             .map(addr => addr.contractAddress?.toLowerCase());
 
@@ -41,7 +43,7 @@ export const GetCryptoList = async (chainId, state) => {
                 if (balanceA !== balanceB) {
                     return balanceB - balanceA;
                 }
-                return a.symbol||a.code.localeCompare(b.symbol||b.code);
+                return (a.symbol || a.code || '').localeCompare(b.symbol || b.code || '');
             });
 
         return {
@@ -60,7 +62,8 @@ export const GetCryptoList = async (chainId, state) => {
         try {
             const getListPath = await CHAINS[chainId].supportedTokenList;
             const cryptoList = await getCachedTokenList(getListPath);
-            const activeWalletTokens = (state.activeWalletPortFolio || state.activeWalletPortFolio.tokens)
+            const portfolio = state.activeWalletPortFolio;
+            const activeWalletTokens = Array.isArray(portfolio) ? portfolio : (portfolio?.tokens || []);
             const tokenList = cryptoList.tokens || cryptoList.assets || cryptoList;
             const processedTokens = tokenList.map(token => {
                 const tokenAddr = (token.address || token.issuer)?.toLowerCase();
@@ -132,12 +135,18 @@ export const TokensManagement = () => {
     const [chainId, setChainId] = useState("ETH");
     const [listData, setListData] = useState([]);
     const [findBar, setFindBar] = useState("");
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [skeletonTimedOut, setSkeletonTimedOut] = useState(false);
     const dispatch = useDispatch();
+    const portfolioPending = isPortfolioPending(state);
+    const slowLoading = useDelayedTrue(loading);
+    const showSkeleton = shouldShowListSkeleton({
+        portfolioPending, skeletonTimedOut, loading, slowLoading, hasList: listData.length > 0,
+    });
     const { addToken, dropToken } = useAssetManager(`${state?.wallet?.address}_${state?.STELLAR_PUBLICK_KEY}`);
     const styles = StyleSheet.create({
         container: {
-            justifyContent: "flex-end",
+            flex: 1,
             margin: 0,
             backgroundColor: theme.bg,
         },
@@ -236,16 +245,28 @@ export const TokensManagement = () => {
     }, [focused]);
 
     useEffect(() => {
+        let cancelled = false;
         const initChainInfo = async () => {
             setLoading(true);
             const response = await GetCryptoList(chainId, state);
+            if (cancelled) return;
             if (response.status) {
                 setListData(response.processedTokens);
             }
             setLoading(false);
         };
         initChainInfo();
-    }, [chainId]);
+        return () => { cancelled = true; };
+    }, [chainId, portfolioPending]);
+
+    useEffect(() => {
+        if (!portfolioPending) {
+            setSkeletonTimedOut(false);
+            return undefined;
+        }
+        const timer = setTimeout(() => setSkeletonTimedOut(true), PORTFOLIO_SKELETON_MAX_MS);
+        return () => clearTimeout(timer);
+    }, [portfolioPending, state?.wallet?.address]);
 
     const updatePortfolio = async (token) => {
         try {
@@ -393,7 +414,7 @@ export const TokensManagement = () => {
                     onChangeText={(value) => { setFindBar(value) }}
                 />
             </View>
-             <FlatList
+             {showSkeleton ? <TokenListSkeleton theme={theme} /> : <FlatList
                     style={styles.listCon}
                     contentContainerStyle={{ flexGrow: 1 }}
                     data={refineInfo}
@@ -424,7 +445,7 @@ export const TokensManagement = () => {
                             <Text style={styles.listEmptyComTxt}>No data found.</Text>
                         </View>
                     }
-                />
+                />}
         </View>
     );
 };

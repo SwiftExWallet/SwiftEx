@@ -35,6 +35,7 @@ import { ensureFusionAllowance } from '../utilities/FusionAllowance';
 import { GetStellarUSDCAvilabelBalance } from '../utilities/StellarUtils';
 import { GetFusionSwapQuote, PerformeFusionPlusNativeSwap, PerformeFusionSwap } from '../utilities/SwapFusion';
 import { getSafeErrorMessage } from '../utilities/errorSanitizer';
+import { assertUniswapTxs, assertSwapFees, assertFusionOrder } from '../utilities/swapGuard';
 import { ENVIRONMENT } from '../Dashboard/constants';
 
 const NATIVE_GAS_RESERVE = {
@@ -708,12 +709,27 @@ const EthSwap = () => {
         return { status: false, message: 'No transactions to sign' };
       }
 
+      let guardedChainId;
+      try {
+        guardedChainId = assertUniswapTxs(rawTxs, {
+          wallet: address,
+          fromToken,
+          amountWei: ethers.utils.parseUnits(String(amount), fromToken?.decimals),
+          isNative: fromToken.address === isNativeTokenAddress,
+        });
+        await assertSwapFees(rawTxs, CHAINS[fromToken.chain]?.rpcUrl);
+      } catch (guardError) {
+        console.error('Swap guard:', guardError);
+        CustomInfoProvider.show('error', '!Opps', guardError.message);
+        return { status: false, message: guardError.message };
+      }
+
       const signedTxs = [];
       for (let i = 0; i < rawTxs.length; i++) {
         const tx = rawTxs[i];
         try {
           let transaction;
-          const chainId = tx.chainId ? Number(tx.chainId) : 1;
+          const chainId = guardedChainId;
           const isEIP1559 =
             tx.maxFeePerGas !== undefined && tx.maxPriorityFeePerGas !== undefined;
 
@@ -968,6 +984,22 @@ const EthSwap = () => {
       }
 
       const { primaryType, types, domain, message } = respo.res.typedData;
+      const amountWei = ethers.utils.parseUnits(amount, fromToken?.decimals);
+      const shownPreset = providerQuoteInfo?.presets?.[providerQuoteInfo?.recommended_preset];
+      try {
+        assertFusionOrder(respo.res.typedData, {
+          wallet: state?.wallet?.address,
+          fromToken,
+          toToken,
+          amountWei,
+          chainId: fromToken.chainId,
+          crossChain: false,
+          minTakingAmount: shownPreset?.auctionEndAmount,
+        });
+      } catch (guardError) {
+        CustomInfoProvider.show('error', '!Opps', guardError.message);
+        return;
+      }
       const typedDataJson = JSON.stringify({ primaryType, types, domain, message });
       const result = await NativeModules.TransactionSigner.signTypedData(
         fromToken.chain.toLowerCase(),
