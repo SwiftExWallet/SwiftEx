@@ -48,9 +48,22 @@ export const SERVICE_SCREEN_MAP = {
     welcome: "Welcome",
 };
 
-export const CheckAppAvailable = async () => {
+const STATUS_FETCH_TIMEOUT_MS = 8000;
+const STATUS_REUSE_MAX_AGE_MS = 60 * 1000;
+const NAVIGATION_GRACE_MS = 800;
+
+let statusInFlight = null;
+let lastFreshStatus = null;
+
+const fetchAppStatus = async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), STATUS_FETCH_TIMEOUT_MS);
     try {
-        const response = await fetch(`${REACT_APP_HOST}/v1/app-available`, { method: "GET", headers: { "Content-Type": "application/json", }, });
+        const response = await fetch(`${REACT_APP_HOST}/v1/app-available`, {
+            method: "GET",
+            headers: { "Content-Type": "application/json", },
+            signal: controller.signal,
+        });
         if (!response.ok) {
             return {
                 status: false,
@@ -60,6 +73,7 @@ export const CheckAppAvailable = async () => {
         const result = await response.json();
         if (result) {
             await AsyncStorage.setItem("AppStatusChecks", JSON.stringify(result));
+            lastFreshStatus = { result, at: Date.now() };
         }
         return result;
     } catch (error) {
@@ -68,7 +82,19 @@ export const CheckAppAvailable = async () => {
             status: false,
             error: error?.message || "Something went wrong",
         };
+    } finally {
+        clearTimeout(timer);
     }
+};
+
+export const CheckAppAvailable = ({ maxAgeMs = 0 } = {}) => {
+    if (maxAgeMs > 0 && lastFreshStatus && Date.now() - lastFreshStatus.at <= maxAgeMs) {
+        return Promise.resolve(lastFreshStatus.result);
+    }
+    if (!statusInFlight) {
+        statusInFlight = fetchAppStatus().finally(() => { statusInFlight = null; });
+    }
+    return statusInFlight;
 };
 
 export const getUpdateInfo = (appStatus) => {
@@ -115,33 +141,50 @@ export const runBiometricStartup = async ({
     }
 };
 
+const isMaintenance = response =>
+    response?.maintenance === true || response?.maintenance === "true";
+
+const routeForStatus = (response, destination) => {
+    const updateInfo = getUpdateInfo(response);
+    if (updateInfo) return ["AppCheck", { info: 2, updateInfo }];
+    if (response?.isRestricted || isMaintenance(response)) {
+        return ["AppCheck", { info: response?.isRestricted ? 0 : 1, }];
+    }
+    return [destination];
+};
+
+const isBlockingRoute = route => route[0] === "AppCheck";
+
+const PENDING = Symbol("pending");
+const wait = ms => new Promise(resolve => setTimeout(() => resolve(PENDING), ms));
+
 export const AppNavigation = async (props) => {
     let destination = "Welcome";
     try {
-        const [storedStatus, user, freshStatus] = await Promise.all([
+        const freshPromise = CheckAppAvailable({ maxAgeMs: STATUS_REUSE_MAX_AGE_MS });
+        const [storedStatus, user] = await Promise.all([
             AsyncStorage.getItem("AppStatusChecks"),
             AsyncStorage.getItem("user"),
-            CheckAppAvailable(),
         ]);
         destination = hasPersistedUser(user) ? "HomeScreen" : "Welcome";
         const persistedResponse = storedStatus ? JSON.parse(storedStatus) : null;
-        const response = freshStatus?.appVersion ? freshStatus : persistedResponse;
 
-        const updateInfo = getUpdateInfo(response);
-        if (updateInfo) {
-            props.navigation.navigate("AppCheck", { info: 2, updateInfo });
+        const early = await Promise.race([freshPromise, wait(NAVIGATION_GRACE_MS)]);
+        if (early !== PENDING || !persistedResponse) {
+            const freshStatus = early !== PENDING ? early : await freshPromise;
+            const response = freshStatus?.appVersion ? freshStatus : persistedResponse;
+            props.navigation.navigate(...routeForStatus(response, destination));
             return;
         }
 
-        if (!response) {
-            props.navigation.navigate(destination);
-            return;
-        }
-        if (response?.isRestricted || response?.maintenance === true || response?.maintenance === "true") {
-            props.navigation.navigate("AppCheck", { info: response?.isRestricted ? 0 : 1, });
-            return;
-        }
-        props.navigation.navigate(destination);
+        const cachedRoute = routeForStatus(persistedResponse, destination);
+        props.navigation.navigate(...cachedRoute);
+        if (isBlockingRoute(cachedRoute)) return;
+        freshPromise.then(freshStatus => {
+            if (!freshStatus?.appVersion) return;
+            const lateRoute = routeForStatus(freshStatus, destination);
+            if (isBlockingRoute(lateRoute)) props.navigation.navigate(...lateRoute);
+        }).catch(error => console.error("AppNavigation late status error:", error));
     } catch (error) {
         console.error("AppNavigation error:", error);
         props.navigation.navigate(destination);

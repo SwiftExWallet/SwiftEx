@@ -9,6 +9,9 @@ import { useIsFocused } from "@react-navigation/native";
 import Modal from "react-native-modal";
 import { GetCryptoList, GetCryptoListWtihFilter } from "../../../../TokensManagement";
 import Icon from "../../../../../icon/index.js";
+import { TokenListSkeleton, isPortfolioPending, PORTFOLIO_SKELETON_MAX_MS, shouldShowListSkeleton, useDelayedTrue } from "../../../../reusables/TokenListSkeleton";
+
+export { isPortfolioPending };
 
 export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEvm=true,showDataType,selectedAsset=null }) => {
     const focused = useIsFocused();
@@ -19,6 +22,16 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
     const [listData, setListData] = useState([]);
     const [findBar, setFindBar] = useState("");
     const [loading, setLoading] = useState(false);
+    const [listChainId, setListChainId] = useState(null);
+    const [skeletonTimedOut, setSkeletonTimedOut] = useState(false);
+
+    const portfolio = state.activeWalletPortFolio;
+    const walletAddress = state?.wallet?.address;
+    const portfolioPending = isPortfolioPending(state);
+    const slowLoading = useDelayedTrue(loading);
+    const showSkeleton = shouldShowListSkeleton({
+        portfolioPending, skeletonTimedOut, loading, slowLoading, hasList: listData.length > 0,
+    });
     const styles = StyleSheet.create({
         modalCon: {
             width: wp(100),
@@ -139,16 +152,30 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
     }, [focused,visible])
 
     useEffect(() => {
+        if (!visible) return undefined;
+        let cancelled = false;
         const initChainInfo = async () => {
-            setLoading(true);
+            if (listChainId !== chainId) setLoading(true);
             const response = await GetCryptoListWtihFilter(chainId, state);
+            if (cancelled) return;
             if (response.status) {
                 setListData(response.processedTokens);
+                setListChainId(chainId);
             }
             setLoading(false);
         }
         initChainInfo();
-    }, [chainId,visible])
+        return () => { cancelled = true; };
+    }, [chainId, visible, portfolio])
+
+    useEffect(() => {
+        if (!visible || !portfolioPending) {
+            setSkeletonTimedOut(false);
+            return undefined;
+        }
+        const timer = setTimeout(() => setSkeletonTimedOut(true), PORTFOLIO_SKELETON_MAX_MS);
+        return () => clearTimeout(timer);
+    }, [visible, portfolioPending, walletAddress])
 
     const refineInfo = useMemo(() => {
         if (!findBar) return listData;
@@ -206,7 +233,7 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
                     />
                 </View>
 
-                    <FlatList
+                    {showSkeleton ? <TokenListSkeleton theme={theme} /> : <FlatList
                         style={styles.listCon}
                         contentContainerStyle={{ flexGrow: 1,paddingBottom: hp(5) }}
                         data={refineInfo}
@@ -237,7 +264,7 @@ export const ChainSupportedToken = ({ visible, onclose, selectedToken,showOnlyEv
                                 <Text style={styles.listEmptyComTxt}>No data found.</Text>
                             </View>
                         }
-                    />
+                    />}
             </View>
             </View>
         </Modal>

@@ -7,7 +7,7 @@ import {
 import { useDispatch, useSelector, useStore } from "react-redux";
 import Icon from "../icon";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
-import { PORTFOLIO_CONFIG, RAPID_STELLAR, SET_ASSET_DATA, WALLET_ACTIVATION_SHOW } from "../components/Redux/actions/type";
+import { PORTFOLIO_CONFIG, PORTFOLIO_LOAD_STATUS, RAPID_STELLAR, SET_ASSET_DATA, WALLET_ACTIVATION_SHOW } from "../components/Redux/actions/type";
 import { enableBiometrics } from "../biometrics/biometric";
 import { ENVIRONMENT, STELLAR_URL } from "./constants";
 import LinearGradient from "react-native-linear-gradient";
@@ -136,6 +136,17 @@ function InvestmentChart() {
       setLoading(true);
     }
 
+    const isReadyForWallet = () => {
+      const load = store.getState().portfolioLoad;
+      return load?.walletKey === requestForWallet && load?.status === "ready";
+    };
+    const setPortfolioLoad = (status) => {
+      if (activeRequestWalletRef.current !== requestForWallet) return;
+      if (status !== "ready" && isReadyForWallet()) return;
+      dispatch({ type: PORTFOLIO_LOAD_STATUS, payload: { status, walletKey: requestForWallet } });
+    };
+    setPortfolioLoad("loading");
+
     const initService = async () => {
       await fetchDataDispatch();
 
@@ -152,6 +163,7 @@ function InvestmentChart() {
 
         if (!stellarKeyToUse) {
           if (isActive) setLoading(false);
+          setPortfolioLoad("error");
           return;
         }
 
@@ -163,6 +175,7 @@ function InvestmentChart() {
             const userCustomTokens = await getCustomTokens();
             const margeArray = [...walletInfo.tokens, ...(userCustomTokens.status ? userCustomTokens.data : []), avilableSoonAsset];
             await mergeWithApiTokens(margeArray);
+            setPortfolioLoad("ready");
             setTokenInfoList(margeArray);
             setLoading(false);
             hasLoadedOnceRef.current = true;
@@ -175,12 +188,15 @@ function InvestmentChart() {
                 totalStellarInUSD: walletInfo.totalSTRUSD,
               }
             });
+          } else {
+            setPortfolioLoad("error");
           }
         } catch (error) {
           console.error("walletInfo_error", error);
         if (isActive && activeRequestWalletRef.current === requestForWallet) {
           setLoading(false);
           setPortfolioError(true);
+          setPortfolioLoad("error");
           CustomInfoProvider.show("info", "Portfolio currently unavailable, please try again.");
         }
       }
