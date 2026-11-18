@@ -13,6 +13,9 @@ import MyHeader2 from "../Dashboard/MyHeader2";
 import { Extend, Collapse } from "../components/Redux/actions/auth";
 import { getFocusedRouteNameFromRoute } from "@react-navigation/native";
 import { CoinDetails } from "../Dashboard/CoinDetail";
+import Market from "../Dashboard/Market";
+import PerpsMarket from "../perps/screens/PerpsMarket";
+import { PERPS_ENABLED } from "../perps/config";
 import { TxDetail } from "../Dashboard/TxDetail";
 import Welcome from "../Dashboard/Welcome";
 import Passcode from "../Dashboard/Passcode";
@@ -118,6 +121,25 @@ const AuthStack = () => {
           headerShown:false
         }}
       />
+
+      {/* Discover (Market) as a root screen: reachable from the home "See all" when the Perps tab replaces the Discover tab. */}
+      <Stack.Screen
+        name="Discover"
+        component={Market}
+        options={{
+          headerShown:false
+        }}
+      />
+
+      {PERPS_ENABLED && (
+        <Stack.Screen
+          name="PerpsMarket"
+          component={PerpsMarket}
+          options={{
+            headerShown:false
+          }}
+        />
+      )}
 
       <Stack.Screen
         name="Settings"

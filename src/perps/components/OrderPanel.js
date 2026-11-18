@@ -1,0 +1,728 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
+import Modal from "react-native-modal";
+import Icon from "../../icon";
+import {
+  buildEntryOrder,
+  buildTpSlOrders,
+  estimateFee,
+  DEFAULT_TAKER_FEE_RATE,
+} from "../utils/orderMath";
+import { gt, isPositive, toPlain, roundToStep, mul, floorToStep, cleanAmountInput } from "../utils/decimal";
+import { formatNumber } from "../utils/format";
+import { friendlyAsterError } from "../utils/asterErrors";
+import {
+  openPosition,
+  fetchPositions,
+  fetchMultiAssetsMode,
+  setMultiAssetsMode,
+  fetchAccount,
+  fetchOrderByClientId,
+} from "../api/asterTrade";
+import { formatPrice } from "../utils/format";
+import CoinLogo from "./CoinLogo";
+import { ensureFreshMarketMeta, getCachedMarketMeta, ORDER_RULE_FIELDS } from "../api/asterPublic";
+
+const RULES_MAX_AGE_MS = 60 * 60 * 1000; // refetch exchangeInfo before an order if older than 1h
+
+import { showInfo, useModalPresence } from "../utils/modalSafe";
+import { startMultiAssetsFlow } from "../api/multiAssetsFlow";
+import { logPerpsError } from "../utils/perpsLog";
+import { sleep, withTimeout } from "../utils/async";
+import { positionSummary } from "../utils/positionFocus";
+const RULES_TIMEOUT_MS = 35000; // exchangeInfo refresh (30s request + margin)
+// Safety cap only: each request already times out at 15s (margin + leverage + order + 2 TP/SL
+// <= ~75s). The cap must exceed that, so it can never fire while the order is still being sent.
+const ORDER_TIMEOUT_MS = 120000;
+// Only the trading-rule fields of a fresh market entry (ignores cache shape / extra fields).
+const pickRules = (m) => {
+  const out = {};
+  ORDER_RULE_FIELDS.forEach((k) => {
+    if (m[k] !== undefined && m[k] !== null) out[k] = String(m[k]);
+  });
+  return out;
+};
+
+const DEFAULT_LEVERAGE = 5;
+
+const Segmented = ({ options, value, onChange, theme }) => (
+  <View style={[styles.segment, { backgroundColor: theme.cardBg }]}>
+    {options.map((o) => {
+      const selected = o.value === value;
+      return (
+        <TouchableOpacity
+          key={o.value}
+          accessibilityRole="button"
+          accessibilityState={{ selected }}
+          onPress={() => onChange(o.value)}
+          style={[styles.segmentBtn, selected && { backgroundColor: theme.buttonColor }]}
+        >
+          <Text style={[styles.segmentTxt, { color: selected ? "#FFFFFF" : theme.inactiveTx }]}>{o.label}</Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+);
+
+const Field = ({ label, value, onChangeText, placeholder, theme, suffix, right }) => (
+  <View style={styles.fieldWrap}>
+    <Text style={[styles.fieldLabel, { color: theme.inactiveTx }]}>{label}</Text>
+    <View style={[styles.field, { backgroundColor: theme.cardBg }]}>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={theme.inactiveTx}
+        keyboardType="decimal-pad"
+        style={[styles.input, { color: theme.headingTx }]}
+      />
+      {suffix ? <Text style={[styles.suffix, { color: theme.inactiveTx }]}>{suffix}</Text> : null}
+      {right}
+    </View>
+  </View>
+);
+
+const Row = ({ label, value, theme, valueColor }) => (
+  <View style={styles.row}>
+    <Text style={[styles.rowLabel, { color: theme.inactiveTx }]}>{label}</Text>
+    <Text style={[styles.rowValue, { color: valueColor || theme.headingTx }]}>{value}</Text>
+  </View>
+);
+
+
+// Trade form shown on PerpsMarket once trading is enabled.
+// onShowNew({ kind, symbol, orderId, strength, go }): success dialog's "View position" / "Done".
+// positionBar: optional node shown right above Long / Short (the market's "Your position" bar).
+const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, agentState, account, onPlaced, onShowNew, positionBar }) => {
+  const { agent, user } = agentState;
+  const [type, setType] = useState("MARKET");
+  const [amount, setAmount] = useState("");
+  const [limitPrice, setLimitPrice] = useState("");
+  const [leverage, setLeverage] = useState(Math.min(DEFAULT_LEVERAGE, maxLeverage));
+  const [marginType, setMarginType] = useState("CROSSED"); // default: Cross
+  const [showDetails, setShowDetails] = useState(false);
+  const [tpslOn, setTpslOn] = useState(false);
+  const [tp, setTp] = useState("");
+  const [sl, setSl] = useState("");
+  const [confirm, setConfirm] = useState(null); // direction being confirmed
+  const [submitting, setSubmitting] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const confirmPresence = useModalPresence(!!confirm); // iOS: info dialogs wait until it has hidden
+  // What Aster has now for this market (leverage, margin type, whether a position is open).
+  const [server, setServer] = useState({ leverage: null, marginType: null, hasPosition: false });
+  const [serverTick, setServerTick] = useState(0);
+  // True once Aster answered (or failed) for this market's leverage / margin / position, so the
+  // pre-warnings below never run on defaults. The form itself is usable right away.
+  const [serverLoaded, setServerLoaded] = useState(false);
+  const [multiAssets, setMultiAssets] = useState(null); // account Multi-Assets mode (null = unknown)
+  const marginTouchedRef = useRef(false);
+  const leverageTouchedRef = useRef(false);
+  const changeLeverage = (fn) => {
+    leverageTouchedRef.current = true;
+    setLeverage(fn);
+  };
+
+  useEffect(() => {
+    setLeverage((l) => Math.min(Math.max(1, l), maxLeverage));
+  }, [maxLeverage]);
+
+  // Multi-Assets mode forbids Isolated margin: default to Cross there (unless the user chose).
+  useEffect(() => {
+    let cancelled = false;
+    if (!agent || !user) return undefined;
+    fetchMultiAssetsMode(agent, user).then((res) => {
+      if (cancelled || res.error || !res.data) return;
+      const on = res.data.multiAssetsMargin === true || res.data.multiAssetsMargin === "true";
+      setMultiAssets(on);
+      if (on && !marginTouchedRef.current) setMarginType("CROSSED");
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent, user]);
+
+  const chooseMarginType = async (value) => {
+    marginTouchedRef.current = true;
+    if (value === "ISOLATED" && multiAssets) {
+      // Single-Asset mode is needed for Isolated. Check first (never switch silently):
+      // open positions or non-USDT/USD1 collateral would be affected, so explain instead.
+      const acc = await fetchAccount(agent, user);
+      if (acc.error || !acc.data) {
+        showInfo("error", "Couldn't check your account", friendlyAsterError(acc) || "Try again.");
+        return;
+      }
+      const open = (acc.data.positions || []).filter((p) => Number(p.positionAmt) !== 0);
+      const otherAssets = (acc.data.assets || []).filter(
+        (a) => !["USDT", "USD1"].includes(a.asset) && Number(a.walletBalance) > 0
+      );
+      if (open.length > 0 || otherAssets.length > 0) {
+        const why =
+          open.length > 0
+            ? `You have ${open.length} open position${open.length > 1 ? "s" : ""} using Cross margin from all your assets.`
+            : `You hold ${otherAssets.map((a) => a.asset).join(", ")} in Perps, which only counts as margin in Multi-Assets mode.`;
+        showInfo(
+          "info",
+          "Isolated isn't available right now",
+          `Isolated uses USDT/USD1 only and needs Single-Asset mode. ${why} ${
+            open.length > 0 ? "Close them first, or keep Cross." : "Withdraw or convert them to USDT first, or keep Cross."
+          }`
+        );
+        return;
+      }
+      showInfo(
+        "info",
+        "Switch to Single-Asset mode?",
+        "Isolated uses USDT/USD1 only, so your account will switch to Single-Asset mode: only USDT/USD1 count as margin, on all markets. You can turn Multi-Assets back on later (choose Cross).",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Switch",
+            onPress: async () => {
+              const res = await setMultiAssetsMode(agent, user, false);
+              if (res.error) {
+                showInfo("error", "Couldn't switch mode", friendlyAsterError(res));
+                return;
+              }
+              setMultiAssets(false);
+              setMarginType("ISOLATED");
+            },
+          },
+        ]
+      );
+      return;
+    }
+    setMarginType(value);
+  };
+
+  // Current leverage / margin type on Aster (needs a deposit; unknown => we apply ours).
+  useEffect(() => {
+    let cancelled = false;
+    if (!agent || !user) return undefined;
+    fetchPositions(agent, user, symbol).then((res) => {
+      if (cancelled) return;
+      setServerLoaded(true);
+      if (res.error) return;
+      const p = (Array.isArray(res.data) ? res.data : [res.data]).find((x) => x && x.symbol === symbol);
+      if (p) {
+        const serverLev = Number(p.leverage) || null;
+        const serverMargin = p.marginType
+          ? String(p.marginType).toLowerCase() === "cross"
+            ? "CROSSED"
+            : "ISOLATED"
+          : null;
+        setServer({
+          leverage: serverLev,
+          marginType: serverMargin,
+          hasPosition: Number(p.positionAmt) !== 0,
+        });
+        // Start from what Aster has for this market unless the user already changed it.
+        if (serverLev && !leverageTouchedRef.current) setLeverage(Math.min(serverLev, maxLeverage));
+        if (serverMargin && !marginTouchedRef.current) setMarginType(serverMargin);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // maxLeverage changes are handled by the clamp effect above; re-fetching here is not needed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent, user, symbol, serverTick]);
+
+  const switchType = (t) => {
+    setType(t);
+    if (t === "LIMIT" && !limitPrice && isPositive(toPlain(markPrice)) && meta.tickSize) {
+      setLimitPrice(roundToStep(toPlain(markPrice), meta.tickSize));
+    }
+  };
+
+  const preview = useMemo(
+    () =>
+      buildEntryOrder({
+        symbol,
+        direction: "LONG",
+        type,
+        margin: amount,
+        leverage,
+        markPrice,
+        limitPrice,
+        meta,
+      }),
+    [symbol, type, amount, leverage, markPrice, limitPrice, meta]
+  );
+
+  const available = account && account.available !== undefined ? account.available : null;
+  let blockReason = null;
+  if (!serverLoaded) blockReason = "Loading your settings for this market…";
+  else if (!amount) blockReason = "Enter an amount";
+  else if (!preview.ok) blockReason = preview.error;
+  else if (account && account.noDeposit) blockReason = "Deposit USDT to start trading";
+  else if (available !== null && gt(preview.marginUsed, available)) blockReason = "Not enough available balance";
+  else if (server.hasPosition && server.marginType && marginType !== server.marginType)
+    blockReason = `Close your ${baseAsset} position before changing margin mode`;
+  else if (server.hasPosition && server.marginType === "ISOLATED" && server.leverage && leverage < server.leverage)
+    blockReason = `Leverage can't be lowered below ${server.leverage}x while an isolated position is open`;
+
+  const entryForTpSl = type === "LIMIT" ? preview.price : toPlain(markPrice);
+  const tpslCheck = (direction) =>
+    tpslOn
+      ? buildTpSlOrders({ symbol, direction, entryPrice: entryForTpSl, tp, sl, tickSize: meta.tickSize })
+      : { ok: true, errors: [], orders: [] };
+
+  const openConfirm = (direction) => {
+    if (blockReason) return;
+    const check = tpslCheck(direction);
+    if (!check.ok) {
+      showInfo("error", "Check TP / SL", check.errors.join("\n"));
+      return;
+    }
+    setConfirm(direction);
+  };
+
+  const confirmOrder = confirm
+    ? buildEntryOrder({ symbol, direction: confirm, type, margin: amount, leverage, markPrice, limitPrice, meta })
+    : null;
+  // The order recomputes with the live mark price; if that makes it invalid, close the sheet.
+  useEffect(() => {
+    if (confirm && confirmOrder && !confirmOrder.ok && !submitting) setConfirm(null);
+  }, [confirm, confirmOrder, submitting]);
+  const confirmTpSl = confirm ? tpslCheck(confirm) : null;
+
+  // The reply to an order was lost (timeout / no network): look the order up by our client id
+  // instead of guessing — never invite a blind retry that could open a second position.
+  const resolveUnknownOrder = async (clientOrderId) => {
+    for (let i = 0; i < 3; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(i === 0 ? 2000 : 5000);
+      // eslint-disable-next-line no-await-in-loop
+      const r = await withTimeout(fetchOrderByClientId(agent, user, symbol, clientOrderId), 15000).catch(() => ({ error: "timeout" }));
+      if (!r.error && r.data && r.data.status) return { placed: true, status: r.data.status };
+      if (r.code === -2013) return { placed: false };
+    }
+    return { placed: null };
+  };
+
+  // After a fill: Aster's position for this market (entry, size, liq.). null if not readable.
+  const readBackPosition = async () => {
+    for (let i = 0; i < 2; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(i === 0 ? 600 : 1500);
+      // eslint-disable-next-line no-await-in-loop
+      const r = await withTimeout(fetchPositions(agent, user, symbol), 6000).catch(() => ({ error: "timeout" }));
+      if (!r.error) {
+        const p = (Array.isArray(r.data) ? r.data : [r.data]).find((x) => x && x.symbol === symbol && Number(x.positionAmt) !== 0);
+        if (p) return p;
+      }
+    }
+    return null;
+  };
+
+  const submit = async () => {
+    if (!confirmOrder || !confirmOrder.ok || submitting) return;
+    const order = confirmOrder;
+    const direction = confirm;
+    const tpslOrders = confirmTpSl ? confirmTpSl.orders : [];
+    setSubmitting(true);
+    let result = null; // { type, title, msg } — shown only after the sheet has fully hidden (iOS)
+    let checkClientId = null;
+    try {
+      // Never trade on stale rules: if the saved exchangeInfo is older than 1h, refetch it first.
+      // If the rules for this market changed, stop so the user re-checks the recalculated order.
+      const fresh = await withTimeout(ensureFreshMarketMeta(RULES_MAX_AGE_MS), RULES_TIMEOUT_MS).catch(() => ({
+        ok: false,
+        error: "timeout",
+      }));
+      if (!fresh.ok) {
+        logPerpsError({ step: "order:rules", msg: fresh.error || "refresh failed" });
+        result = {
+          type: "error",
+          title: "Order not placed",
+          msg: "Couldn't refresh this market's trading rules. Check your connection and try again.",
+        };
+        return;
+      }
+      if (fresh.refreshed) {
+        // Re-build the SAME order with the fresh rules; stop only if the order itself changes or
+        // becomes invalid (comparing raw fields gave false "rules updated" from cache-shape /
+        // number-vs-string differences).
+        const latest = (getCachedMarketMeta() || {})[symbol];
+        const rebuilt = latest
+          ? buildEntryOrder({ symbol, direction, type, margin: amount, leverage, markPrice, limitPrice, meta: { ...meta, ...pickRules(latest) } })
+          : null;
+        const changed = !rebuilt || !rebuilt.ok || rebuilt.qty !== order.qty || rebuilt.price !== order.price;
+        if (changed) {
+          logPerpsError({ step: "order:rules-changed", msg: rebuilt && !rebuilt.ok ? rebuilt.error : "qty/price changed" });
+          result = {
+            type: "info",
+            title: "Market rules updated",
+            msg: latest
+              ? "This market's trading rules changed. Please check your order and confirm again."
+              : `${symbol} is not available for trading right now.`,
+          };
+          return;
+        }
+      }
+      const res = await withTimeout(
+        openPosition({
+          agent,
+          user,
+          symbol,
+          entryParams: order.params,
+          tpSlOrders: tpslOrders,
+          leverage,
+          leverageChanged: server.leverage !== leverage,
+          marginType,
+          marginTypeChanged: server.marginType !== marginType,
+        }),
+        ORDER_TIMEOUT_MS
+      ).catch(() => ({ ok: false, step: "order", error: "timeout", transport: true }));
+      if (mounted.current) setServerTick((t) => t + 1); // re-read leverage / margin / position
+      if (res.agentInvalid && agentState.onInvalid) agentState.onInvalid();
+      if (!res.ok) {
+        logPerpsError({ step: `order:${res.step || "?"}`, code: res.code, msg: res.error });
+        if (res.step === "order" && res.transport) {
+          checkClientId = order.params.newClientOrderId;
+          result = {
+            type: "info",
+            title: "Order status unknown",
+            msg: "We didn't get an answer from Aster. Checking whether your order went through… Please don't place it again yet.",
+          };
+        } else {
+          result = { type: "error", title: "Order not placed", msg: friendlyAsterError(res) };
+        }
+        return;
+      }
+      const failed = (res.tpsl || []).filter((x) => !x.ok);
+      failed.forEach((f) => logPerpsError({ step: `order:tpsl:${f.type}`, code: f.code, msg: f.error }));
+      const entry = res.entry || {};
+      // A limit order that filled at once is a position too; otherwise it waits in Open orders.
+      const isOrder = type === "LIMIT" && String(entry.status || "").toUpperCase() !== "FILLED";
+      // Show the actual position (entry, size, liq.) read back from Aster after the fill.
+      const pos = isOrder ? null : await readBackPosition();
+      const what = isOrder
+        ? `Limit ${direction === "LONG" ? "buy" : "sell"} ${order.qty} ${baseAsset} at $${formatPrice(order.price, meta.tickSize)} · waiting in Open orders.`
+        : pos
+        ? positionSummary(pos, baseAsset, meta.tickSize)
+        : `${direction === "LONG" ? "Long" : "Short"} ${order.qty} ${baseAsset} opened at market.`;
+      const focus = { kind: isOrder ? "order" : "position", symbol, orderId: isOrder ? entry.orderId : null };
+      result = {
+        type: failed.length ? "info" : "success",
+        title: failed.length ? "Order placed — TP/SL failed" : isOrder ? "Order placed" : "Position opened",
+        msg: failed.length
+          ? `${what}\n\n${failed.map((f) => `${f.type}: ${friendlyAsterError(f)}`).join("\n")}\nSet TP/SL again from your position.`
+          : what,
+        // Primary first: the success dialog stacks its buttons top to bottom.
+        buttons: [
+          { text: isOrder ? "View order" : "View position", style: "primary", onPress: () => onShowNew && onShowNew({ ...focus, strength: "strong", go: true }) },
+          { text: "Done", style: "cancel", onPress: () => onShowNew && onShowNew({ ...focus, strength: "light" }) },
+        ],
+      };
+      if (mounted.current) setAmount("");
+      if (onPlaced) onPlaced();
+    } catch (e) {
+      logPerpsError({ step: "order:exception", msg: e && e.message ? e.message : String(e) });
+      result = {
+        type: "error",
+        title: "Something went wrong",
+        msg: "Please check Positions and Open orders before trying again.",
+      };
+    } finally {
+      if (mounted.current) {
+        setSubmitting(false);
+        setConfirm(null);
+      }
+      if (result) showInfo(result.type, result.title, result.msg, result.buttons);
+    }
+    if (checkClientId) {
+      const st = await resolveUnknownOrder(checkClientId);
+      if (mounted.current) setServerTick((t) => t + 1);
+      if (onPlaced && st.placed) onPlaced();
+      showInfo(
+        st.placed ? "success" : st.placed === false ? "error" : "info",
+        st.placed ? "Order went through" : st.placed === false ? "Order not placed" : "Order status still unknown",
+        st.placed
+          ? `Aster has your order (${st.status}). Check Positions / Open orders.`
+          : st.placed === false
+          ? "Aster has no record of this order. You can try again."
+          : "Couldn't confirm it yet. Check Positions and Open orders before trying again."
+      );
+    }
+  };
+
+  const setMax = () => {
+    if (available === null || !isPositive(available)) return;
+    // keep a little room for fees: 98% of available, 2 decimals
+    setAmount(floorToStep(mul(available, "0.98"), "0.01"));
+  };
+
+  return (
+    <View style={styles.wrap}>
+      <Segmented
+        theme={theme}
+        value={type}
+        onChange={switchType}
+        options={[
+          { value: "MARKET", label: "Market" },
+          { value: "LIMIT", label: "Limit" },
+        ]}
+      />
+      {type === "LIMIT" ? (
+        <Field
+          theme={theme}
+          label="Limit price"
+          value={limitPrice}
+          onChangeText={(t) => setLimitPrice(cleanAmountInput(t))}
+          placeholder="0.00"
+          suffix="USDT"
+        />
+      ) : null}
+      <Field
+        theme={theme}
+        label={`Amount (margin) · Available ${available !== null ? `$${formatNumber(available, 2)}` : "…"}`}
+        value={amount}
+        onChangeText={(t) => setAmount(cleanAmountInput(t))}
+        placeholder="0.00"
+        suffix="USDT"
+        right={
+          <TouchableOpacity onPress={setMax} style={styles.maxBtn}>
+            <Text style={[styles.maxTxt, { color: theme.buttonColor }]}>Max</Text>
+          </TouchableOpacity>
+        }
+      />
+      <Text style={[styles.sizeLine, { color: theme.inactiveTx }]}>
+        {preview.ok
+          ? `Position size ≈ $${formatNumber(preview.notional, 2)} = ${preview.qty} ${baseAsset} (amount × ${leverage}x)`
+          : `Position size = amount × ${leverage}x`}
+      </Text>
+      {preview.ok && gt(amount, mul(preview.marginUsed, "1.01")) ? (
+        <Text style={[styles.sizeLine, { color: theme.warn }]}>
+          {`Rounded down to ${meta.stepSize} ${baseAsset} steps: margin used $${formatNumber(preview.marginUsed, 2)} of $${amount}`}
+        </Text>
+      ) : null}
+
+      <TouchableOpacity
+        accessibilityRole="button"
+        onPress={() => setShowDetails(!showDetails)}
+        style={[styles.detailsRow, { borderColor: theme.smallCardBorderColor }]}
+      >
+        <Text style={[styles.detailsTxt, { color: theme.headingTx }]}>
+          Details · {leverage}x · {marginType === "ISOLATED" ? "Isolated" : "Cross"}
+        </Text>
+        <Icon name={showDetails ? "chevron-up" : "chevron-down"} type="ionicon" size={18} color={theme.inactiveTx} />
+      </TouchableOpacity>
+      {showDetails ? (
+        <View style={styles.details}>
+          <Text style={[styles.fieldLabel, { color: theme.inactiveTx }]}>Leverage (max {maxLeverage}x)</Text>
+          <View style={styles.stepper}>
+            {[-5, -1].map((d) => (
+              <TouchableOpacity
+                key={d}
+                onPress={() => changeLeverage((l) => Math.max(1, l + d))}
+                style={[styles.stepBtn, { backgroundColor: theme.cardBg }]}
+              >
+                <Text style={[styles.stepTxt, { color: theme.headingTx }]}>{d}</Text>
+              </TouchableOpacity>
+            ))}
+            <Text style={[styles.levValue, { color: theme.headingTx }]}>{leverage}x</Text>
+            {[1, 5].map((d) => (
+              <TouchableOpacity
+                key={d}
+                onPress={() => changeLeverage((l) => Math.min(maxLeverage, l + d))}
+                style={[styles.stepBtn, { backgroundColor: theme.cardBg }]}
+              >
+                <Text style={[styles.stepTxt, { color: theme.headingTx }]}>+{d}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={[styles.fieldLabel, { color: theme.inactiveTx, marginTop: 10 }]}>Margin mode</Text>
+          <Segmented
+            theme={theme}
+            value={marginType}
+            onChange={chooseMarginType}
+            options={[
+              { value: "ISOLATED", label: "Isolated" },
+              { value: "CROSSED", label: "Cross" },
+            ]}
+          />
+          <Text style={[styles.sizeLine, { color: theme.inactiveTx }]}>
+            {marginType === "ISOLATED"
+              ? "Isolated uses USDT/USD1 only, and risks only this position's margin."
+              : multiAssets
+              ? "Cross uses all your Perps assets as margin (Multi-Assets mode)."
+              : multiAssets === false
+              ? "Cross uses your USDT/USD1 balance (Single-Asset mode)."
+              : "Cross shares your balance across positions."}
+            {multiAssets && marginType !== "ISOLATED" ? " Isolated needs Single-Asset mode." : ""}
+          </Text>
+          {multiAssets === false && marginType === "CROSSED" ? (
+            <TouchableOpacity
+              accessibilityRole="button"
+              onPress={() =>
+                startMultiAssetsFlow({ agent, user, onDone: (on) => on && mounted.current && setMultiAssets(true) })
+              }
+            >
+              <Text style={[styles.sizeLine, { color: theme.buttonColor, fontWeight: "700" }]}>Turn Multi-Asset back on</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
+
+      <TouchableOpacity accessibilityRole="switch" onPress={() => setTpslOn(!tpslOn)} style={styles.tpslToggle}>
+        <Icon
+          name={tpslOn ? "checkbox" : "square-outline"}
+          type="ionicon"
+          size={20}
+          color={tpslOn ? theme.buttonColor : theme.inactiveTx}
+        />
+        <Text style={[styles.detailsTxt, { color: theme.headingTx, marginLeft: 8 }]}>Take profit / Stop loss</Text>
+      </TouchableOpacity>
+      {tpslOn ? (
+        <View style={styles.tpslRow}>
+          <View style={{ flex: 1, marginRight: 6 }}>
+            <Field theme={theme} label="TP price" value={tp} onChangeText={(t) => setTp(cleanAmountInput(t))} placeholder="Optional" />
+          </View>
+          <View style={{ flex: 1, marginLeft: 6 }}>
+            <Field theme={theme} label="SL price" value={sl} onChangeText={(t) => setSl(cleanAmountInput(t))} placeholder="Optional" />
+          </View>
+        </View>
+      ) : null}
+
+      {amount && blockReason ? <Text style={[styles.block, { color: theme.fail }]}>{blockReason}</Text> : null}
+
+      {positionBar || null}
+
+      <View style={styles.tradeBtns}>
+        {[
+          { dir: "LONG", label: "Long", color: theme.success },
+          { dir: "SHORT", label: "Short", color: theme.fail },
+        ].map((b) => (
+          <TouchableOpacity
+            key={b.dir}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !!blockReason }}
+            disabled={!!blockReason}
+            onPress={() => openConfirm(b.dir)}
+            style={[styles.tradeBtn, { backgroundColor: b.color, opacity: blockReason ? 0.45 : 1 }]}
+          >
+            <Text style={styles.tradeTxt}>{b.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Modal
+        isVisible={!!confirm}
+        onBackdropPress={() => !submitting && setConfirm(null)}
+        onBackButtonPress={() => !submitting && setConfirm(null)}
+        style={styles.modal}
+        useNativeDriverForBackdrop
+        onModalHide={confirmPresence.onModalHide}
+      >
+        {confirmOrder && confirmOrder.ok ? (
+          <View style={[styles.sheet, { backgroundColor: theme.bg }]}>
+            <View style={styles.sheetTitleRow}>
+              <CoinLogo asset={baseAsset} size={28} theme={theme} style={styles.sheetLogo} />
+              <Text style={[styles.sheetTitle, styles.sheetTitleInRow, { color: confirm === "LONG" ? theme.success : theme.fail }]}>
+                {confirm === "LONG" ? "Long" : "Short"} {baseAsset}
+              </Text>
+            </View>
+            <Row theme={theme} label="Market" value={`${symbol} perpetual`} />
+            <Row theme={theme} label="Order type" value={type === "MARKET" ? "Market" : `Limit @ $${confirmOrder.price}`} />
+            <Row theme={theme} label="Size" value={`${confirmOrder.qty} ${baseAsset} ($${formatNumber(confirmOrder.notional, 2)})`} />
+            <Row theme={theme} label="Est. entry price" value={`$${formatPrice(confirmOrder.price, meta.tickSize)}`} />
+            <Row theme={theme} label="Leverage" value={`${leverage}x`} />
+            <Row theme={theme} label="Margin mode" value={marginType === "ISOLATED" ? "Isolated" : "Cross"} />
+            <Row theme={theme} label="Margin used" value={`$${formatNumber(confirmOrder.marginUsed, 2)}`} />
+            <Row
+              theme={theme}
+              label="TP / SL"
+              value={
+                confirmTpSl && confirmTpSl.orders.length
+                  ? confirmTpSl.orders
+                      .map((o) => `${o.type === "STOP_MARKET" ? "SL" : "TP"} $${o.stopPrice}`)
+                      .join(" · ")
+                  : "None"
+              }
+            />
+            <Row
+              theme={theme}
+              label={`Est. fee (${mul(DEFAULT_TAKER_FEE_RATE, "100")}%)`}
+              value={`$${formatNumber(estimateFee(confirmOrder.notional), 4)}`}
+            />
+            <Text style={[styles.risk, { color: theme.warn }]}>
+              Leverage magnifies losses. You can lose all of the margin used for this position.
+            </Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              disabled={submitting}
+              onPress={submit}
+              style={[styles.confirmBtn, { backgroundColor: confirm === "LONG" ? theme.success : theme.fail }]}
+            >
+              {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.tradeTxt}>Confirm</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity disabled={submitting} onPress={() => setConfirm(null)} style={styles.cancelBtn}>
+              <Text style={[styles.cancelTxt, { color: theme.inactiveTx }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View />
+        )}
+      </Modal>
+    </View>
+  );
+};
+
+export default OrderPanel;
+
+const styles = StyleSheet.create({
+  wrap: { marginHorizontal: 12, marginTop: 14 },
+  segment: { flexDirection: "row", borderRadius: 12, padding: 4 },
+  segmentBtn: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 9 },
+  segmentTxt: { fontSize: 14, fontWeight: "600" },
+  fieldWrap: { marginTop: 12 },
+  fieldLabel: { fontSize: 12, marginBottom: 6 },
+  field: { flexDirection: "row", alignItems: "center", borderRadius: 12, paddingHorizontal: 12, height: 48 },
+  input: { flex: 1, fontSize: 17, fontWeight: "600", paddingVertical: 0 },
+  suffix: { fontSize: 14, marginLeft: 6 },
+  maxBtn: { marginLeft: 10, paddingVertical: 6, paddingHorizontal: 4 },
+  maxTxt: { fontSize: 14, fontWeight: "700" },
+  sizeLine: { fontSize: 12, marginTop: 8 },
+  detailsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 12,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  detailsTxt: { fontSize: 14, fontWeight: "600" },
+  details: { paddingTop: 10 },
+  stepper: { flexDirection: "row", alignItems: "center" },
+  stepBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, marginRight: 6 },
+  stepTxt: { fontSize: 14, fontWeight: "700" },
+  levValue: { fontSize: 18, fontWeight: "800", minWidth: 56, textAlign: "center", marginRight: 6 },
+  tpslToggle: { flexDirection: "row", alignItems: "center", marginTop: 12 },
+  tpslRow: { flexDirection: "row" },
+  block: { fontSize: 13, marginTop: 10 },
+  tradeBtns: { flexDirection: "row", marginTop: 14 },
+  tradeBtn: { flex: 1, alignItems: "center", paddingVertical: 15, borderRadius: 14, marginHorizontal: 4 },
+  tradeTxt: { color: "#FFFFFF", fontSize: 17, fontWeight: "700" },
+  modal: { justifyContent: "flex-end", margin: 0 },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 28 },
+  sheetTitle: { fontSize: 20, fontWeight: "800", marginBottom: 12 },
+  sheetTitleRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  sheetTitleInRow: { marginBottom: 0, flexShrink: 1 },
+  sheetLogo: { marginRight: 10 },
+  row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
+  rowLabel: { fontSize: 14 },
+  rowValue: { fontSize: 14, fontWeight: "600", flexShrink: 1, textAlign: "right", marginLeft: 12 },
+  risk: { fontSize: 12, marginTop: 10 },
+  confirmBtn: { marginTop: 14, alignItems: "center", paddingVertical: 15, borderRadius: 14, minHeight: 50 },
+  cancelBtn: { alignItems: "center", paddingVertical: 12 },
+  cancelTxt: { fontSize: 15, fontWeight: "600" },
+});

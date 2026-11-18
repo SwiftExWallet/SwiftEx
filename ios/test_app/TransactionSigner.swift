@@ -310,6 +310,247 @@ private func signTypedDataAfterAuthentication(
       return "AUTH_FAILED"
   }
     
+  // MARK: - Aster (Perps) withdraw signature — SEPARATE method, existing signing untouched.
+  // UNTESTED ON iOS (no Mac available when written).
+  // Signs ONLY Aster's EIP-712 withdraw "Action" to the signing wallet's own address:
+  //   domain.name == "Aster", primaryType == "Action", message.type == "Withdraw",
+  //   message.destination == this wallet's address (case-insensitive), exact documented schema.
+  // Its own EIP-712 encoding for that one schema (field names contain spaces:
+  // "destination Chain", "aster chain"). Same key lookup, same PIN/biometric gate and same
+  // signature format as signTypedData. Never logs the payload or the signature.
+
+  private static let asterActionFields: [(String, String)] = [
+      ("type", "string"), ("destination", "address"), ("destination Chain", "string"),
+      ("token", "string"), ("amount", "string"), ("fee", "string"),
+      ("nonce", "uint256"), ("aster chain", "string")
+  ]
+  private static let asterDomainFields: [(String, String)] = [
+      ("name", "string"), ("version", "string"), ("chainId", "uint256"), ("verifyingContract", "address")
+  ]
+
+  private struct AsterRejected: LocalizedError {
+      let reason: String
+      var errorDescription: String? { reason }
+  }
+
+  private func asterKeccak(_ s: String) -> Data { Hash.keccak256(data: Data(s.utf8)) }
+
+  private func asterUint256(_ any: Any?) -> Data? {
+      var value: UInt64?
+      if let n = any as? NSNumber { value = n.uint64Value }
+      if let s = any as? String { value = s.hasPrefix("0x") ? UInt64(s.dropFirst(2), radix: 16) : UInt64(s) }
+      guard let v = value else { return nil }
+      var be = v.bigEndian
+      return Data(repeating: 0, count: 24) + Data(bytes: &be, count: 8)
+  }
+
+  private func asterAddress32(_ any: Any?) -> Data? {
+      guard let s = any as? String else { return nil }
+      let hex = s.hasPrefix("0x") ? String(s.dropFirst(2)) : s
+      guard hex.count == 40, let raw = Data(hexString: hex), raw.count == 20 else { return nil }
+      return Data(repeating: 0, count: 12) + raw
+  }
+
+  private func asterEncodeType(_ name: String, _ fields: [(String, String)]) -> String {
+      return name + "(" + fields.map { "\($0.1) \($0.0)" }.joined(separator: ",") + ")"
+  }
+
+  // Validates the request and returns (destination, EIP-712 digest).
+  private func asterWithdrawDigest(_ json: String, walletAddress: String) throws -> (String, Data) {
+      guard let data = json.data(using: .utf8),
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let domain = root["domain"] as? [String: Any],
+            let message = root["message"] as? [String: Any],
+            let types = root["types"] as? [String: Any],
+            let action = types["Action"] as? [[String: Any]]
+      else { throw AsterRejected(reason: "Invalid request") }
+
+      guard (domain["name"] as? String) == "Aster" else { throw AsterRejected(reason: "Not an Aster request") }
+      guard (root["primaryType"] as? String) == "Action" else { throw AsterRejected(reason: "Not an Aster Action") }
+      let fields = action.map { (($0["name"] as? String) ?? "", ($0["type"] as? String) ?? "") }
+      guard fields.count == Self.asterActionFields.count,
+            zip(fields, Self.asterActionFields).allSatisfy({ $0.0 == $1.0 && $0.1 == $1.1 })
+      else { throw AsterRejected(reason: "Unexpected Action fields") }
+      guard Set(types.keys).isSubset(of: ["Action", "EIP712Domain"]) else { throw AsterRejected(reason: "Unexpected types") }
+      if let domainType = types["EIP712Domain"] as? [[String: Any]] {
+          let df = domainType.map { (($0["name"] as? String) ?? "", ($0["type"] as? String) ?? "") }
+          guard df.count == Self.asterDomainFields.count,
+                zip(df, Self.asterDomainFields).allSatisfy({ $0.0 == $1.0 && $0.1 == $1.1 })
+          else { throw AsterRejected(reason: "Unexpected domain") }
+      }
+      guard (message["type"] as? String) == "Withdraw" else { throw AsterRejected(reason: "Not a withdraw") }
+      guard let destination = message["destination"] as? String,
+            destination.lowercased() == walletAddress.lowercased()
+      else { throw AsterRejected(reason: "Withdraw destination must be your own address") }
+
+      guard let dName = domain["name"] as? String, let dVersion = domain["version"] as? String,
+            let dChain = asterUint256(domain["chainId"]), let dContract = asterAddress32(domain["verifyingContract"]),
+            let mType = message["type"] as? String, let mDest = asterAddress32(message["destination"]),
+            let mDestChain = message["destination Chain"] as? String, let mToken = message["token"] as? String,
+            let mAmount = message["amount"] as? String, let mFee = message["fee"] as? String,
+            let mNonce = asterUint256(message["nonce"]), let mAsterChain = message["aster chain"] as? String
+      else { throw AsterRejected(reason: "Invalid request") }
+
+      let domainSeparator = Hash.keccak256(data:
+          asterKeccak(asterEncodeType("EIP712Domain", Self.asterDomainFields)) +
+          asterKeccak(dName) + asterKeccak(dVersion) + dChain + dContract)
+      let structHash = Hash.keccak256(data:
+          asterKeccak(asterEncodeType("Action", Self.asterActionFields)) +
+          asterKeccak(mType) + mDest + asterKeccak(mDestChain) + asterKeccak(mToken) +
+          asterKeccak(mAmount) + asterKeccak(mFee) + mNonce + asterKeccak(mAsterChain))
+      let digest = Hash.keccak256(data: Data([0x19, 0x01]) + domainSeparator + structHash)
+      return (destination, digest)
+  }
+
+  @objc
+  func signAsterWithdraw(
+      _ chainName: String,
+      walletAddress: String,
+      typedDataJson: String,
+      resolver resolve: @escaping RCTPromiseResolveBlock,
+      rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+      let checked: (String, Data)
+      do {
+          checked = try asterWithdrawDigest(typedDataJson, walletAddress: walletAddress)
+      } catch {
+          reject("ASTER_WITHDRAW_REJECTED", error.localizedDescription, nil)
+          return
+      }
+      authenticateForSigning { authResult in
+          do {
+              try authResult.get()
+          } catch {
+              reject(self.signerAuthCode(error), error.localizedDescription, error)
+              return
+          }
+          do {
+              guard let privateKeyHex = try self.getPrivateKey(for: walletAddress, chain: chainName),
+                    let privKey = PrivateKey(data: safeHexData(privateKeyHex))
+              else { throw SignerError.privateKeyNotFound }
+              // The key that signs must own the destination (own-address-only withdraws).
+              let own = CoinType.ethereum.deriveAddress(privateKey: privKey).lowercased()
+              guard own == checked.0.lowercased(), own == walletAddress.lowercased() else {
+                  reject("ASTER_WITHDRAW_REJECTED", "Withdraw destination must be your own address", nil)
+                  return
+              }
+              guard let sigData = privKey.sign(digest: checked.1, curve: .secp256k1), sigData.count == 65
+              else { throw SignerError.signingFailed }
+              let r = sigData[0..<32].map  { String(format: "%02x", $0) }.joined()
+              let s = sigData[32..<64].map { String(format: "%02x", $0) }.joined()
+              let v = String(format: "%02x", sigData[64])
+              resolve(["success": true, "signature": "0x\(r)\(s)\(v)"])
+          } catch {
+              reject("SIGN_ASTER_WITHDRAW_ERROR", "Could not sign the withdrawal", nil)
+          }
+      }
+  }
+
+  // Aster user-withdraw REQUEST signed entirely by the main wallet (no agent key), one prompt.
+  // Same rules as Android TransactionSigner.signAsterWithdrawRequest (UNTESTED ON iOS).
+  private static let asterRequestKeys: Set<String> = [
+      "user", "signer", "chainId", "asset", "amount", "fee", "receiver", "userNonce", "nonce"
+  ]
+
+  private func asterRequestCheck(_ query: String, typedDataJson: String, walletAddress: String) throws {
+      var params: [String: String] = [:]
+      let allowed = CharacterSet(charactersIn: "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.")
+      for part in query.split(separator: "&", omittingEmptySubsequences: false) {
+          guard let eq = part.firstIndex(of: "="), eq != part.startIndex else { throw AsterRejected(reason: "Invalid request") }
+          let k = String(part[part.startIndex..<eq])
+          let v = String(part[part.index(after: eq)...])
+          guard Self.asterRequestKeys.contains(k), params[k] == nil else { throw AsterRejected(reason: "Unexpected request field") }
+          guard !v.isEmpty, v.count <= 80, v.unicodeScalars.allSatisfy({ allowed.contains($0) })
+          else { throw AsterRejected(reason: "Invalid request value") }
+          params[k] = v
+      }
+      guard Set(params.keys) == Self.asterRequestKeys else { throw AsterRejected(reason: "Incomplete request") }
+      guard let data = typedDataJson.data(using: .utf8),
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let message = root["message"] as? [String: Any]
+      else { throw AsterRejected(reason: "Invalid request") }
+      let w = walletAddress.lowercased()
+      let nonceString: String = (message["nonce"] as? String) ?? ((message["nonce"] as? NSNumber)?.stringValue ?? "")
+      guard params["user"]!.lowercased() == w else { throw AsterRejected(reason: "Request user must be your wallet") }
+      guard params["signer"]!.lowercased() == w else { throw AsterRejected(reason: "Request signer must be your wallet") }
+      guard params["receiver"]!.lowercased() == w,
+            params["receiver"]!.lowercased() == ((message["destination"] as? String) ?? "").lowercased()
+      else { throw AsterRejected(reason: "Receiver must be your own address") }
+      let chainNames = ["1": "ETH", "56": "BSC", "42161": "Arbitrum"]
+      guard let cid = params["chainId"], let chainName = chainNames[cid] else { throw AsterRejected(reason: "Unsupported chain") }
+      let domain = root["domain"] as? [String: Any]
+      let domainChain: String = (domain?["chainId"] as? NSNumber)?.stringValue ?? ((domain?["chainId"] as? String) ?? "")
+      guard domainChain == cid, (message["destination Chain"] as? String) == chainName
+      else { throw AsterRejected(reason: "Chain mismatch") }
+      guard (message["aster chain"] as? String) == "Mainnet" else { throw AsterRejected(reason: "Unsupported network") }
+      guard params["asset"] == (message["token"] as? String),
+            params["amount"] == (message["amount"] as? String),
+            params["fee"] == (message["fee"] as? String),
+            params["userNonce"] == nonceString
+      else { throw AsterRejected(reason: "Request does not match the withdrawal") }
+  }
+
+  // EIP-712 digest of Aster v3 Message{msg} (domain AsterSignTransaction, version 1, chainId 1666).
+  private func asterRequestDigest(_ msg: String) -> Data {
+      var chain = UInt64(1666).bigEndian
+      let chainId = Data(repeating: 0, count: 24) + Data(bytes: &chain, count: 8)
+      let domainSeparator = Hash.keccak256(data:
+          asterKeccak(asterEncodeType("EIP712Domain", Self.asterDomainFields)) +
+          asterKeccak("AsterSignTransaction") + asterKeccak("1") + chainId + Data(repeating: 0, count: 32))
+      let structHash = Hash.keccak256(data: asterKeccak("Message(string msg)") + asterKeccak(msg))
+      return Hash.keccak256(data: Data([0x19, 0x01]) + domainSeparator + structHash)
+  }
+
+  private func asterSigHex(_ privKey: PrivateKey, _ digest: Data) throws -> String {
+      guard let sig = privKey.sign(digest: digest, curve: .secp256k1), sig.count == 65 else { throw SignerError.signingFailed }
+      let r = sig[0..<32].map  { String(format: "%02x", $0) }.joined()
+      let s = sig[32..<64].map { String(format: "%02x", $0) }.joined()
+      let v = String(format: "%02x", sig[64])
+      return "0x\(r)\(s)\(v)"
+  }
+
+  @objc
+  func signAsterWithdrawRequest(
+      _ chainName: String,
+      walletAddress: String,
+      typedDataJson: String,
+      requestQuery: String,
+      resolver resolve: @escaping RCTPromiseResolveBlock,
+      rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+      let actionDigest: Data
+      do {
+          actionDigest = try asterWithdrawDigest(typedDataJson, walletAddress: walletAddress).1
+          try asterRequestCheck(requestQuery, typedDataJson: typedDataJson, walletAddress: walletAddress)
+      } catch {
+          reject("ASTER_WITHDRAW_REJECTED", error.localizedDescription, nil)
+          return
+      }
+      authenticateForSigning { authResult in
+          do {
+              try authResult.get()
+          } catch {
+              reject(self.signerAuthCode(error), error.localizedDescription, error)
+              return
+          }
+          do {
+              guard let privateKeyHex = try self.getPrivateKey(for: walletAddress, chain: chainName),
+                    let privKey = PrivateKey(data: safeHexData(privateKeyHex))
+              else { throw SignerError.privateKeyNotFound }
+              guard CoinType.ethereum.deriveAddress(privateKey: privKey).lowercased() == walletAddress.lowercased() else {
+                  reject("ASTER_WITHDRAW_REJECTED", "Withdraw destination must be your own address", nil)
+                  return
+              }
+              let userSignature = try self.asterSigHex(privKey, actionDigest)
+              let msg = requestQuery + "&userSignature=" + userSignature
+              let signature = try self.asterSigHex(privKey, self.asterRequestDigest(msg))
+              resolve(["success": true, "userSignature": userSignature, "msg": msg, "signature": signature])
+          } catch {
+              reject("SIGN_ASTER_WITHDRAW_ERROR", "Could not sign the withdrawal", nil)
+          }
+      }
+  }
+
   private func getPrivateKey(for address: String, chain: String) throws -> String? {
       guard let walletJson = WalletKeychainPolicy.activeWallet(read: { service in
           self.retrieveFromKeychain(key: "activeUserWallet", service: service)

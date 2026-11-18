@@ -21,6 +21,20 @@ RCT_EXTERN_METHOD(signTypedData:(NSString *)chainName
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+// Aster (Perps) withdraw only — see TransactionSigner.swift
+RCT_EXTERN_METHOD(signAsterWithdraw:(NSString *)chainName
+                  walletAddress:(NSString *)walletAddress
+                  typedDataJson:(NSString *)typedDataJson
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(signAsterWithdrawRequest:(NSString *)chainName
+                  walletAddress:(NSString *)walletAddress
+                  typedDataJson:(NSString *)typedDataJson
+                  requestQuery:(NSString *)requestQuery
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 + (BOOL)requiresMainQueueSetup
 {
   return NO;

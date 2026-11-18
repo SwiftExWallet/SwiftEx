@@ -1087,11 +1087,70 @@ class StorageModule: NSObject {
         }
     }
 
+    // MARK: - Perps: Aster agent (trading-only) key  (UNTESTED ON iOS)
+    // Keychain items in a separate service, only for keys with the perps prefix, so these
+    // methods can never touch wallet data. Not part of the PIN recovery backup. Never log values.
+    private let perpsSecureService = "org.app.swiftEx.wallet.perps"
+    private let perpsSecurePrefix = "perps_aster_agent_"
+
+    private func isPerpsSecureKey(_ key: String) -> Bool {
+        return key.count > perpsSecurePrefix.count && key.count <= 128 && key.hasPrefix(perpsSecurePrefix)
+    }
+
+    @objc(setSecureItem:value:resolver:rejecter:)
+    func setSecureItem(_ key: String, value: String,
+                       resolver resolve: @escaping RCTPromiseResolveBlock,
+                       rejecter reject: @escaping RCTPromiseRejectBlock) {
+        guard isPerpsSecureKey(key) else { reject("SECURE_ITEM_KEY", "Key not allowed", nil); return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                // saveToKeychain adds with kSecAttrAccessibleWhenUnlockedThisDeviceOnly.
+                try self.saveToKeychain(key: key, value: value, service: self.perpsSecureService)
+                DispatchQueue.main.async { resolve(true) }
+            } catch { DispatchQueue.main.async { reject("SECURE_ITEM_WRITE", "Write failed", nil) } }
+        }
+    }
+
+    @objc(getSecureItem:resolver:rejecter:)
+    func getSecureItem(_ key: String,
+                       resolver resolve: @escaping RCTPromiseResolveBlock,
+                       rejecter reject: @escaping RCTPromiseRejectBlock) {
+        guard isPerpsSecureKey(key) else { reject("SECURE_ITEM_KEY", "Key not allowed", nil); return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let value = try self.getFromKeychain(key: key, service: self.perpsSecureService)
+                DispatchQueue.main.async { resolve(value ?? NSNull()) }
+            } catch { DispatchQueue.main.async { reject("SECURE_ITEM_READ", "Read failed", nil) } }
+        }
+    }
+
+    @objc(removeSecureItem:resolver:rejecter:)
+    func removeSecureItem(_ key: String,
+                          resolver resolve: @escaping RCTPromiseResolveBlock,
+                          rejecter reject: @escaping RCTPromiseRejectBlock) {
+        guard isPerpsSecureKey(key) else { reject("SECURE_ITEM_KEY", "Key not allowed", nil); return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try self.deleteFromKeychain(key: key, service: self.perpsSecureService)
+                DispatchQueue.main.async { resolve(true) }
+            } catch { DispatchQueue.main.async { reject("SECURE_ITEM_DELETE", "Delete failed", nil) } }
+        }
+    }
+
+    private func clearPerpsSecureItems() {
+        let query: [String: Any] = [
+            kSecClass       as String: kSecClassGenericPassword,
+            kSecAttrService as String: perpsSecureService,
+        ]
+        _ = SecItemDelete(query as CFDictionary)
+    }
+
     @objc
     func clearAll(_ resolve: @escaping RCTPromiseResolveBlock,
                   rejecter reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async {
             do {
+                self.clearPerpsSecureItems() // never throws; wallet clearing below is unchanged
                 try self.clearAllFromKeychain()
                 try self.deleteFromKeychain(key: self.appPinVerifierAccount, service: self.appPinVerifierService)
                 try self.deleteFromKeychain(key: self.pinRecoveryAccount, service: self.pinRecoveryService)

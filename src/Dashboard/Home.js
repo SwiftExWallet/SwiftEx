@@ -18,6 +18,8 @@ import { useIsFocused } from "@react-navigation/native";
 import { HomeView } from "./exchange/crypto-exchange-front-end-main/src/pages/home";
 import Icon from "../icon";
 import { colors } from "../Screens/ThemeColorsConfig";
+import PerpsHome from "../perps/screens/PerpsHome";
+import { usePerpsAvailability } from "../perps/usePerpsAvailability";
 
 const Tab = createBottomTabNavigator();
 
@@ -28,6 +30,8 @@ const Dashboard = ({ navigation }) => {
   const dispatch = useDispatch();
   const [extended, setExtended] = useState(extend);
   const [token, setToken] = useState("");
+  // Perps on (and not blocked): Home | Wallet | Perps | SDEX. Otherwise the original tabs incl. Discover.
+  const { perpsVisible } = usePerpsAvailability(Focused_screen);
 
   const updateState = () => {
     const data = store.getState();
@@ -91,6 +95,9 @@ const Dashboard = ({ navigation }) => {
 
   return (
     <Tab.Navigator
+  // Rebuild the tabs when Perps availability changes (e.g. country becomes blocked/unknown
+  // while the Perps tab is open) so a hidden Perps tab can never stay on screen.
+  key={perpsVisible ? "tabs-perps" : "tabs-classic"}
   shifting={false}
   screenOptions={({ route }) => ({
         headerShown: false,
@@ -116,6 +123,10 @@ const Dashboard = ({ navigation }) => {
               break;
             case "Discover":
               iconName = focused?"candlestick-chart":"candlestick-chart";
+              iconProvider = "material";
+              break;
+            case "Perps":
+              iconName = "candlestick-chart";
               iconProvider = "material";
               break;
             case "Settings":
@@ -202,14 +213,24 @@ const Dashboard = ({ navigation }) => {
           unmountOnBlur: true,
         }}
       />
-      <Tab.Screen
-        name="Discover"
-        component={Market}
-        options={{
-          headerShown: false,
-          unmountOnBlur: true,
-        }}
-      />
+      {perpsVisible ? (
+        <Tab.Screen
+          name="Perps"
+          component={PerpsHome}
+          options={{
+            headerShown: false,
+          }}
+        />
+      ) : (
+        <Tab.Screen
+          name="Discover"
+          component={Market}
+          options={{
+            headerShown: false,
+            unmountOnBlur: true,
+          }}
+        />
+      )}
         <Tab.Screen
           name="ExchangeHome"
           component={HomeView}

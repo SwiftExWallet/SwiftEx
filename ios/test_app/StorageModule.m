@@ -60,6 +60,20 @@ RCT_EXTERN_METHOD(getAllKeys:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(clearAll:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+// Perps agent key (keys must start with "perps_aster_agent_")
+RCT_EXTERN_METHOD(setSecureItem:(NSString *)key
+                  value:(NSString *)value
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(getSecureItem:(NSString *)key
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(removeSecureItem:(NSString *)key
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(updateActiveWallet:(NSString *)id
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
