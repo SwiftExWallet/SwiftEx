@@ -17,6 +17,13 @@ import { payOptionsFor, tradeChecks } from "../utils/tradeRules";
 import { quoteFigures, smallEthOrder, defaultChain } from "../utils/quoteMath";
 import { APPROVE_GAS, CHAIN_INFO, RWA_TRADING_ENABLED } from "../config";
 import { useRwaTheme, RwaHeader, DevBanner, StatusBadge } from "../components/ui";
+import ReviewSheet from "../components/ReviewSheet";
+import OrderCard from "../components/OrderCard";
+import { executeOrder } from "../orders/executeOrder";
+import { useOrderTracker } from "../orders/useOrderTracker";
+import { quoteIsFresh, isFinal } from "../orders/orderState";
+
+const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "");
 
 const Row = ({ label, value, theme, color, sub }) => (
   <View style={styles.row}>
@@ -60,7 +67,14 @@ const RwaTrade = () => {
   const [chainErr, setChainErr] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
+  const [quotedAt, setQuotedAt] = useState(0);
+  const [review, setReview] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendErr, setSendErr] = useState(null);
+  const [currentId, setCurrentId] = useState(null);
   const [, setPriceTick] = useState(0);
+  const { orders } = useOrderTracker(wallet, focused);
+  const current = currentId ? orders.find((o) => o.id === currentId) : null;
 
   useEffect(() => {
     if (checked && !allowed) navigation.goBack();
@@ -97,6 +111,7 @@ const RwaTrade = () => {
   // The token being spent: pay token on buy, the RWA token on sell.
   const inToken = !asset || !pay ? null : side === "buy" ? pay : { symbol: asset.symbol, address: asset.address, decimals: asset.decimals };
   const outToken = !asset || !pay ? null : side === "buy" ? { symbol: asset.symbol, decimals: asset.decimals } : pay;
+  const inTokenAddr = inToken ? inToken.address : null;
 
   useEffect(() => {
     if (!asset || !inToken || !wallet || !focused) return undefined;
@@ -113,7 +128,18 @@ const RwaTrade = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asset, wallet, focused, inToken && inToken.address]);
 
-  useEffect(() => setResult(null), [amount, paySym, chain]);
+  useEffect(() => {
+    setResult(null);
+    setSendErr(null);
+  }, [amount, paySym, chain]);
+
+  // Refresh balances / allowance after an order finishes.
+  const currentFinal = current ? isFinal(current.stage) : false;
+  useEffect(() => {
+    if (!currentFinal || !asset || !inTokenAddr || !wallet) return;
+    payTokenState(asset.chain, wallet, inTokenAddr).then(setChainState).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFinal]);
 
   if (!group || !evmChains.length) {
     return (
@@ -150,8 +176,60 @@ const RwaTrade = () => {
     setResult(null);
     const r = await getRwaQuote({ side, asset, payToken: pay, amountUnits: units, wallet });
     setResult(r);
+    setQuotedAt(Date.now());
     setBusy(false);
   };
+
+  const halted = market.status === "halted";
+  const openOrder = orders.find((o) => !isFinal(o.stage));
+  const canConfirm =
+    RWA_TRADING_ENABLED && result && result.ok && !checks.error && !insufficient && !lowGas && !halted && !openOrder && !sending;
+  const confirmBlock = !RWA_TRADING_ENABLED
+    ? "Buying is turned off in this build."
+    : halted
+    ? "Trading in this asset is paused by the issuer."
+    : insufficient
+    ? `Not enough ${inToken.symbol}.`
+    : lowGas
+    ? `Not enough ${info.native} for the network fee.`
+    : openOrder
+    ? "You have an order in progress. Wait until it finishes."
+    : null;
+
+  const openReview = () => {
+    setSendErr(null);
+    if (!quoteIsFresh(quotedAt)) {
+      setResult(null);
+      setSendErr("The quote expired. Get a new quote.");
+      return;
+    }
+    setReview(true);
+  };
+
+  const confirm = async () => {
+    if (!quoteIsFresh(quotedAt)) {
+      setReview(false);
+      setResult(null);
+      setSendErr("The quote expired. Get a new quote.");
+      return;
+    }
+    setSending(true);
+    const res = await executeOrder(
+      { wallet, asset, side, payToken: pay, amountUnits: units, amountText: amount, quote: result.quote, summary: result.summary, quotedAt, groupKey: group.key },
+      (rec) => setCurrentId(rec.id)
+    );
+    setSending(false);
+    setReview(false);
+    if (res && res.error) setSendErr(res.error);
+    else if (res && res.id) {
+      setCurrentId(res.id);
+      setResult(null);
+      setAmount("");
+    }
+  };
+
+  // "Get USDC/USDT": the app's existing Swap (same chain) — no new swap logic here.
+  const missingPay = side === "buy" && insufficient;
 
   const s = result && result.ok ? result.summary : null;
   const outAmt = s && s.toAmount ? fromUnits(s.toAmount, outToken.decimals) : null;
@@ -164,7 +242,7 @@ const RwaTrade = () => {
     <View style={[styles.wrap, { backgroundColor: theme.bg }]}>
       <RwaHeader title={`${side === "buy" ? "Buy" : "Sell"} ${group.symbol}`} theme={theme} onBack={() => navigation.goBack()} />
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
-        <DevBanner theme={theme} text="Dev preview · quotes only. Nothing is bought or sold." />
+        <DevBanner theme={theme} text="Dev build · real orders with real funds." />
         <View style={styles.line}>
           <Text style={[styles.net, { color: theme.inactiveTx }]}>Network</Text>
           <StatusBadge status={market.status} label={market.label} theme={theme} />
@@ -198,6 +276,13 @@ const RwaTrade = () => {
           Balance: {chainState ? `${fmtAmount(fromUnits(chainState.balance, inToken.decimals), 4)} ${inToken.symbol}` : chainErr ? "couldn't read" : "…"}
         </Text>
         {insufficient ? <Text style={[styles.warn, { color: theme.fail }]}>Not enough {inToken.symbol}. You can still check a quote.</Text> : null}
+        {missingPay ? (
+          <TouchableOpacity accessibilityRole="button" onPress={() => navigation.navigate("EthSwap")} style={styles.getBtn}>
+            <Text style={[styles.getTxt, { color: theme.buttonColor }]}>
+              Get {inToken.symbol} on {info.label} → Swap
+            </Text>
+          </TouchableOpacity>
+        ) : null}
         {checks.error ? <Text style={[styles.warn, { color: theme.fail }]}>{checks.error}</Text> : null}
         {!market.open ? <Text style={[styles.warn, { color: theme.warn }]}>Market closed — the price may change a lot when it opens.</Text> : null}
 
@@ -255,10 +340,50 @@ const RwaTrade = () => {
           </View>
         ) : null}
 
-        <TouchableOpacity accessibilityRole="button" disabled={!RWA_TRADING_ENABLED} style={[styles.btn, { backgroundColor: side === "buy" ? theme.success : theme.fail, opacity: 0.4 }]}>
-          <Text style={styles.btnTxt}>{side === "buy" ? "Buying" : "Selling"} coming soon (dev)</Text>
-        </TouchableOpacity>
+        {s ? (
+          <>
+            <TouchableOpacity
+              accessibilityRole="button"
+              disabled={!canConfirm}
+              onPress={openReview}
+              style={[styles.btn, { backgroundColor: side === "buy" ? theme.success : theme.fail, opacity: canConfirm ? 1 : 0.4 }]}
+            >
+              <Text style={styles.btnTxt}>Review {side === "buy" ? "buy" : "sell"}</Text>
+            </TouchableOpacity>
+            {confirmBlock ? <Text style={[styles.hint, styles.center, { color: theme.inactiveTx }]}>{confirmBlock}</Text> : null}
+          </>
+        ) : null}
+        {sendErr ? <Text style={[styles.warn, { color: theme.fail }]}>{sendErr}</Text> : null}
+        {current ? <OrderCard record={current} theme={theme} /> : openOrder ? <OrderCard record={openOrder} theme={theme} /> : null}
       </ScrollView>
+      <ReviewSheet
+        visible={review}
+        theme={theme}
+        busy={sending}
+        onCancel={() => setReview(false)}
+        onConfirm={confirm}
+        confirmLabel={`Confirm ${side === "buy" ? "buy" : "sell"}`}
+        warning={!market.open ? "The market is closed: the order may not fill, or fill at a different price." : smallEthOrder(asset.chain, orderUsd) ? "Ethereum costs more for small orders." : null}
+        rows={
+          s
+            ? [
+                { label: "You pay", value: `${fmtAmount(amount, 6)} ${inToken.symbol}` },
+                { label: "You get at least", value: minAmt ? `${fmtAmount(minAmt, 6)} ${outToken.symbol}` : "—" },
+                { label: "Estimated", value: outAmt ? `${fmtAmount(outAmt, 6)} ${outToken.symbol}` : "—" },
+                { label: "Network", value: info.label },
+                { label: "Receiver", value: `Your wallet ${short(wallet)}` },
+                {
+                  label: "Approval",
+                  value: needsApproval
+                    ? `Exact ${fmtAmount(amount, 6)} ${inToken.symbol} · fee ${approveCost ? nativeCostText(approveCost.toString(), info.native, nativePx && nativePx.price) : ""}`
+                    : "Not needed",
+                  color: needsApproval ? theme.warn : undefined,
+                },
+                { label: "Provider fee", value: feeAmt && Number(feeAmt) > 0 ? `${fmtAmount(feeAmt, 6)} ${outToken.symbol}${fig && fig.feePct != null ? ` (${fig.feePct.toFixed(2)}%)` : ""}` : "None" },
+              ]
+            : []
+        }
+      />
     </View>
   );
 };
@@ -290,5 +415,8 @@ const styles = StyleSheet.create({
   rowValue: { fontSize: 13, fontWeight: "600", textAlign: "right" },
   rowSub: { fontSize: 11, marginTop: 2, textAlign: "right" },
   errTitle: { fontSize: 14, fontWeight: "700" },
+  center: { textAlign: "center" },
+  getBtn: { marginHorizontal: 12, marginTop: 6, paddingVertical: 6 },
+  getTxt: { fontSize: 14, fontWeight: "700" },
   dev: { fontSize: 11, marginTop: 6 },
 });

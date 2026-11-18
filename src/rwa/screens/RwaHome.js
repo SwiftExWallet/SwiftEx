@@ -12,6 +12,9 @@ import { fmtUsd, fmtPct, fmtAmount } from "../utils/amounts";
 import { useRwaHoldings } from "../hooks/useRwaHoldings";
 import { hasAttested, saveAttestation } from "../storage/attestation";
 import AttestationSheet from "../components/AttestationSheet";
+import OrderCard from "../components/OrderCard";
+import { useOrderTracker } from "../orders/useOrderTracker";
+import { isFinal } from "../orders/orderState";
 import { useRwaTheme, RwaLogo, ChainsBadge, StatusBadge, RwaHeader, DevBanner } from "../components/ui";
 
 const AssetRow = React.memo(({ group, theme, price, status, onPress }) => (
@@ -102,7 +105,13 @@ const RwaHome = () => {
     if (xs.length) loadXStatuses(xs).then(() => setTick((t) => t + 1));
   }).current;
 
-  const { holdings, loading: holdLoading, error: holdError } = useRwaHoldings(assets, evm, stellar, focused && attest === true);
+  const { orders } = useOrderTracker(evm, focused && attest === true);
+  const recentOrders = useMemo(
+    () => orders.filter((o) => !isFinal(o.stage) || Date.now() - (o.doneAt || o.createdAt) < 24 * 3600 * 1000).slice(0, 3),
+    [orders]
+  );
+  const filledCount = orders.filter((o) => o.stage === "filled").length;
+  const { holdings, loading: holdLoading, error: holdError } = useRwaHoldings(assets, evm, stellar, focused && attest === true, filledCount);
   // Holdings per group (sum over chains, human units).
   const held = useMemo(() => {
     const out = [];
@@ -131,7 +140,7 @@ const RwaHome = () => {
 
   const header = (
     <View>
-      <DevBanner theme={theme} text={`Dev preview · quotes only, buying is off · country ${country || "?"}`} />
+      <DevBanner theme={theme} text={`Dev build · real orders · country ${country || "?"}`} />
       <View style={styles.block}>
         <Text style={[styles.secTitle, { color: theme.headingTx }]}>Your RWAs</Text>
         {holdLoading ? (
@@ -159,6 +168,14 @@ const RwaHome = () => {
           <Text style={[styles.empty, { color: theme.warn }]}>Some balances couldn't be checked.</Text>
         ) : null}
       </View>
+      {recentOrders.length ? (
+        <View style={styles.ordersBlock}>
+          <Text style={[styles.secTitle, styles.ordersTitle, { color: theme.headingTx }]}>Recent orders</Text>
+          {recentOrders.map((o) => (
+            <OrderCard key={o.id} record={o} theme={theme} onPress={o.groupKey ? () => navigation.navigate("RwaAsset", { key: o.groupKey }) : undefined} />
+          ))}
+        </View>
+      ) : null}
       <View style={[styles.search, { backgroundColor: theme.cardBg }]}>
         <TextInput
           value={query}
@@ -232,6 +249,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   listPad: { paddingBottom: 40 },
   block: { marginHorizontal: 12, marginBottom: 10 },
+  ordersBlock: { marginBottom: 10 },
+  ordersTitle: { marginHorizontal: 12 },
   secTitle: { fontSize: 16, fontWeight: "700", marginBottom: 6 },
   section: { fontSize: 15, fontWeight: "800", marginHorizontal: 12, marginTop: 8, marginBottom: 8 },
   holdLoad: { alignSelf: "flex-start", marginVertical: 6 },

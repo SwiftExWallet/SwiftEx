@@ -3,8 +3,8 @@
 // Dev builds only until legal review.
 export const RWA_ENABLED = __DEV__;
 
-// Buying / selling is not enabled in this phase: quotes only. The Confirm button stays disabled.
-export const RWA_TRADING_ENABLED = false;
+// Real buy/sell (existing guarded 1inch Fusion flow). Dev builds only, like the whole RWA section.
+export const RWA_TRADING_ENABLED = __DEV__;
 
 // ---- Regions (ISO 3166-1 alpha-2, from AppStatusChecks.countryCode) ----
 // Fail closed: unknown country => RWA hidden.
