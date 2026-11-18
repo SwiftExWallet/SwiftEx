@@ -264,7 +264,7 @@ const RwaTrade = () => {
 
         <Text style={[styles.label, { color: theme.inactiveTx }]}>{side === "buy" ? "Pay with" : "Receive"}</Text>
         <Seg theme={theme} value={pay.symbol} onChange={setPaySym} options={payOptionsFor(asset).map((p) => ({ value: p.symbol, label: p.symbol }))} />
-        {group.issuer === "ondo" ? <Text style={[styles.hint, { color: theme.inactiveTx }]}>Ondo assets trade against USDC only.</Text> : null}
+        {group.issuer === "ondo" ? <Text style={[styles.hint, { color: theme.inactiveTx }]}>Ondo stocks are bought and sold with USDC only.</Text> : null}
 
         <Text style={[styles.label, { color: theme.inactiveTx }]}>Amount ({inToken.symbol})</Text>
         <View style={[styles.field, { backgroundColor: theme.cardBg }]}>
@@ -315,8 +315,8 @@ const RwaTrade = () => {
         {s ? (
           <View style={[styles.card, { backgroundColor: theme.cardBg }]}>
             <Row theme={theme} label="You pay" value={`${fmtAmount(amount, 6)} ${inToken.symbol}`} />
-            <Row theme={theme} label="You get (est.)" value={outAmt ? `${fmtAmount(outAmt, 6)} ${outToken.symbol}` : "—"} />
-            <Row theme={theme} label="Min. received" value={minAmt ? `${fmtAmount(minAmt, 6)} ${outToken.symbol}` : "—"} />
+            <Row theme={theme} label="You get (estimate)" value={outAmt ? `${fmtAmount(outAmt, 6)} ${outToken.symbol}` : "—"} />
+            <Row theme={theme} label="You get at least" value={minAmt ? `${fmtAmount(minAmt, 6)} ${outToken.symbol}` : "—"} />
             <Row
               theme={theme}
               label="Your price"
@@ -330,7 +330,7 @@ const RwaTrade = () => {
             />
             <Row
               theme={theme}
-              label="Provider fee"
+              label="Swap fee"
               value={feeAmt && Number(feeAmt) > 0 ? `${fmtAmount(feeAmt, 6)} ${outToken.symbol}` : "None"}
               sub={feeAmt && Number(feeAmt) > 0 && fig && fig.feePct != null ? `${fig.feePct.toFixed(2)}% of order${feeUsd ? ` · ~$${feeUsd < 0.01 ? "0.01" : feeUsd.toFixed(2)}` : ""}` : null}
               color={fig && fig.feePct != null && fig.feePct > 1 ? theme.warn : undefined}
@@ -338,7 +338,7 @@ const RwaTrade = () => {
             <Row
               theme={theme}
               label="Approval"
-              value={needsApproval === null ? "—" : needsApproval ? "One-time approval needed" : "Not needed"}
+              value={needsApproval === null ? "—" : needsApproval ? "Approval needed for this amount" : "Not needed"}
               sub={needsApproval && approveCost ? `Network fee ${nativeCostText(approveCost.toString(), info.native, nativePx && nativePx.price)}` : null}
               color={needsApproval ? theme.warn : undefined}
             />
@@ -385,7 +385,7 @@ const RwaTrade = () => {
                     : "Not needed",
                   color: needsApproval ? theme.warn : undefined,
                 },
-                { label: "Provider fee", value: feeAmt && Number(feeAmt) > 0 ? `${fmtAmount(feeAmt, 6)} ${outToken.symbol}${fig && fig.feePct != null ? ` (${fig.feePct.toFixed(2)}%)` : ""}` : "None" },
+                { label: "Swap fee", value: feeAmt && Number(feeAmt) > 0 ? `${fmtAmount(feeAmt, 6)} ${outToken.symbol}${fig && fig.feePct != null ? ` (${fig.feePct.toFixed(2)}%)` : ""}` : "None" },
               ]
             : []
         }

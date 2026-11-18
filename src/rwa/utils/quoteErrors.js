@@ -12,7 +12,7 @@ export const mapQuoteError = (err) => {
   if (status === 403 && has(msg, /invalid device/i)) {
     return { code: "device", text: "This device isn't recognised by the swap service. Try again later." };
   }
-  if (status === 401 || status === 403) return { code: "auth", text: "Couldn't get a quote (sign-in expired). Reopen the app and try again." };
+  if (status === 401 || status === 403) return { code: "auth", text: "Couldn't get a price right now. Close and reopen the app, then try again." };
   if (has(msg, /market (is )?closed|outside (of )?trading hours|halt/i)) {
     return { code: "closed", text: "The market for this asset is closed or paused. Try again when it opens." };
   }

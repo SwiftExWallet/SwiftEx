@@ -99,7 +99,7 @@ export const STAGE_TEXT = {
   signing: "Signing the order in your wallet…",
   approving: "Approving the exact amount (one network fee)…",
   submitting: "Sending the order…",
-  submitted: "Order sent. Waiting for a filler…",
+  submitted: "Order sent. Waiting for it to be filled (usually under a minute)…",
   filling: "Filling…",
   filled: "Done. The tokens are in your wallet.",
   expired: "Not filled in time. Nothing was taken — your funds stay in your wallet.",

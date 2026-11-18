@@ -107,7 +107,7 @@ const RwaHome = () => {
 
   const { orders } = useOrderTracker(evm, focused && attest === true);
   const recentOrders = useMemo(
-    () => orders.filter((o) => !isFinal(o.stage) || Date.now() - (o.doneAt || o.createdAt) < 24 * 3600 * 1000).slice(0, 3),
+    () => orders.filter((o) => !isFinal(o.stage) || Date.now() - (o.doneAt || o.createdAt) < (o.stage === "failed" ? 10 * 60 * 1000 : 24 * 3600 * 1000)).slice(0, 3),
     [orders]
   );
   const filledCount = orders.filter((o) => o.stage === "filled").length;
@@ -142,7 +142,7 @@ const RwaHome = () => {
     <View>
       <DevBanner theme={theme} text={`Dev build · real orders · country ${country || "?"}`} />
       <View style={styles.block}>
-        <Text style={[styles.secTitle, { color: theme.headingTx }]}>Your RWAs</Text>
+        <Text style={[styles.secTitle, { color: theme.headingTx }]}>Your holdings</Text>
         {holdLoading ? (
           <ActivityIndicator color={theme.buttonColor} style={styles.holdLoad} />
         ) : held.length === 0 ? (
@@ -208,7 +208,7 @@ const RwaHome = () => {
 
   return (
     <View style={[styles.wrap, { backgroundColor: theme.bg }]}>
-      <RwaHeader title="Stocks & RWA" theme={theme} onBack={() => navigation.goBack()} />
+      <RwaHeader title="Stocks & gold" theme={theme} onBack={() => navigation.goBack()} />
       {attest === true ? (
         <FlatList
           data={rows}

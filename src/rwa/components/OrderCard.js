@@ -46,7 +46,7 @@ const OrderCard = ({ record, theme, onPress }) => {
       </Text>
       {__DEV__ && record.guardInfo ? (
         <Text style={[styles.dev, { color: theme.inactiveTx }]}>
-          dev: receiver {String(record.guardInfo.receiver)} · contract {String(record.guardInfo.verifyingContract)} · extension {record.guardInfo.hasExtension ? "yes" : "no"}
+          dev: {String(record.guardInfo.reason || "")} · receiver {String(record.guardInfo.receiver)} · contract {String(record.guardInfo.verifyingContract)} · extension {record.guardInfo.hasExtension ? "yes" : "no"}
         </Text>
       ) : null}
       {tx && EXPLORER[record.chain] ? (

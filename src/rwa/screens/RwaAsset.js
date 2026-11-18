@@ -42,8 +42,8 @@ const multiplierNote = (g, m) => {
   if (!g.multiplier || g.multiplier.kind === "none") return null;
   const v = m != null ? ` Current: ${m.toFixed(5)}.` : "";
   return g.multiplier.kind === "xstocks-rebase"
-    ? `Splits and dividends are applied by changing every holder's token balance (rebasing), so 1 token may not equal 1 share.${v}`
-    : `Splits and dividends are applied through a share multiplier, so 1 token may not equal 1 share.${v}`;
+    ? `Splits and dividends change your token balance automatically, so 1 token may not equal 1 share.${v}`
+    : `Splits and dividends are reflected in the token price, so 1 token may not equal 1 share.${v}`;
 };
 
 const shortAddr = (a) => `${a.slice(0, 8)}…${a.slice(-6)}`;

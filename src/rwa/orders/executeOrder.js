@@ -106,7 +106,8 @@ export const executeOrder = async (params, onUpdate = () => {}) => {
         verifyingContract: typedData.domain && typedData.domain.verifyingContract,
         hasExtension: !!(built.res.extension && built.res.extension !== "0x"),
       };
-      return fail(`Order check failed: ${errText(guard, "unexpected order")}. Nothing was signed.`);
+      record.guardInfo.reason = errText(guard, "unexpected order");
+      return fail("This order didn't pass our safety check, so nothing was signed or sent. Please try again later.");
     }
 
     await step({ stage: "signing" });

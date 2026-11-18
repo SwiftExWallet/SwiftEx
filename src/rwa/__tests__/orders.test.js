@@ -103,7 +103,7 @@ describe("executeOrder (mocked backend/signer)", () => {
     });
     const r = await executeOrder(params({ wallet: "0x1111111111111111111111111111111111111111" }));
     expect(r.stage).toBe("failed");
-    expect(r.error).toMatch(/Nothing was signed/);
+    expect(r.error).toMatch(/nothing was signed/i);
     expect(NativeModules.TransactionSigner.signTypedData).not.toHaveBeenCalled();
   });
 

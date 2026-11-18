@@ -19,11 +19,11 @@ const Entry = () => {
       </View>
       <TouchableOpacity
         accessibilityRole="button"
-        accessibilityLabel="Stocks and RWA"
+        accessibilityLabel="Stocks and gold"
         style={styles.btn}
         onPress={() => navigation.navigate("RwaHome")}
       >
-        <Text style={[styles.txt, { color: theme.inactiveTx }]}>Stocks & RWA</Text>
+        <Text style={[styles.txt, { color: theme.inactiveTx }]}>Stocks & gold</Text>
       </TouchableOpacity>
     </View>
   );
