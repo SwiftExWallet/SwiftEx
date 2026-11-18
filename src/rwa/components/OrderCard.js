@@ -44,6 +44,11 @@ const OrderCard = ({ record, theme, onPress }) => {
       <Text style={[styles.msg, { color: bad ? theme.warn : theme.inactiveTx }]}>
         {record.stage === "failed" && record.error ? `${record.error}` : STAGE_TEXT[record.stage] || ""}
       </Text>
+      {__DEV__ && record.guardInfo ? (
+        <Text style={[styles.dev, { color: theme.inactiveTx }]}>
+          dev: receiver {String(record.guardInfo.receiver)} · contract {String(record.guardInfo.verifyingContract)} · extension {record.guardInfo.hasExtension ? "yes" : "no"}
+        </Text>
+      ) : null}
       {tx && EXPLORER[record.chain] ? (
         <TouchableOpacity accessibilityRole="link" onPress={() => Linking.openURL(EXPLORER[record.chain] + tx).catch(() => {})}>
           <Text style={[styles.link, { color: theme.buttonColor }]}>View transaction</Text>
@@ -65,4 +70,5 @@ const styles = StyleSheet.create({
   stepTxt: { fontSize: 12, fontWeight: "600", marginLeft: 4 },
   msg: { fontSize: 13, lineHeight: 18 },
   link: { fontSize: 13, fontWeight: "600", marginTop: 6 },
+  dev: { fontSize: 11, marginTop: 6 },
 });

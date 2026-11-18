@@ -53,6 +53,21 @@ describe("trade rules", () => {
   });
 });
 
+describe("decimals per token (live-test lessons)", () => {
+  const { PAY_TOKENS } = require("../config");
+  test("USDC is 18 decimals on BNB Chain but 6 on Ethereum; XAUt 6", () => {
+    const bscUsdc = PAY_TOKENS.BSC.find((t) => t.symbol === "USDC");
+    const ethUsdc = PAY_TOKENS.ETH.find((t) => t.symbol === "USDC");
+    expect(A.toUnits("2.5", bscUsdc.decimals)).toBe("2500000000000000000");
+    expect(A.toUnits("2.5", ethUsdc.decimals)).toBe("2500000");
+    expect(A.fromUnits("6699", 6)).toBe("0.006699"); // XAUt quote 2026-11-19
+  });
+  test("xStocks $20 minimum counts stablecoins at face value (20 USDT passes even if USDT = $0.9997)", () => {
+    expect(tradeChecks({ asset: xs, side: "buy", amount: "20", unitPriceUsd: 1 }).error).toBeNull();
+    expect(tradeChecks({ asset: xs, side: "buy", amount: "19.99", unitPriceUsd: 1 }).error).toMatch(/\$20/);
+  });
+});
+
 describe("amounts", () => {
   test("input cleaning", () => {
     expect(A.cleanAmountInput("1,5")).toBe("1.5");

@@ -98,6 +98,14 @@ export const executeOrder = async (params, onUpdate = () => {}) => {
         minTakingAmount: summary.minReceived,
       });
     } catch (guard) {
+      // Public order fields only (no signature exists yet) — helps the backend team see what differed.
+      record.guardInfo = {
+        receiver: typedData.message && typedData.message.receiver,
+        makerAsset: typedData.message && typedData.message.makerAsset,
+        takerAsset: typedData.message && typedData.message.takerAsset,
+        verifyingContract: typedData.domain && typedData.domain.verifyingContract,
+        hasExtension: !!(built.res.extension && built.res.extension !== "0x"),
+      };
       return fail(`Order check failed: ${errText(guard, "unexpected order")}. Nothing was signed.`);
     }
 

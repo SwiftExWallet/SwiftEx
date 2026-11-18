@@ -162,7 +162,13 @@ const RwaTrade = () => {
   const marketPx = getCachedPrice(llamaKey(asset));
   const nativePx = getCachedPrice(info.nativePriceKey);
   const units = toUnits(amount, inToken.decimals);
-  const checks = tradeChecks({ asset, side, amount, unitPriceUsd: result && result.ok ? result.summary.fromUsd : side === "sell" && marketPx ? marketPx.price : null });
+  // Buy: stablecoin amount at face value ($1). Sell: asset tokens × price (quote's, else market).
+  const checks = tradeChecks({
+    asset,
+    side,
+    amount,
+    unitPriceUsd: side === "buy" ? 1 : result && result.ok && result.summary.fromUsd ? result.summary.fromUsd : marketPx ? marketPx.price : null,
+  });
   const insufficient = chainState && units && !gteUnits(chainState.balance, units);
   const needsApproval = chainState && units ? !gteUnits(chainState.allowance, units) : null;
   const approveCost = chainState ? ethers.BigNumber.from(chainState.gasPrice).mul(APPROVE_GAS) : null;
