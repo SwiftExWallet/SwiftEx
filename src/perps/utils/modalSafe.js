@@ -52,7 +52,12 @@ const wrapButtons = (buttons) =>
       }))
     : buttons;
 
-const present = ({ type, title, message, buttons }) => {
+const present = ({ type, title, message, buttons, run }) => {
+  if (run) {
+    // A perps-owned sheet: open it now that no other modal is visible.
+    run();
+    return;
+  }
   if (isDev && open.size > 0) {
     // Dev-only assertion: this would freeze iOS.
     // eslint-disable-next-line no-console
@@ -64,6 +69,17 @@ const present = ({ type, title, message, buttons }) => {
 // Show an info / confirm dialog safely (now, or after the open perps modals have hidden).
 export const showInfo = (type, title, message, buttons) => {
   const item = { type, title, message, buttons };
+  if (open.size === 0 && Date.now() >= infoBusyUntil) present(item);
+  else {
+    queue.push(item);
+    if (open.size === 0) scheduleFlush();
+  }
+};
+
+// Run fn (e.g. open a perps result sheet) once no perps modal or info dialog is showing.
+// Shares the info queue, so the latest of a dialog / sheet wins, same as showInfo.
+export const whenModalsClear = (run) => {
+  const item = { run };
   if (open.size === 0 && Date.now() >= infoBusyUntil) present(item);
   else {
     queue.push(item);

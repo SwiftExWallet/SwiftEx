@@ -25,11 +25,12 @@ import { ensureFreshMarketMeta, getCachedMarketMeta, ORDER_RULE_FIELDS } from ".
 
 const RULES_MAX_AGE_MS = 60 * 60 * 1000; // refetch exchangeInfo before an order if older than 1h
 
-import { showInfo, useModalPresence } from "../utils/modalSafe";
+import { showInfo, useModalPresence, whenModalsClear } from "../utils/modalSafe";
 import { startMultiAssetsFlow } from "../api/multiAssetsFlow";
 import { logPerpsError } from "../utils/perpsLog";
 import { sleep, withTimeout } from "../utils/async";
-import { positionSummary } from "../utils/positionFocus";
+import { orderResultContent } from "../utils/positionFocus";
+import OrderResultSheet from "./OrderResultSheet";
 const RULES_TIMEOUT_MS = 35000; // exchangeInfo refresh (30s request + margin)
 // Safety cap only: each request already times out at 15s (margin + leverage + order + 2 TP/SL
 // <= ~75s). The cap must exceed that, so it can never fire while the order is still being sent.
@@ -106,6 +107,7 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
   const [sl, setSl] = useState("");
   const [confirm, setConfirm] = useState(null); // direction being confirmed
   const [submitting, setSubmitting] = useState(false);
+  const [placed, setPlaced] = useState(null); // { content, focus } for the order success sheet
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -404,24 +406,20 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
       const isOrder = type === "LIMIT" && String(entry.status || "").toUpperCase() !== "FILLED";
       // Show the actual position (entry, size, liq.) read back from Aster after the fill.
       const pos = isOrder ? null : await readBackPosition();
-      const what = isOrder
-        ? `Limit ${direction === "LONG" ? "buy" : "sell"} ${order.qty} ${baseAsset} at $${formatPrice(order.price, meta.tickSize)} · waiting in Open orders.`
-        : pos
-        ? positionSummary(pos, baseAsset, meta.tickSize)
-        : `${direction === "LONG" ? "Long" : "Short"} ${order.qty} ${baseAsset} opened at market.`;
+      const content = orderResultContent({
+        isOrder,
+        pos,
+        direction,
+        qty: order.qty,
+        price: order.price,
+        baseAsset,
+        tickSize: meta.tickSize,
+        leverage,
+        failed: failed.map((f) => ({ type: f.type, text: friendlyAsterError(f) })),
+      });
       const focus = { kind: isOrder ? "order" : "position", symbol, orderId: isOrder ? entry.orderId : null };
-      result = {
-        type: failed.length ? "info" : "success",
-        title: failed.length ? "Order placed — TP/SL failed" : isOrder ? "Order placed" : "Position opened",
-        msg: failed.length
-          ? `${what}\n\n${failed.map((f) => `${f.type}: ${friendlyAsterError(f)}`).join("\n")}\nSet TP/SL again from your position.`
-          : what,
-        // Primary first: the success dialog stacks its buttons top to bottom.
-        buttons: [
-          { text: isOrder ? "View order" : "View position", style: "primary", onPress: () => onShowNew && onShowNew({ ...focus, strength: "strong", go: true }) },
-          { text: "Done", style: "cancel", onPress: () => onShowNew && onShowNew({ ...focus, strength: "light" }) },
-        ],
-      };
+      // Shown in the perps result sheet (separate View / Done buttons), not the shared dialog.
+      result = { sheet: { content, focus } };
       if (mounted.current) setAmount("");
       if (onPlaced) onPlaced();
     } catch (e) {
@@ -436,7 +434,18 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
         setSubmitting(false);
         setConfirm(null);
       }
-      if (result) showInfo(result.type, result.title, result.msg, result.buttons);
+      if (result && result.sheet) {
+        const { sheet } = result;
+        whenModalsClear(() => {
+          if (mounted.current) setPlaced(sheet);
+          // Screen closed meanwhile: plain confirmation (single button) instead.
+          else {
+            const c = sheet.content;
+            const lines = c.rows.map((x) => `${x.label}: ${x.value}`).join("\n");
+            showInfo(c.warn ? "info" : "success", c.title, c.note ? `${lines}\n\n${c.note}` : lines);
+          }
+        });
+      } else if (result) showInfo(result.type, result.title, result.msg);
     }
     if (checkClientId) {
       const st = await resolveUnknownOrder(checkClientId);
@@ -672,6 +681,13 @@ const OrderPanel = ({ theme, symbol, baseAsset, meta, markPrice, maxLeverage, ag
           <View />
         )}
       </Modal>
+      <OrderResultSheet
+        theme={theme}
+        result={placed ? placed.content : null}
+        onClose={() => setPlaced(null)}
+        onView={() => placed && onShowNew && onShowNew({ ...placed.focus, strength: "strong", go: true })}
+        onDone={() => placed && onShowNew && onShowNew({ ...placed.focus, strength: "light" })}
+      />
     </View>
   );
 };
