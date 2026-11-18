@@ -12,23 +12,30 @@ export const useRwaTheme = () => {
   return isDark ? colors.dark : colors.light;
 };
 
+// Letter avatar until the image has loaded (and if it fails) — never an empty circle.
 export const RwaLogo = ({ asset, size = 40, theme }) => {
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const round = { width: size, height: size, borderRadius: size / 2 };
-  if (!asset.logo || failed) {
-    return (
-      <View style={[round, styles.avatar, { backgroundColor: theme.buttonColor }]}>
-        <Text style={[styles.letter, { fontSize: Math.round(size * 0.4) }]}>{asset.symbol.charAt(0)}</Text>
-      </View>
-    );
-  }
+  const letter = (
+    <View style={[round, styles.avatar, { backgroundColor: theme.buttonColor }]}>
+      <Text style={[styles.letter, { fontSize: Math.round(size * 0.4) }]}>{asset.symbol.charAt(0)}</Text>
+    </View>
+  );
+  if (!asset.logo || failed) return letter;
   return (
-    <Image
-      accessibilityIgnoresInvertColors
-      source={{ uri: asset.logo }}
-      style={[round, { backgroundColor: theme.cardBg }]}
-      onError={() => setFailed(true)}
-    />
+    <View style={round}>
+      {!loaded ? <View style={StyleSheet.absoluteFill}>{letter}</View> : null}
+      <Image
+        accessibilityIgnoresInvertColors
+        source={{ uri: asset.logo }}
+        style={round}
+        // Android: decode at view size (xStocks logos are 400x400 = ~640 KB each in memory).
+        resizeMethod="resize"
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+      />
+    </View>
   );
 };
 
