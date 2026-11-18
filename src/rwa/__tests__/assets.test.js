@@ -18,9 +18,16 @@ test("bundled file is compact and small", () => {
   expect(JSON.stringify(RAW).length).toBeLessThan(400 * 1024);
 });
 
-test("source logo error guard: AALon has no (wrong) logo", () => {
+test("source logo error fixed: AALon uses its own Ondo logo (CSV pointed at abton_…)", () => {
   const aal = RWA_ASSETS.find((a) => a.symbol === "AALon");
-  expect(aal && aal.logo).toBeNull();
+  expect(aal.logo).toBe("https://cdn.ondo.finance/tokens/logos/aalon_160x160.png");
+});
+
+test("every asset has a market field; Ondo = US; gold/treasuries = null", () => {
+  expect(RWA_ASSETS.filter((a) => a.issuer === "ondo").every((a) => a.market === "US")).toBe(true);
+  expect(RWA_ASSETS.filter((a) => a.category === "gold" || a.category === "treasury").every((a) => a.market === null)).toBe(true);
+  expect(RWA_ASSETS.find((a) => a.symbol === "A5Gx").market).toBe("IE");
+  expect(RWA_ASSETS.find((a) => a.symbol === "PAXG").logo).toMatch(/^https:\/\/raw\.githubusercontent\.com\/trustwallet\//);
 });
 
 test("bundled list: nothing dropped by validation, ids unique", () => {

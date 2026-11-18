@@ -53,9 +53,9 @@ export const APPROVE_GAS = 65000;
 
 // Our chain keys -> app CHAINS keys / backend chain names / DefiLlama chain names.
 export const CHAIN_INFO = {
-  ETH: { appKey: "ETH", backend: "ETH", llama: "ethereum", chainId: 1, label: "Ethereum", native: "ETH" },
-  BSC: { appKey: "BNB", backend: "BSC", llama: "bsc", chainId: 56, label: "BNB Chain", native: "BNB" },
-  XLM: { appKey: "STR", backend: null, llama: null, chainId: null, label: "Stellar", native: "XLM" },
+  ETH: { appKey: "ETH", backend: "ETH", llama: "ethereum", chainId: 1, label: "Ethereum", short: "ETH", native: "ETH", nativePriceKey: "coingecko:ethereum" },
+  BSC: { appKey: "BNB", backend: "BSC", llama: "bsc", chainId: 56, label: "BNB Chain", short: "BNB", native: "BNB", nativePriceKey: "coingecko:binancecoin" },
+  XLM: { appKey: "STR", backend: null, llama: null, chainId: null, label: "Stellar", short: "XLM", native: "XLM", nativePriceKey: "coingecko:stellar" },
 };
 
 export const XSTOCKS_API = "https://api.xstocks.fi/api/v2/public";

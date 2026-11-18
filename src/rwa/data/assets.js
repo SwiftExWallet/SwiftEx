@@ -52,7 +52,7 @@ export const expandAssets = (raw) => {
   if (!raw || !Array.isArray(raw.rows) || !raw.issuers) return [];
   const out = [];
   raw.rows.forEach((r) => {
-    const [symbol, name, underlying, issuer, category, chains, addrs, decimals, logo] = r;
+    const [symbol, name, underlying, issuer, category, chains, addrs, decimals, logo, market] = r;
     const iss = raw.issuers[issuer] || {};
     const chainList = String(chains || "").split("|");
     const addrList = String(addrs || "").split("|");
@@ -84,6 +84,7 @@ export const expandAssets = (raw) => {
         marketHours: iss.marketHours,
         termsUrl: iss.termsUrl,
         regions: iss.regions,
+        market: market || null,
       });
     });
   });

@@ -59,6 +59,31 @@ export const fmtAmount = (s, maxFrac = 6) => {
   return fr ? `${int}.${fr}` : int;
 };
 
+// Small numbers with significant digits: 0.0000412 -> "0.000041" (sig = 2). Never "0" for a
+// non-zero value; >= 1 -> up to 4 decimals.
+export const fmtSig = (n, sig = 2) => {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return "—";
+  if (v === 0) return "0";
+  const a = Math.abs(v);
+  if (a >= 1) return String(Number(v.toFixed(4)));
+  const digits = Math.min(18, Math.ceil(-Math.log10(a)) + sig - 1);
+  return v.toFixed(digits).replace(/(\.\d*?[1-9])0+$/, "$1");
+};
+
+// Gas cost line: "≈0.000041 BNB (~$0.03)"; USD part omitted if no price; "<$0.01" for tiny values.
+export const nativeCostText = (weiString, nativeSymbol, nativeUsd) => {
+  let n;
+  try {
+    n = Number(ethers.utils.formatEther(ethers.BigNumber.from(String(weiString))));
+  } catch (e) {
+    return "—";
+  }
+  const usd = Number.isFinite(nativeUsd) && nativeUsd > 0 ? n * nativeUsd : null;
+  const usdTxt = usd === null ? "" : usd > 0 && usd < 0.01 ? " (<$0.01)" : ` (~$${usd.toFixed(2)})`;
+  return `≈${fmtSig(n, 2)} ${nativeSymbol}${usdTxt}`;
+};
+
 export const fmtPct = (n) => {
   const v = Number(n);
   if (!Number.isFinite(v)) return "—";

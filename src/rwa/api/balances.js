@@ -122,6 +122,10 @@ export const readMultiplier = async (asset) => {
   }
 };
 
+// One ERC-20 balance (raw units string).
+export const tokenBalance = async (chain, wallet, tokenAddress) =>
+  withRpc(chain, async (provider) => (await new ethers.Contract(tokenAddress, ERC20, provider).balanceOf(wallet)).toString());
+
 // Pay-side checks for a quote: token balance, allowance to the 1inch LOP, native balance, gas price.
 export const payTokenState = async (chain, wallet, tokenAddress) => {
   return withRpc(chain, async (provider) => {

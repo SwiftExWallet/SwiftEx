@@ -5,7 +5,8 @@ import { useNavigation, useRoute, useIsFocused } from "@react-navigation/native"
 import Clipboard from "@react-native-clipboard/clipboard";
 import Snackbar from "react-native-snackbar";
 import PriceChart from "../../perps/components/PriceChart";
-import { assetById, llamaKey } from "../data/assets";
+import { llamaKey } from "../data/assets";
+import { groupByKey } from "../data/groups";
 import { useRwaAvailability } from "../useRwaAvailability";
 import { isAssetAllowed } from "../regions";
 import { loadPrices, getCachedPrice, loadHistory } from "../api/prices";
@@ -15,7 +16,7 @@ import { loadXStatuses, getCachedXStatus } from "../api/xstocksStatus";
 import { fmtUsd, fmtPct, fmtAmount, fromUnits } from "../utils/amounts";
 import { stellarSwapParams } from "../utils/stellarTokens";
 import { CHAIN_INFO } from "../config";
-import { useRwaTheme, RwaLogo, ChainBadge, StatusBadge, RwaHeader } from "../components/ui";
+import { useRwaTheme, RwaLogo, ChainsBadge, StatusBadge, RwaHeader } from "../components/ui";
 
 const ISSUER_LABEL = {
   ondo: "Ondo Global Markets",
@@ -37,13 +38,15 @@ const Info = ({ label, value, theme, onPress }) => (
   </TouchableOpacity>
 );
 
-const multiplierNote = (asset, m) => {
-  if (!asset.multiplier || asset.multiplier.kind === "none") return null;
+const multiplierNote = (g, m) => {
+  if (!g.multiplier || g.multiplier.kind === "none") return null;
   const v = m != null ? ` Current: ${m.toFixed(5)}.` : "";
-  return asset.multiplier.kind === "xstocks-rebase"
+  return g.multiplier.kind === "xstocks-rebase"
     ? `Splits and dividends are applied by changing every holder's token balance (rebasing), so 1 token may not equal 1 share.${v}`
     : `Splits and dividends are applied through a share multiplier, so 1 token may not equal 1 share.${v}`;
 };
+
+const shortAddr = (a) => `${a.slice(0, 8)}…${a.slice(-6)}`;
 
 const RwaAsset = () => {
   const navigation = useNavigation();
@@ -54,15 +57,15 @@ const RwaAsset = () => {
   const state = useSelector((s) => s);
   const evm = state?.wallet?.address || null;
   const stellar = state?.STELLAR_PUBLICK_KEY || null;
-  const asset = assetById(params && params.id);
+  const group = groupByKey(params && params.key);
   const { country, checked } = useRwaAvailability(focused);
-  const allowed = !!asset && isAssetAllowed(asset, country);
+  const allowed = !!group && isAssetAllowed(group.primary, country);
 
   const [range, setRange] = useState("1M");
   const [candles, setCandles] = useState(null);
   const [chartErr, setChartErr] = useState(false);
   const [price, setPrice] = useState(null);
-  const [holding, setHolding] = useState(undefined); // undefined = loading
+  const [holding, setHolding] = useState(undefined); // undefined = loading, null = error, { [chain]: "amount" }
   const [mult, setMult] = useState(null);
   const [xs, setXs] = useState(null);
 
@@ -70,7 +73,7 @@ const RwaAsset = () => {
     if (checked && !allowed) navigation.goBack();
   }, [checked, allowed, navigation]);
 
-  const key = asset ? llamaKey(asset) : null;
+  const key = group ? llamaKey(group.primary) : null;
   useEffect(() => {
     if (!key) return;
     loadPrices([key]).then(() => setPrice(getCachedPrice(key)));
@@ -90,43 +93,50 @@ const RwaAsset = () => {
   }, [key, range]);
 
   useEffect(() => {
-    if (!asset || !focused) return undefined;
+    if (!group || !focused) return undefined;
     let alive = true;
     const run = async () => {
       try {
-        if (asset.chain === "XLM") {
-          const b = stellar ? await stellarBalances(stellar, [asset]) : {};
-          if (alive) setHolding(b[asset.id] || "0");
-        } else {
-          const b = evm ? await evmBalances(asset.chain, evm, [asset]) : {};
-          if (alive) setHolding(b[asset.id] ? fromUnits(b[asset.id], asset.decimals) : "0");
+        const out = {};
+        for (const c of group.chains) {
+          const a = group.byChain[c];
+          if (c === "XLM") {
+            // eslint-disable-next-line no-await-in-loop
+            const b = stellar ? await stellarBalances(stellar, [a]) : {};
+            out[c] = b[a.id] || "0";
+          } else {
+            // eslint-disable-next-line no-await-in-loop
+            const b = evm ? await evmBalances(c, evm, [a]) : {};
+            out[c] = b[a.id] ? fromUnits(b[a.id], a.decimals) : "0";
+          }
         }
+        if (alive) setHolding(out);
       } catch (e) {
         if (alive) setHolding(null);
       }
     };
     run();
-    readMultiplier(asset).then((m) => alive && setMult(m));
-    if (asset.issuer === "xstocks") {
-      loadXStatuses([asset.symbol]).then(() => alive && setXs(getCachedXStatus(asset.symbol)));
+    readMultiplier(group.primary).then((m) => alive && setMult(m));
+    if (group.issuer === "xstocks") {
+      loadXStatuses([group.symbol]).then(() => alive && setXs(getCachedXStatus(group.symbol)));
     }
     return () => {
       alive = false;
     };
-  }, [asset, focused, evm, stellar]);
+  }, [group, focused, evm, stellar]);
 
   const status = useMemo(() => {
-    if (!asset) return null;
+    if (!group) return null;
     if (xs) return xs;
-    const s = assetMarketStatus(asset);
+    const s = assetMarketStatus(group);
     if (!s.open) {
       const n = nextOpen(new Date());
       return { ...s, nextText: n ? `Opens ${formatEastern(n)}` : null };
     }
     return s;
-  }, [asset, xs]);
+  }, [group, xs]);
 
-  if (!asset) {
+  if (!group) {
     return (
       <View style={[styles.wrap, { backgroundColor: theme.bg }]}>
         <RwaHeader title="Not found" theme={theme} onBack={() => navigation.goBack()} />
@@ -134,30 +144,35 @@ const RwaAsset = () => {
     );
   }
 
-  const isStellar = asset.chain === "XLM";
+  const isStellar = group.chains.includes("XLM");
   const goTrade = (side) => {
     if (isStellar) {
-      const p = stellarSwapParams(asset, side);
+      const p = stellarSwapParams(group.primary, side);
       if (p) navigation.navigate("newOffer_modal", p);
       else Snackbar.show({ text: "This asset isn't in the Stellar token list.", duration: Snackbar.LENGTH_SHORT });
       return;
     }
-    navigation.navigate("RwaTrade", { id: asset.id, side });
+    navigation.navigate("RwaTrade", { key: group.key, side });
   };
-  const holdValue = holding && price && price.price != null ? Number(holding) * price.price : null;
+  const total = holding ? Object.values(holding).reduce((s, x) => s + Number(x || 0), 0) : null;
+  const holdValue = total !== null && price && price.price != null ? total * price.price : null;
   const chartColor = price && price.change24h != null && price.change24h < 0 ? theme.fail : theme.success;
-  const note = multiplierNote(asset, mult);
+  const note = multiplierNote(group, mult);
+  const copy = (text) => {
+    Clipboard.setString(text);
+    Snackbar.show({ text: "Copied", duration: Snackbar.LENGTH_SHORT });
+  };
 
   return (
     <View style={[styles.wrap, { backgroundColor: theme.bg }]}>
-      <RwaHeader title={asset.symbol} theme={theme} onBack={() => navigation.goBack()} />
+      <RwaHeader title={group.symbol} theme={theme} onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.top}>
-          <RwaLogo asset={asset} size={44} theme={theme} />
+          <RwaLogo asset={group} size={44} theme={theme} />
           <View style={styles.topMid}>
-            <Text style={[styles.name, { color: theme.headingTx }]} numberOfLines={2}>{asset.name}</Text>
+            <Text style={[styles.name, { color: theme.headingTx }]} numberOfLines={2}>{group.name}</Text>
             <View style={styles.line}>
-              <ChainBadge chain={asset.chain} theme={theme} />
+              <ChainsBadge chains={group.chains} theme={theme} />
               <View style={styles.gap} />
               {status ? <StatusBadge status={status.status} label={status.label} theme={theme} /> : null}
             </View>
@@ -201,27 +216,34 @@ const RwaAsset = () => {
           ) : holding === null ? (
             <Text style={[styles.muted, { color: theme.inactiveTx }]}>Couldn't read your balance.</Text>
           ) : (
-            <Text style={[styles.hold, { color: theme.headingTx }]}>
-              {fmtAmount(holding, 6)} {asset.symbol}
-              {holdValue != null ? `  ·  ${fmtUsd(holdValue)}` : ""}
-            </Text>
+            <>
+              <Text style={[styles.hold, { color: theme.headingTx }]}>
+                {fmtAmount(String(total), 6)} {group.symbol}
+                {holdValue != null ? `  ·  ${fmtUsd(holdValue)}` : ""}
+              </Text>
+              {group.chains.length > 1
+                ? group.chains.map((c) => (
+                    <Text key={c} style={[styles.muted, { color: theme.inactiveTx }]}>
+                      {CHAIN_INFO[c].label}: {fmtAmount(holding[c] || "0", 6)}
+                    </Text>
+                  ))
+                : null}
+            </>
           )}
         </View>
 
         <View style={[styles.card, { backgroundColor: theme.cardBg }]}>
-          <Info label="Issuer" value={ISSUER_LABEL[asset.issuer] || asset.issuer} theme={theme} />
-          <Info label="Type" value={CAT_LABEL[asset.category]} theme={theme} />
-          {asset.underlying ? <Info label="Tracks" value={asset.underlying} theme={theme} /> : null}
-          <Info label="Network" value={CHAIN_INFO[asset.chain].label} theme={theme} />
-          <Info
-            label={isStellar ? "Issuer account" : "Contract"}
-            value={isStellar ? `${asset.code} · ${asset.stellarIssuer.slice(0, 6)}…${asset.stellarIssuer.slice(-6)}` : `${asset.address.slice(0, 8)}…${asset.address.slice(-6)}`}
-            theme={theme}
-            onPress={() => {
-              Clipboard.setString(isStellar ? asset.stellarIssuer : asset.address);
-              Snackbar.show({ text: "Copied", duration: Snackbar.LENGTH_SHORT });
-            }}
-          />
+          <Info label="Issuer" value={ISSUER_LABEL[group.issuer] || group.issuer} theme={theme} />
+          <Info label="Type" value={CAT_LABEL[group.category]} theme={theme} />
+          {group.underlying ? <Info label="Tracks" value={group.underlying} theme={theme} /> : null}
+          {group.chains.map((c) => {
+            const a = group.byChain[c];
+            return c === "XLM" ? (
+              <Info key={c} label="Stellar issuer" value={`${a.code} · ${a.stellarIssuer.slice(0, 6)}…${a.stellarIssuer.slice(-6)}`} theme={theme} onPress={() => copy(a.stellarIssuer)} />
+            ) : (
+              <Info key={c} label={`Contract (${CHAIN_INFO[c].label})`} value={shortAddr(a.address)} theme={theme} onPress={() => copy(a.address)} />
+            );
+          })}
           {note ? <Text style={[styles.note, { color: theme.inactiveTx }]}>{note}</Text> : null}
         </View>
 
@@ -230,7 +252,7 @@ const RwaAsset = () => {
             This token is not a share. The issuer can freeze or claw it back, off-hours prices can differ from the
             exchange, and redeeming with the issuer may require their KYC.
           </Text>
-          <TouchableOpacity accessibilityRole="link" onPress={() => Linking.openURL(asset.termsUrl).catch(() => {})}>
+          <TouchableOpacity accessibilityRole="link" onPress={() => Linking.openURL(group.termsUrl).catch(() => {})}>
             <Text style={[styles.link, { color: theme.buttonColor }]}>Issuer terms</Text>
           </TouchableOpacity>
         </View>
@@ -268,7 +290,7 @@ const styles = StyleSheet.create({
   card: { marginHorizontal: 12, marginTop: 12, borderRadius: 14, padding: 14 },
   cardTitle: { fontSize: 14, fontWeight: "700", marginBottom: 6 },
   left: { alignSelf: "flex-start" },
-  hold: { fontSize: 15, fontWeight: "600" },
+  hold: { fontSize: 15, fontWeight: "600", marginBottom: 2 },
   info: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
   infoLabel: { fontSize: 13, marginRight: 10 },
   infoValue: { fontSize: 13, fontWeight: "600", flexShrink: 1, textAlign: "right" },

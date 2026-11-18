@@ -25,6 +25,9 @@ const ONDO_DOCS_MD = 'https://docs.ondo.finance/addresses.md';
 const ONDO_CSV_FALLBACK =
   'https://www.dropbox.com/scl/fi/qjfxyg748mx0dwi6up86d/EXTERNAL-Ondo-GM-Tokens-Ondo-GM-Tokens.csv?rlkey=n3no1w78wrah3umsl0nr9s77i&dl=1';
 const XSTOCKS_API = 'https://api.backed.fi/api/v1/token';
+const XSTOCKS_V2 = 'https://api.xstocks.fi/api/v2/public';
+// Trust Wallet token-assets repo (same source the app already uses for token icons).
+const TRUSTWALLET_ETH = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets';
 const HORIZON = 'https://horizon.stellar.org';
 
 const RPC = {
@@ -143,6 +146,8 @@ function makeEntry(o) {
     marketHours: o.marketHours,
     termsUrl: TERMS[o.issuer],
     regions: o.regions,
+    // Listing country of the underlying (ISO-2, e.g. "US", "DE"); null = not a listed security (gold, treasuries).
+    market: o.market || null,
   };
 }
 
@@ -213,6 +218,7 @@ async function loadOndo() {
           multiplier: { kind: 'ondo-svalue', oracle: ONDO_ORACLE[chain].toLowerCase() },
           marketHours: 'ondo-24-5',
           regions: 'ondo',
+          market: 'US', // Ondo Global Markets = US-listed stocks and ETFs
         }),
       );
     }
@@ -233,8 +239,26 @@ const XSTOCKS_ETF_TICKERS = new Set([
   'GBTC', 'ARKK', 'SCHD', 'JEPI', 'JEPQ', 'VYM', 'XLK', 'XLF', 'XLV', 'BIL', 'SHV', 'IEF',
 ]);
 
+// xStocks v2 public API: listing country of each underlying (underlying.exchange.country).
+// 100 per page (API maximum).
+async function loadXStocksCountries() {
+  const out = new Map();
+  for (let page = 0; page < 50; page += 1) {
+    const j = await httpGet(`${XSTOCKS_V2}/assets?page=${page}&pageSize=100`, false);
+    (j.nodes || []).forEach((n) => {
+      const c = n.underlying && n.underlying.exchange && n.underlying.exchange.country;
+      if (n.symbol) out.set(n.symbol, c ? String(c).toUpperCase() : null);
+    });
+    if (!j.page || !j.page.hasNextPage) break;
+    await sleep(150);
+  }
+  console.log(`  xStocks v2: listing country for ${out.size} products`);
+  return out;
+}
+
 async function loadXStocks(ondoEtfTickers) {
   console.log(`xStocks API: ${XSTOCKS_API}`);
+  const countries = await loadXStocksCountries();
   const json = await httpGet(XSTOCKS_API, false);
   const nodes = json.nodes || [];
   if (json.page && json.page.hasNextPage) console.warn('  ! API says more pages exist; only page 0 used');
@@ -285,6 +309,8 @@ async function loadXStocks(ondoEtfTickers) {
           multiplier: { kind: 'xstocks-rebase', oracle: null },
           marketHours: 'xstocks',
           regions: 'xstocks',
+          // Unknown country: treat as non-US ("ZZ") so it stays out of the US default view.
+          market: countries.get(n.symbol) || 'ZZ',
         }),
       );
     }
@@ -303,12 +329,14 @@ function goldEntries() {
     makeEntry({
       id: 'PAXG-ETH', symbol: 'PAXG', name: 'PAX Gold', underlying: 'XAU', issuer: 'paxos',
       category: 'gold', chain: 'ETH', address: '0x45804880De22913dAFE09f4980848ECE6EcbAf78',
-      decimals: 18, logo: null, multiplier: none, marketHours: '24-7', regions: 'paxos',
+      decimals: 18, logo: `${TRUSTWALLET_ETH}/0x45804880De22913dAFE09f4980848ECE6EcbAf78/logo.png`,
+      multiplier: none, marketHours: '24-7', regions: 'paxos',
     }),
     makeEntry({
       id: 'XAUt-ETH', symbol: 'XAUt', name: 'Tether Gold', underlying: 'XAU', issuer: 'tether',
       category: 'gold', chain: 'ETH', address: '0x68749665FF8D2d112Fa859AA293F07A622782F38',
-      decimals: 6, logo: null, multiplier: none, marketHours: '24-7', regions: 'tether',
+      decimals: 6, logo: `${TRUSTWALLET_ETH}/0x68749665FF8D2d112Fa859AA293F07A622782F38/logo.png`,
+      multiplier: none, marketHours: '24-7', regions: 'tether',
     }),
   ];
 }
@@ -505,6 +533,7 @@ async function main() {
   console.log(`Validating ${unique.length} EVM entries on-chain...`);
   const validEvm = await validateEvm(unique);
   const stellar = await stellarEntries();
+  await checkLogos([...validEvm, ...stellar]);
 
   const all = [...validEvm, ...stellar].sort(
     (a, b) =>
@@ -530,11 +559,55 @@ async function main() {
   console.log(`wrote ${path.relative(process.cwd(), OUT_FILE)} (${(Buffer.byteLength(json) / 1024).toFixed(1)} KB)`);
 }
 
+// ---- Logos: every logo URL must load (HTTP 200, image). Ondo CSV sometimes points at another
+// token's file (AALon -> abton_…): then try Ondo's CDN name for the symbol. Broken -> null (letter avatar).
+async function urlOk(url) {
+  try {
+    const r = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(20000), headers: { 'User-Agent': 'curl/8.5.0' } });
+    return r.ok && /^image\//.test(r.headers.get('content-type') || 'image/');
+  } catch (e) {
+    return false;
+  }
+}
+
+async function checkLogos(entries) {
+  const urls = new Map(); // url -> ok
+  const fixes = { ondoRenamed: [], broken: [] };
+  const want = (e) => {
+    if (!e.logo) return [];
+    const list = [];
+    const mismatch = e.issuer === 'ondo' && !e.logo.toLowerCase().includes(e.symbol.toLowerCase());
+    if (!mismatch) list.push(e.logo);
+    if (e.issuer === 'ondo') list.push(`https://cdn.ondo.finance/tokens/logos/${e.symbol.toLowerCase()}_160x160.png`);
+    return list;
+  };
+  const all = Array.from(new Set(entries.flatMap(want)));
+  console.log(`Checking ${all.length} logo URLs...`);
+  for (let i = 0; i < all.length; i += 16) {
+    const part = all.slice(i, i + 16);
+    const res = await Promise.all(part.map(urlOk));
+    part.forEach((u, k) => urls.set(u, res[k]));
+  }
+  for (const e of entries) {
+    if (!e.logo) continue;
+    const ok = want(e).find((u) => urls.get(u));
+    if (!ok) {
+      fixes.broken.push(e.id);
+      e.logo = null;
+    } else if (ok !== e.logo) {
+      fixes.ondoRenamed.push(e.id);
+      e.logo = ok;
+    }
+  }
+  console.log(`  logos fixed from symbol name: ${fixes.ondoRenamed.join(' ') || 'none'}`);
+  console.log(`  logos broken -> letter avatar (${fixes.broken.length}): ${fixes.broken.slice(0, 40).join(' ')}`);
+}
+
 // ---- Compact output (the app bundles this file; src/rwa/data/assets.js expands it) ----
 // Per-issuer fields (termsUrl, regions, marketHours, multiplier kind, oracle per chain) are stored
 // once; rows are arrays; the same token on several chains is one row; logo URLs use a prefix table.
 // Row: [symbol, name, underlying, issuer, category, "ETH|BSC", "addrETH|addrBSC" (or one shared
-// address, or "CODE:ISSUER" for Stellar), decimals, "prefixIndex:file" | null]
+// address, or "CODE:ISSUER" for Stellar), decimals, "prefixIndex:file" | null, market | null]
 function compact(all) {
   const issuers = {};
   for (const e of all) {
@@ -571,7 +644,7 @@ function compact(all) {
   const rows = [];
   for (const g of groups.values()) {
     const e = g[0];
-    if (g.some((x) => x.name !== e.name || x.decimals !== e.decimals || x.category !== e.category)) {
+    if (g.some((x) => x.name !== e.name || x.decimals !== e.decimals || x.category !== e.category || x.market !== e.market)) {
       g.forEach((x) => rows.push(rowOf([x])));
     } else rows.push(rowOf(g));
   }
@@ -579,7 +652,7 @@ function compact(all) {
     const e = g[0];
     const addrs = g.map((x) => (x.chain === 'XLM' ? `${x.code}:${x.stellarIssuer}` : x.address));
     const addr = addrs.every((a) => a === addrs[0]) ? addrs[0] : addrs.join('|');
-    return [e.symbol, e.name, e.underlying || null, e.issuer, e.category, g.map((x) => x.chain).join('|'), addr, e.decimals, logo(e)];
+    return [e.symbol, e.name, e.underlying || null, e.issuer, e.category, g.map((x) => x.chain).join('|'), addr, e.decimals, logo(e), e.market || null];
   }
   return { v: 2, issuers, logoPrefixes: prefixes, rows };
 }

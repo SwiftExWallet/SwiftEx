@@ -38,6 +38,15 @@ export const ChainBadge = ({ chain, theme }) => (
   </View>
 );
 
+// Several chains in one badge: "ETH · BNB".
+export const ChainsBadge = ({ chains, theme }) => (
+  <View style={[styles.badge, { borderColor: theme.inactiveTx }]}>
+    <Text style={[styles.badgeTxt, { color: theme.inactiveTx }]}>
+      {chains.length === 1 && CHAIN_INFO[chains[0]] ? CHAIN_INFO[chains[0]].label : chains.map((c) => (CHAIN_INFO[c] ? CHAIN_INFO[c].short : c)).join(" · ")}
+    </Text>
+  </View>
+);
+
 const STATUS_COLOR = (theme, status) =>
   status === "core" || status === "24-7"
     ? theme.success
