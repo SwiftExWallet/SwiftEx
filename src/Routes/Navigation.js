@@ -16,6 +16,10 @@ import { CoinDetails } from "../Dashboard/CoinDetail";
 import Market from "../Dashboard/Market";
 import PerpsMarket from "../perps/screens/PerpsMarket";
 import { PERPS_ENABLED } from "../perps/config";
+import { RWA_ENABLED } from "../rwa/config";
+import RwaHome from "../rwa/screens/RwaHome";
+import RwaAsset from "../rwa/screens/RwaAsset";
+import RwaTrade from "../rwa/screens/RwaTrade";
 import { TxDetail } from "../Dashboard/TxDetail";
 import Welcome from "../Dashboard/Welcome";
 import Passcode from "../Dashboard/Passcode";
@@ -140,6 +144,11 @@ const AuthStack = () => {
           }}
         />
       )}
+
+      {/* RWA (tokenized stocks / gold / treasuries): dev builds only, see src/rwa/config.js. */}
+      {RWA_ENABLED && <Stack.Screen name="RwaHome" component={RwaHome} options={{ headerShown: false }} />}
+      {RWA_ENABLED && <Stack.Screen name="RwaAsset" component={RwaAsset} options={{ headerShown: false }} />}
+      {RWA_ENABLED && <Stack.Screen name="RwaTrade" component={RwaTrade} options={{ headerShown: false }} />}
 
       <Stack.Screen
         name="Settings"

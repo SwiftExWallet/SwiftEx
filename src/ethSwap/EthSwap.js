@@ -37,6 +37,7 @@ import { GetFusionSwapQuote, PerformeFusionPlusNativeSwap, PerformeFusionSwap, i
 import { getSafeErrorMessage } from '../utilities/errorSanitizer';
 import { assertUniswapTxs, assertSwapFees, assertFusionOrder } from '../utilities/swapGuard';
 import { ENVIRONMENT } from '../Dashboard/constants';
+import RwaSwapEntry from '../rwa/components/RwaSwapEntry';
 
 const NATIVE_GAS_RESERVE = {
   ETH: 0.003,
@@ -1402,6 +1403,7 @@ const EthSwap = () => {
   return (
     <View style={styles.mainCon}>
       <Wallet_screen_header title="Swap" onLeftIconPress={() => navigation.goBack()} />
+      <RwaSwapEntry />
       <ScrollView>
         <View style={styles.container}>
           <View style={styles.card}>
