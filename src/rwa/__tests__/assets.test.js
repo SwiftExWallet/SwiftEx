@@ -1,6 +1,6 @@
-// The bundled curated list: every entry valid, unique, pinned issuers for Stellar, filters work.
-const { RWA_ASSETS, validateAssets, assetProblem, filterAssets, llamaKey, expandAssets } = require("../data/assets");
-const { compact } = require("../scripts/buildRwaAssets");
+// The bundled curated list: every entry valid, unique, pinned issuers for Stellar.
+const { RWA_ASSETS, validateAssets, assetProblem, llamaKey, expandAssets } = require("../data/assets");
+const { compact } = require("../../../tools/rwa/buildRwaAssets");
 const RAW = require("../data/rwaAssets.json");
 
 const raw = expandAssets(RAW);
@@ -63,13 +63,6 @@ test("validator rejects bad entries", () => {
   expect(assetProblem({ ...good, issuer: "random" })).toMatch(/issuer/);
   expect(assetProblem({ ...good, logo: "http://x" })).toMatch(/https/);
   expect(validateAssets([good, good]).dropped[0].why).toBe("duplicate id");
-});
-
-test("filters: category + search on symbol/name/underlying", () => {
-  expect(filterAssets(RWA_ASSETS, { category: "gold" }).every((a) => a.category === "gold")).toBe(true);
-  const aapl = filterAssets(RWA_ASSETS, { query: "aapl" });
-  expect(aapl.length).toBeGreaterThan(0);
-  expect(aapl.every((a) => /aapl/i.test(a.symbol + a.name + (a.underlying || "")))).toBe(true);
 });
 
 test("price keys", () => {

@@ -13,6 +13,3 @@ export const isAssetAllowed = (asset, country) => {
 };
 
 export const visibleAssets = (assets, country) => (assets || []).filter((a) => isAssetAllowed(a, country));
-
-// RWA is shown at all only if at least one asset is allowed for the country.
-export const isRwaVisibleFor = (assets, country) => visibleAssets(assets, country).length > 0;

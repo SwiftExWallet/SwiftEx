@@ -117,7 +117,7 @@ describe("executeOrder (mocked backend/signer, real captured BNB order)", () => 
     const r = await executeOrder(params());
     expect(r.stage).toBe("failed");
     expect(r.error).toMatch(/nothing was signed/i);
-    expect(r.guardInfo.reason).toMatch(/different token/);
+    expect(r).not.toHaveProperty("guardInfo"); // no order details kept on the record
     expect(NativeModules.TransactionSigner.signTypedData).not.toHaveBeenCalled();
   });
 
@@ -125,7 +125,6 @@ describe("executeOrder (mocked backend/signer, real captured BNB order)", () => 
     api.proxyRequest.mockResolvedValueOnce(built({ orderHash: "0x" + "22".repeat(32) }));
     const r = await executeOrder(params());
     expect(r.stage).toBe("failed");
-    expect(r.guardInfo.reason).toMatch(/hash doesn't match/);
     expect(assertFusionOrder).not.toHaveBeenCalled();
     expect(NativeModules.TransactionSigner.signTypedData).not.toHaveBeenCalled();
   });

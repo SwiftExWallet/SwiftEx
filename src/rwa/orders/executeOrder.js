@@ -17,10 +17,8 @@ import { loadOrders, upsertOrder, renameOrder } from "./orderStore";
 
 let inFlight = false; // one order at a time in this app session (double-tap guard)
 
-const errText = (e, fallback) => {
-  const m = e && (e.message || (typeof e === "string" ? e : ""));
-  return m ? String(m).slice(0, 160) : fallback;
-};
+// Users only see friendly text; raw server / 1inch messages are never shown or stored.
+const PREPARE_FAILED = "Couldn't prepare the order. Nothing was signed or sent — please try again.";
 
 // params: { wallet, asset, side, payToken, amountUnits, amountText, quote, summary, quotedAt, groupKey }
 // onUpdate(record) is called on every stage change. Resolves to the final record of this call
@@ -85,9 +83,9 @@ export const executeOrder = async (params, onUpdate = () => {}) => {
     }
 
     const built = await proxyRequest("/v1/swap/1inch/buildFusionOrder", PPOST, { quote, ...req });
-    if (built.err && (built.err.status || built.err.message)) return fail(`Couldn't prepare the order: ${errText(built.err, "server error")}`);
+    if (built.err && (built.err.status || built.err.message)) return fail(PREPARE_FAILED);
     const typedData = built.res && built.res.typedData;
-    if (!typedData || !built.res.orderHash) return fail("Couldn't prepare the order: incomplete answer from the server.");
+    if (!typedData || !built.res.orderHash) return fail(PREPARE_FAILED);
     let checked;
     try {
       // 1) RWA-only stricter check: order hash, extension bound to the salt, and — when the order
@@ -113,16 +111,7 @@ export const executeOrder = async (params, onUpdate = () => {}) => {
         crossChain: false,
         minTakingAmount: summary.minReceived,
       });
-    } catch (guard) {
-      // Public order fields only (no signature exists yet) — helps the backend team see what differed.
-      record.guardInfo = {
-        receiver: typedData.message && typedData.message.receiver,
-        makerAsset: typedData.message && typedData.message.makerAsset,
-        takerAsset: typedData.message && typedData.message.takerAsset,
-        verifyingContract: typedData.domain && typedData.domain.verifyingContract,
-        hasExtension: !!(built.res.extension && built.res.extension !== "0x"),
-      };
-      record.guardInfo.reason = errText(guard, "unexpected order");
+    } catch {
       return fail("This order didn't pass our safety check, so nothing was signed or sent. Please try again later.");
     }
 
@@ -139,7 +128,7 @@ export const executeOrder = async (params, onUpdate = () => {}) => {
     await step({ stage: "approving" });
     const allow = await ensureFusionAllowance(req.tokenIn, wallet, String(amountUnits), info.appKey, info.chainId);
     if (!allow || allow.status !== true) {
-      return fail(`Approval failed: ${errText(allow && allow.error, "not enough gas?")}. The order was not sent.`);
+      return fail("The approval didn't go through (is there enough for the network fee?). The order was not sent.");
     }
     if (allow.txHash) record.approveTx = allow.txHash;
 
@@ -166,7 +155,7 @@ export const executeOrder = async (params, onUpdate = () => {}) => {
     if (sub.err) {
       // Unknown whether the relayer accepted it: keep tracking by hash until expiry (no resend).
       const oldId = record.id;
-      record = { ...record, id: built.res.orderHash, orderHash: built.res.orderHash, stage: "submitted", error: `Submit answer: ${errText(sub.err, "error")}` };
+      record = { ...record, id: built.res.orderHash, orderHash: built.res.orderHash, stage: "submitted" };
       await renameOrder(wallet, oldId, record);
       onUpdate(record);
       return record;
@@ -197,7 +186,7 @@ export const executeOrder = async (params, onUpdate = () => {}) => {
     }
     return record;
   } catch (e) {
-    return fail(errText(e, "Something went wrong. Nothing was sent."));
+    return fail("Something went wrong. If nothing was signed, nothing was sent.");
   } finally {
     inFlight = false;
   }

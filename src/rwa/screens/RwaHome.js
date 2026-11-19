@@ -15,7 +15,7 @@ import { hasAttested, saveAttestation } from "../storage/attestation";
 import AttestationSheet from "../components/AttestationSheet";
 import { useOrderTracker } from "../orders/useOrderTracker";
 import { isFinal } from "../orders/orderState";
-import { useRwaTheme, RwaLogo, RwaHeader, DevBanner } from "../components/ui";
+import { useRwaTheme, RwaLogo, RwaHeader } from "../components/ui";
 
 // Row: logo · ticker · name · price · 24h %. Market text only when trading is not open.
 const AssetRow = React.memo(({ group, theme, price, closed, onPress }) => (
@@ -143,7 +143,6 @@ const RwaHome = () => {
 
   const header = (
     <View>
-      {__DEV__ ? <DevBanner theme={theme} text={`Dev build · real orders · country ${country || "?"}`} /> : null}
       {!holdLoading && shownHeld.length > 0 ? (
         <View style={styles.block}>
           <Text style={[styles.secTitle, { color: theme.headingTx }]}>Your holdings</Text>

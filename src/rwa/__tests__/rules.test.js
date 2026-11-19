@@ -1,7 +1,7 @@
 // Region rules, trade rules, amount math, error mapping, quote request/summary.
 jest.mock("../../Dashboard/exchange/crypto-exchange-front-end-main/src/api", () => ({ PPOST: jest.fn(), proxyRequest: jest.fn() }));
 
-const { isAssetAllowed, visibleAssets, isRwaVisibleFor } = require("../regions");
+const { isAssetAllowed, visibleAssets } = require("../regions");
 const { payOptionsFor, tradeChecks } = require("../utils/tradeRules");
 const A = require("../utils/amounts");
 const { mapQuoteError } = require("../utils/quoteErrors");
@@ -17,7 +17,7 @@ describe("regions", () => {
     expect(isAssetAllowed(ondo, "")).toBe(false);
     expect(isAssetAllowed(ondo, null)).toBe(false);
     expect(isAssetAllowed(ondo, "IND")).toBe(false);
-    expect(isRwaVisibleFor([ondo, xs, paxg], "")).toBe(false);
+    expect(visibleAssets([ondo, xs, paxg], "")).toHaveLength(0);
   });
   test("India allowed for all; US blocked for all", () => {
     expect(visibleAssets([ondo, xs, paxg], "in")).toHaveLength(3);
@@ -135,7 +135,8 @@ describe("quote request + summary", () => {
   test("getRwaQuote maps backend errors and never throws", async () => {
     api.proxyRequest.mockResolvedValueOnce({ err: { status: 451, message: "restricted" } });
     const r = await getRwaQuote({ side: "buy", asset: xs, payToken: usdcBsc, amountUnits: "1", wallet: "0xabc" });
-    expect(r).toMatchObject({ ok: false, error: { code: "region" }, raw: { status: 451 } });
+    expect(r).toMatchObject({ ok: false, error: { code: "region" }, status: 451 });
+    expect(JSON.stringify(r)).not.toMatch(/restricted/); // raw server text is not kept
     expect(api.proxyRequest.mock.calls[0][0]).toBe("/v1/swap/1inch/getSwapQuote");
     api.proxyRequest.mockResolvedValueOnce({ res: { presets: null } });
     const r2 = await getRwaQuote({ side: "buy", asset: xs, payToken: usdcBsc, amountUnits: "1", wallet: "0xabc" });

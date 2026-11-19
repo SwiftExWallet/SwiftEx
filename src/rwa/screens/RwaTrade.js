@@ -23,7 +23,7 @@ import { payOptionsFor, tradeChecks } from "../utils/tradeRules";
 import { quoteFigures, smallEthOrder } from "../utils/quoteMath";
 import { QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS, closedText, usdToSpend, spendToUsd, pickRoute, rateText, amountError } from "../utils/swapForm";
 import { APPROVE_GAS, CHAIN_INFO, RWA_TRADING_ENABLED } from "../config";
-import { useRwaTheme, RwaHeader, DevBanner, RwaLogo } from "../components/ui";
+import { useRwaTheme, RwaHeader, RwaLogo } from "../components/ui";
 import ReviewSheet from "../components/ReviewSheet";
 import ProgressSheet from "../components/ProgressSheet";
 import { executeOrder } from "../orders/executeOrder";
@@ -352,7 +352,6 @@ const RwaTrade = () => {
     <View style={[styles.wrap, { backgroundColor: theme.bg }]}>
       <RwaHeader title={title} theme={theme} onBack={() => navigation.goBack()} />
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
-        {__DEV__ ? <DevBanner theme={theme} text="Dev build · real orders with real funds." /> : null}
 
         {/* You pay */}
         <View style={[styles.box, { backgroundColor: theme.cardBg }]}>
@@ -435,7 +434,6 @@ const RwaTrade = () => {
         {result && !result.ok ? (
           <Text style={[styles.err, styles.errPad, { color: theme.fail }]}>
             {result.error.text}
-            {__DEV__ ? `  (dev: HTTP ${String(result.raw.status)})` : ""}
           </Text>
         ) : null}
 

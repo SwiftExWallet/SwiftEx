@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /*
- * Dev-only script: builds src/rwa/data/rwaAssets.json (curated RWA token list).
+ * Maintenance script: builds src/rwa/data/rwaAssets.json (curated RWA token list).
  *
  * Run from the repo root with plain Node 22 (no npm packages, uses global fetch):
- *   ~/.nvm/versions/node/v22.23.5/bin/node src/rwa/scripts/buildRwaAssets.js
+ *   ~/.nvm/versions/node/v22.23.5/bin/node tools/rwa/buildRwaAssets.js
  *
  * Sources (read-only GET requests + eth_call; nothing is signed or sent):
  *   - Ondo Stocks: CSV linked from https://docs.ondo.finance/addresses (Dropbox)
@@ -12,13 +12,13 @@
  *   - Stellar:     USDY (Ondo) + CETES (Etherfuse) (hard-coded, checked on Horizon)
  * Every EVM address is checked on-chain (symbol() + decimals()); mismatches are dropped.
  *
- * Not bundled into the app (lives under scripts/ and is only run by hand).
+ * Not bundled into the app (lives in tools/, outside src/, and is only run by hand).
  */
 
 const fs = require('fs');
 const path = require('path');
 
-const OUT_FILE = path.join(__dirname, '..', 'data', 'rwaAssets.json');
+const OUT_FILE = path.join(__dirname, '..', '..', 'src', 'rwa', 'data', 'rwaAssets.json');
 
 const ONDO_DOCS_MD = 'https://docs.ondo.finance/addresses.md';
 // Fallback if the docs page can't be parsed. dl=1 makes Dropbox return the raw file.

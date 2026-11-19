@@ -14,16 +14,16 @@ export const buildQuoteRequest = ({ side, asset, payToken, amountUnits, wallet }
   chain: CHAIN_INFO[asset.chain].backend,
 });
 
-// -> { ok: true, quote, summary } | { ok: false, error: { code, text }, raw: { status, message } }
+// -> { ok: true, quote, summary } | { ok: false, error: { code, text }, status }  (HTTP status only; raw server text is never kept)
 export const getRwaQuote = async (params) => {
   const body = buildQuoteRequest(params);
   const { res, err } = await proxyRequest("/v1/swap/1inch/getSwapQuote", PPOST, body);
   if (err && (err.status || err.message)) {
-    return { ok: false, error: mapQuoteError(err), raw: { status: err.status, message: err.message } };
+    return { ok: false, error: mapQuoteError(err), status: err.status };
   }
   const summary = summarizeQuote(res);
   if (!summary) {
-    return { ok: false, error: { code: "unsupported", text: "This token isn't available through our swap provider yet." }, raw: { status: 200, message: "no presets in quote" } };
+    return { ok: false, error: { code: "unsupported", text: "This token isn't available through our swap provider yet." }, status: 200 };
   }
   return { ok: true, quote: res, summary };
 };
