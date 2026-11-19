@@ -8,31 +8,30 @@ import { buildGroups, partitionGroups, listRows, CHIPS, CHIP_LABELS } from "../d
 import { loadPrices, getCachedPrice } from "../api/prices";
 import { loadXStatuses, getCachedXStatus } from "../api/xstocksStatus";
 import { assetMarketStatus } from "../utils/marketHours";
-import { fmtUsd, fmtPct, fmtAmount } from "../utils/amounts";
+import { closedText, fmtHolding, isDust } from "../utils/swapForm";
+import { fmtUsd, fmtPct } from "../utils/amounts";
 import { useRwaHoldings } from "../hooks/useRwaHoldings";
 import { hasAttested, saveAttestation } from "../storage/attestation";
 import AttestationSheet from "../components/AttestationSheet";
-import OrderCard from "../components/OrderCard";
 import { useOrderTracker } from "../orders/useOrderTracker";
 import { isFinal } from "../orders/orderState";
-import { useRwaTheme, RwaLogo, ChainsBadge, StatusBadge, RwaHeader, DevBanner } from "../components/ui";
+import { useRwaTheme, RwaLogo, RwaHeader, DevBanner } from "../components/ui";
 
-const AssetRow = React.memo(({ group, theme, price, status, onPress }) => (
-  <TouchableOpacity accessibilityRole="button" accessibilityLabel={`${group.symbol} ${group.name}`} onPress={() => onPress(group)} style={[styles.row, { backgroundColor: theme.cardBg }]}>
+// Row: logo · ticker · name · price · 24h %. Market text only when trading is not open.
+const AssetRow = React.memo(({ group, theme, price, closed, onPress }) => (
+  <TouchableOpacity accessibilityRole="button" accessibilityLabel={`${group.symbol} ${group.name}`} onPress={() => onPress(group)} style={styles.row}>
     <RwaLogo asset={group} size={38} theme={theme} />
     <View style={styles.rowMid}>
-      <View style={styles.rowLine}>
-        <Text style={[styles.sym, { color: theme.headingTx }]} numberOfLines={1}>{group.symbol}</Text>
-        <ChainsBadge chains={group.chains} theme={theme} />
-      </View>
+      <Text style={[styles.sym, { color: theme.headingTx }]} numberOfLines={1}>{group.symbol}</Text>
       <Text style={[styles.name, { color: theme.inactiveTx }]} numberOfLines={1}>{group.name}</Text>
     </View>
     <View style={styles.rowRight}>
       <Text style={[styles.price, { color: theme.headingTx }]}>{price && price.price != null ? fmtUsd(price.price) : "—"}</Text>
-      {price && price.change24h != null ? (
+      {closed ? (
+        <Text style={[styles.closed, { color: theme.inactiveTx }]} numberOfLines={1}>{closed}</Text>
+      ) : price && price.change24h != null ? (
         <Text style={[styles.chg, { color: price.change24h >= 0 ? theme.success : theme.fail }]}>{fmtPct(price.change24h)}</Text>
       ) : null}
-      <StatusBadge status={status.status} label={status.label} theme={theme} />
     </View>
   </TouchableOpacity>
 ));
@@ -69,10 +68,11 @@ const RwaHome = () => {
     const t = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(t);
   }, [focused]);
-  const statusByHours = useMemo(() => {
+  // Closed text per market-hours kind (null = open). xStocks use the API status per symbol.
+  const closedByHours = useMemo(() => {
     const out = {};
-    ["ondo-24-5", "xstocks", "24-7"].forEach((k) => {
-      out[k] = assetMarketStatus({ marketHours: k }, now);
+    ["ondo-24-5", "24-7"].forEach((k) => {
+      out[k] = closedText(assetMarketStatus({ marketHours: k }, now), now, true);
     });
     return out;
   }, [now]);
@@ -81,7 +81,6 @@ const RwaHome = () => {
   const groups = useMemo(() => buildGroups(assets), [assets]);
   const parts = useMemo(() => partitionGroups(groups), [groups]);
   const rows = useMemo(() => listRows(parts, { chip, query }), [parts, chip, query]);
-  const assetCount = useMemo(() => rows.filter((r) => r.type === "asset").length, [rows]);
 
   // Prices + xStocks status only for rows on screen (+ holdings), batched.
   const pending = useRef(new Set());
@@ -106,12 +105,10 @@ const RwaHome = () => {
   }).current;
 
   const { orders } = useOrderTracker(evm, focused && attest === true);
-  const recentOrders = useMemo(
-    () => orders.filter((o) => !isFinal(o.stage) || Date.now() - (o.doneAt || o.createdAt) < (o.stage === "failed" ? 10 * 60 * 1000 : 24 * 3600 * 1000)).slice(0, 3),
-    [orders]
-  );
+  // Only orders still in progress are shown here (finished ones show in the trade's success sheet).
+  const openOrders = useMemo(() => orders.filter((o) => !isFinal(o.stage) && (!o.expiresAt || Date.now() <= o.expiresAt)).slice(0, 2), [orders]);
   const filledCount = orders.filter((o) => o.stage === "filled").length;
-  const { holdings, loading: holdLoading, error: holdError } = useRwaHoldings(assets, evm, stellar, focused && attest === true, filledCount);
+  const { holdings, loading: holdLoading } = useRwaHoldings(assets, evm, stellar, focused && attest === true, filledCount);
   // Holdings per group (sum over chains, human units).
   const held = useMemo(() => {
     const out = [];
@@ -125,57 +122,61 @@ const RwaHome = () => {
     if (held.length) requestPrices(held.map((h) => llamaKey(h.group.primary)));
   }, [held, requestPrices]);
 
+  // Hide leftovers worth under a cent (e.g. rounding dust after selling everything).
+  const shownHeld = held.filter((h) => {
+    const p = getCachedPrice(llamaKey(h.group.primary));
+    return !isDust(h.total, p && p.price);
+  });
+
   const open = useCallback((g) => navigation.navigate("RwaAsset", { key: g.key }), [navigation]);
-  const statusOf = (g) => {
-    if (g.issuer === "xstocks") return getCachedXStatus(g.symbol) || { status: "closed", label: "…", open: false };
-    return statusByHours[g.marketHours] || statusByHours["24-7"];
+  const closedOf = (g) => {
+    if (g.issuer === "xstocks") return closedText(getCachedXStatus(g.symbol), now, false);
+    return g.marketHours in closedByHours ? closedByHours[g.marketHours] : closedByHours["24-7"];
   };
 
   const renderItem = ({ item }) =>
     item.type === "header" ? (
       <Text style={[styles.section, { color: theme.headingTx }]}>{item.title}</Text>
     ) : (
-      <AssetRow group={item.group} theme={theme} price={getCachedPrice(llamaKey(item.group.primary))} status={statusOf(item.group)} onPress={open} />
+      <AssetRow group={item.group} theme={theme} price={getCachedPrice(llamaKey(item.group.primary))} closed={closedOf(item.group)} onPress={open} />
     );
 
   const header = (
     <View>
-      <DevBanner theme={theme} text={`Dev build · real orders · country ${country || "?"}`} />
-      <View style={styles.block}>
-        <Text style={[styles.secTitle, { color: theme.headingTx }]}>Your holdings</Text>
-        {holdLoading ? (
-          <ActivityIndicator color={theme.buttonColor} style={styles.holdLoad} />
-        ) : held.length === 0 ? (
-          <Text style={[styles.empty, { color: theme.inactiveTx }]}>
-            {holdError ? "Couldn't check your balances right now." : "You don't hold any tokenized assets yet."}
-          </Text>
-        ) : (
-          held.map(({ group: g, total }) => {
+      {__DEV__ ? <DevBanner theme={theme} text={`Dev build · real orders · country ${country || "?"}`} /> : null}
+      {!holdLoading && shownHeld.length > 0 ? (
+        <View style={styles.block}>
+          <Text style={[styles.secTitle, { color: theme.headingTx }]}>Your holdings</Text>
+          {shownHeld.map(({ group: g, total }) => {
             const p = getCachedPrice(llamaKey(g.primary));
             const value = p && p.price != null ? total * p.price : null;
             return (
               <TouchableOpacity key={g.key} onPress={() => open(g)} style={styles.holdRow} accessibilityRole="button">
-                <RwaLogo asset={g} size={28} theme={theme} />
-                <Text style={[styles.holdSym, { color: theme.headingTx }]}>{g.symbol}</Text>
-                <ChainsBadge chains={g.chains.filter((c) => holdings[g.byChain[c].id])} theme={theme} />
-                <Text style={[styles.holdAmt, { color: theme.inactiveTx }]}>{fmtAmount(String(total), 4)}</Text>
+                <RwaLogo asset={g} size={32} theme={theme} />
+                <View style={styles.rowMid}>
+                  <Text style={[styles.sym, { color: theme.headingTx }]}>{g.symbol}</Text>
+                  <Text style={[styles.name, { color: theme.inactiveTx }]}>{fmtHolding(total, 6)}</Text>
+                </View>
                 <Text style={[styles.holdVal, { color: theme.headingTx }]}>{value != null ? fmtUsd(value) : "—"}</Text>
               </TouchableOpacity>
             );
-          })
-        )}
-        {!holdLoading && held.length > 0 && holdError ? (
-          <Text style={[styles.empty, { color: theme.warn }]}>Some balances couldn't be checked.</Text>
-        ) : null}
-      </View>
-      {recentOrders.length ? (
-        <View style={styles.ordersBlock}>
-          <Text style={[styles.secTitle, styles.ordersTitle, { color: theme.headingTx }]}>Recent orders</Text>
-          {recentOrders.map((o) => (
-            <OrderCard key={o.id} record={o} theme={theme} onPress={o.groupKey ? () => navigation.navigate("RwaAsset", { key: o.groupKey }) : undefined} />
-          ))}
+          })}
         </View>
       ) : null}
+      {openOrders.map((o) => (
+        <TouchableOpacity
+          key={o.id}
+          accessibilityRole="button"
+          onPress={o.groupKey ? () => navigation.navigate("RwaTrade", { key: o.groupKey, side: o.side, orderId: o.id }) : undefined}
+          style={[styles.pending, { backgroundColor: theme.cardBg }]}
+        >
+          <ActivityIndicator size="small" color={theme.buttonColor} />
+          <Text style={[styles.pendingTxt, { color: theme.headingTx }]} numberOfLines={1}>
+            {o.side === "buy" ? "Buying" : "Selling"} {o.symbol}…
+          </Text>
+          <Text style={[styles.pendingSub, { color: theme.inactiveTx }]}>Usually under a minute</Text>
+        </TouchableOpacity>
+      ))}
       <View style={[styles.search, { backgroundColor: theme.cardBg }]}>
         <TextInput
           value={query}
@@ -200,9 +201,6 @@ const RwaHome = () => {
           </TouchableOpacity>
         ))}
       </View>
-      <Text style={[styles.count, { color: theme.inactiveTx }]}>
-        {assetCount} assets{query ? " (searching all markets)" : ""}
-      </Text>
     </View>
   );
 
@@ -214,7 +212,7 @@ const RwaHome = () => {
           data={rows}
           keyExtractor={(r) => r.key}
           renderItem={renderItem}
-          extraData={[tick, statusByHours]}
+          extraData={[tick, closedByHours]}
           ListHeaderComponent={header}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
@@ -224,7 +222,7 @@ const RwaHome = () => {
           viewabilityConfig={{ itemVisiblePercentThreshold: 10, minimumViewTime: 150 }}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.listPad}
-          ListEmptyComponent={<Text style={[styles.empty, styles.emptyList, { color: theme.inactiveTx }]}>No assets match.</Text>}
+          ListEmptyComponent={<Text style={[styles.emptyList, { color: theme.inactiveTx }]}>No matches.</Text>}
         />
       ) : (
         <View style={styles.center}>{attest === null ? <ActivityIndicator color={theme.buttonColor} /> : null}</View>
@@ -248,30 +246,26 @@ const styles = StyleSheet.create({
   wrap: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   listPad: { paddingBottom: 40 },
-  block: { marginHorizontal: 12, marginBottom: 10 },
-  ordersBlock: { marginBottom: 10 },
-  ordersTitle: { marginHorizontal: 12 },
-  secTitle: { fontSize: 16, fontWeight: "700", marginBottom: 6 },
-  section: { fontSize: 15, fontWeight: "800", marginHorizontal: 12, marginTop: 8, marginBottom: 8 },
-  holdLoad: { alignSelf: "flex-start", marginVertical: 6 },
-  empty: { fontSize: 13 },
-  emptyList: { textAlign: "center", marginTop: 30 },
-  holdRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6 },
-  holdSym: { fontSize: 14, fontWeight: "700", marginLeft: 8 },
-  holdAmt: { flex: 1, textAlign: "right", fontSize: 13, marginRight: 10 },
-  holdVal: { fontSize: 14, fontWeight: "600", minWidth: 70, textAlign: "right" },
-  search: { marginHorizontal: 12, borderRadius: 12, paddingHorizontal: 12, height: 44, justifyContent: "center" },
+  block: { marginHorizontal: 16, marginBottom: 12 },
+  secTitle: { fontSize: 16, fontWeight: "700", marginBottom: 4 },
+  section: { fontSize: 15, fontWeight: "800", marginHorizontal: 16, marginTop: 10, marginBottom: 4 },
+  emptyList: { textAlign: "center", marginTop: 30, fontSize: 13 },
+  holdRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8 },
+  holdVal: { fontSize: 15, fontWeight: "700", textAlign: "right" },
+  pending: { flexDirection: "row", alignItems: "center", marginHorizontal: 16, marginBottom: 10, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  pendingTxt: { flex: 1, fontSize: 14, fontWeight: "700", marginLeft: 10 },
+  pendingSub: { fontSize: 12 },
+  search: { marginHorizontal: 16, borderRadius: 12, paddingHorizontal: 12, height: 44, justifyContent: "center" },
   searchInput: { fontSize: 15, paddingVertical: 0 },
-  chips: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: 8, marginTop: 10 },
+  chips: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: 12, marginTop: 10, marginBottom: 4 },
   chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, margin: 4 },
   chipTxt: { fontSize: 13, fontWeight: "600" },
-  count: { fontSize: 12, marginHorizontal: 12, marginVertical: 6 },
-  row: { height: 68, marginHorizontal: 12, marginBottom: 8, borderRadius: 14, paddingHorizontal: 12, flexDirection: "row", alignItems: "center" },
-  rowMid: { flex: 1, marginLeft: 10, marginRight: 8 },
-  rowLine: { flexDirection: "row", alignItems: "center" },
-  sym: { fontSize: 15, fontWeight: "700", flexShrink: 1 },
+  row: { height: 64, marginHorizontal: 16, flexDirection: "row", alignItems: "center" },
+  rowMid: { flex: 1, marginLeft: 12, marginRight: 8 },
+  sym: { fontSize: 15, fontWeight: "700" },
   name: { fontSize: 12, marginTop: 2 },
-  rowRight: { alignItems: "flex-end" },
-  price: { fontSize: 14, fontWeight: "700" },
-  chg: { fontSize: 11, fontWeight: "600" },
+  rowRight: { alignItems: "flex-end", maxWidth: "42%" },
+  price: { fontSize: 15, fontWeight: "700" },
+  chg: { fontSize: 12, fontWeight: "600", marginTop: 2 },
+  closed: { fontSize: 11, marginTop: 3 },
 });

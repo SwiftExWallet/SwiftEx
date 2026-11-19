@@ -1,8 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Keyboard } from "react-native";
+// Buy / Sell as one simple swap screen (Trust-Wallet style): amount in USD, pay token + chain
+// picked automatically (changeable), auto-quote while typing, details collapsed, one button.
+// All safety checks are unchanged: review sheet (receiver = your wallet), executeOrder ->
+// fusionCheck + shared guard -> sign -> exact approval -> submit; duplicate/quote-age guards.
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Animated } from "react-native";
+import Modal from "react-native-modal";
 import { useSelector } from "react-redux";
 import { useNavigation, useRoute, useIsFocused } from "@react-navigation/native";
 import { ethers } from "ethers";
+import Icon from "../../icon";
 import { llamaKey } from "../data/assets";
 import { groupByKey } from "../data/groups";
 import { useRwaAvailability } from "../useRwaAvailability";
@@ -11,37 +17,41 @@ import { getRwaQuote } from "../api/quote";
 import { payTokenState, tokenBalance } from "../api/balances";
 import { loadPrices, getCachedPrice } from "../api/prices";
 import { assetMarketStatus } from "../utils/marketHours";
-import { getCachedXStatus } from "../api/xstocksStatus";
+import { loadXStatuses, getCachedXStatus } from "../api/xstocksStatus";
 import { cleanAmountInput, toUnits, fromUnits, gteUnits, fmtAmount, fmtUsd, nativeCostText } from "../utils/amounts";
 import { payOptionsFor, tradeChecks } from "../utils/tradeRules";
-import { quoteFigures, smallEthOrder, defaultChain } from "../utils/quoteMath";
+import { quoteFigures, smallEthOrder } from "../utils/quoteMath";
+import { QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS, closedText, usdToSpend, spendToUsd, pickRoute, rateText, amountError } from "../utils/swapForm";
 import { APPROVE_GAS, CHAIN_INFO, RWA_TRADING_ENABLED } from "../config";
-import { useRwaTheme, RwaHeader, DevBanner, StatusBadge } from "../components/ui";
+import { useRwaTheme, RwaHeader, DevBanner, RwaLogo } from "../components/ui";
 import ReviewSheet from "../components/ReviewSheet";
-import OrderCard from "../components/OrderCard";
+import ProgressSheet from "../components/ProgressSheet";
 import { executeOrder } from "../orders/executeOrder";
 import { useOrderTracker } from "../orders/useOrderTracker";
 import { quoteIsFresh, isFinal } from "../orders/orderState";
 
 const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "");
 
-const Row = ({ label, value, theme, color, sub }) => (
-  <View style={styles.row}>
-    <Text style={[styles.rowLabel, { color: theme.inactiveTx }]}>{label}</Text>
-    <View style={styles.rowRight}>
-      <Text style={[styles.rowValue, { color: color || theme.headingTx }]} numberOfLines={2}>{value}</Text>
-      {sub ? <Text style={[styles.rowSub, { color: theme.inactiveTx }]}>{sub}</Text> : null}
-    </View>
-  </View>
-);
+// Pulsing placeholder while a quote is loading.
+const Shimmer = ({ theme, width = 140 }) => {
+  const v = useRef(new Animated.Value(0.35)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(v, { toValue: 0.9, duration: 550, useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0.35, duration: 550, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [v]);
+  return <Animated.View style={[styles.shimmer, { width, opacity: v, backgroundColor: theme.inactiveTx }]} />;
+};
 
-const Seg = ({ options, value, onChange, theme }) => (
-  <View style={[styles.seg, { backgroundColor: theme.cardBg }]}>
-    {options.map((o) => (
-      <TouchableOpacity key={o.value} onPress={() => onChange(o.value)} style={[styles.segBtn, value === o.value && { backgroundColor: theme.buttonColor }]} accessibilityRole="button" accessibilityState={{ selected: value === o.value }}>
-        <Text style={[styles.segTxt, { color: value === o.value ? "#FFFFFF" : theme.inactiveTx }]}>{o.label}</Text>
-      </TouchableOpacity>
-    ))}
+const Detail = ({ label, value, theme, color }) => (
+  <View style={styles.dRow}>
+    <Text style={[styles.dLabel, { color: theme.inactiveTx }]}>{label}</Text>
+    <Text style={[styles.dValue, { color: color || theme.headingTx }]}>{value}</Text>
   </View>
 );
 
@@ -56,90 +66,174 @@ const RwaTrade = () => {
   const { country, checked } = useRwaAvailability(focused);
   const evmChains = useMemo(() => (group ? group.chains.filter((c) => c !== "XLM") : []), [group]);
   const allowed = !!group && evmChains.length > 0 && isAssetAllowed(group.primary, country);
+  const payByChain = useMemo(() => {
+    const out = {};
+    evmChains.forEach((c) => {
+      out[c] = payOptionsFor(group.byChain[c]);
+    });
+    return out;
+  }, [group, evmChains]);
 
-  const [chain, setChain] = useState(null); // picked chain; null until the default is known
-  const asset = group && chain ? group.byChain[chain] : null;
-  const payOptions = useMemo(() => (group ? payOptionsFor(group.primary) : []), [group]);
-  const [paySym, setPaySym] = useState(payOptions[0] ? payOptions[0].symbol : null);
-  const pay = asset ? payOptionsFor(asset).find((p) => p.symbol === paySym) || payOptionsFor(asset)[0] : null;
-  const [amount, setAmount] = useState("");
+  const [route, setRoute] = useState(null); // { chain, paySym }
+  const [routeBal, setRouteBal] = useState(null); // { [chain]: { [sym]: raw, asset: raw } }
+  const [picker, setPicker] = useState(false);
+  const [usd, setUsd] = useState("");
+  const [max, setMax] = useState(false);
   const [chainState, setChainState] = useState(null); // { balance, allowance, native, gasPrice }
-  const [chainErr, setChainErr] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [quotedAt, setQuotedAt] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [nonce, setNonce] = useState(0); // bump = refresh the quote for the same input
+  const [details, setDetails] = useState(false);
   const [review, setReview] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendErr, setSendErr] = useState(null);
-  const [currentId, setCurrentId] = useState(null);
-  const [, setPriceTick] = useState(0);
+  const [currentId, setCurrentId] = useState(params && params.orderId ? params.orderId : null);
+  const [liveRec, setLiveRec] = useState(null);
+  const [progress, setProgress] = useState(!!(params && params.orderId));
+  const [, setTick] = useState(0);
+  const openProgressAfterReview = useRef(false);
+  const reqId = useRef(0);
+  const lastKey = useRef("");
   const { orders } = useOrderTracker(wallet, focused);
-  const current = currentId ? orders.find((o) => o.id === currentId) : null;
+
+  const chain = route ? route.chain : null;
+  const asset = group && chain ? group.byChain[chain] : null;
+  const pay = asset ? (payByChain[chain] || []).find((p) => p.symbol === route.paySym) || (payByChain[chain] || [])[0] : null;
+  const inToken = !asset || !pay ? null : side === "buy" ? pay : { symbol: asset.symbol, address: asset.address, decimals: asset.decimals };
+  const outToken = !asset || !pay ? null : side === "buy" ? { symbol: asset.symbol, decimals: asset.decimals } : pay;
+  const info = chain ? CHAIN_INFO[chain] : null;
 
   useEffect(() => {
     if (checked && !allowed) navigation.goBack();
   }, [checked, allowed, navigation]);
 
-  // Default chain: where the wallet holds the most of what it would spend; else BNB Chain.
-  useEffect(() => {
-    if (!group || chain || !evmChains.length) return undefined;
-    let alive = true;
-    const pick = async () => {
-      const bal = {};
-      if (wallet) {
+  // Balances on every chain for every option -> automatic route (BNB preferred when nothing held).
+  const loadRouteBalances = async () => {
+    const raw = {};
+    await Promise.all(
+      evmChains.map(async (c) => {
+        raw[c] = {};
+        if (!wallet) return;
+        const toks = [...(payByChain[c] || []).map((p) => ({ key: p.symbol, t: p })), { key: "asset", t: group.byChain[c] }];
         await Promise.all(
-          evmChains.map(async (c) => {
+          toks.map(async ({ key, t }) => {
             try {
-              const tok = side === "buy" ? (payOptionsFor(group.byChain[c]).find((p) => p.symbol === paySym) || payOptionsFor(group.byChain[c])[0]) : group.byChain[c];
-              const raw = await tokenBalance(c, wallet, tok.address);
-              bal[c] = Number(fromUnits(raw, tok.decimals));
+              raw[c][key] = await tokenBalance(c, wallet, t.address);
             } catch (e) {
-              bal[c] = 0;
+              raw[c][key] = null;
             }
           })
         );
-      }
-      if (alive) setChain(defaultChain(evmChains, bal));
-    };
-    pick();
+      })
+    );
+    return raw;
+  };
+  const humanBalances = (raw) => {
+    const out = {};
+    Object.keys(raw || {}).forEach((c) => {
+      out[c] = {};
+      (payByChain[c] || []).forEach((p) => {
+        out[c][p.symbol] = raw[c][p.symbol] ? Number(fromUnits(raw[c][p.symbol], p.decimals)) : 0;
+      });
+      out[c].asset = raw[c].asset ? Number(fromUnits(raw[c].asset, group.byChain[c].decimals)) : 0;
+    });
+    return out;
+  };
+
+  useEffect(() => {
+    if (!group || !evmChains.length || !focused) return undefined;
+    let alive = true;
+    loadRouteBalances().then((raw) => {
+      if (!alive) return;
+      setRouteBal(raw);
+      setRoute((r) => r || pickRoute({ side, chains: evmChains, payOptionsByChain: payByChain, balances: humanBalances(raw) }));
+    });
+    loadPrices(evmChains.map((c) => llamaKey(group.byChain[c])).concat(evmChains.map((c) => CHAIN_INFO[c].nativePriceKey))).then(() => alive && setTick((t) => t + 1));
+    if (group.issuer === "xstocks") loadXStatuses([group.symbol]).then(() => alive && setTick((t) => t + 1));
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [group, wallet]);
+  }, [group, wallet, focused]);
 
-  // The token being spent: pay token on buy, the RWA token on sell.
-  const inToken = !asset || !pay ? null : side === "buy" ? pay : { symbol: asset.symbol, address: asset.address, decimals: asset.decimals };
-  const outToken = !asset || !pay ? null : side === "buy" ? { symbol: asset.symbol, decimals: asset.decimals } : pay;
-  const inTokenAddr = inToken ? inToken.address : null;
-
+  // Allowance / gas data for the chosen route.
+  const inAddr = inToken ? inToken.address : null;
   useEffect(() => {
-    if (!asset || !inToken || !wallet || !focused) return undefined;
+    if (!asset || !inAddr || !wallet || !focused) return undefined;
     let alive = true;
     setChainState(null);
-    setChainErr(false);
-    payTokenState(asset.chain, wallet, inToken.address)
+    payTokenState(asset.chain, wallet, inAddr)
       .then((s) => alive && setChainState(s))
-      .catch(() => alive && setChainErr(true));
-    loadPrices([llamaKey(asset), CHAIN_INFO[asset.chain].nativePriceKey]).then(() => alive && setPriceTick((t) => t + 1));
+      .catch(() => {});
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [asset, wallet, focused, inToken && inToken.address]);
+  }, [chain, inAddr, wallet, focused]);
 
-  useEffect(() => {
-    setResult(null);
-    setSendErr(null);
-  }, [amount, paySym, chain]);
+  // ---- derived amounts ----
+  const marketPx = asset ? getCachedPrice(llamaKey(asset)) : null;
+  const px = marketPx && marketPx.price ? marketPx.price : null;
+  const spend = !inToken
+    ? ""
+    : max && chainState
+    ? fromUnits(chainState.balance, inToken.decimals)
+    : usdToSpend({ side, usd, price: px, decimals: inToken.decimals });
+  const units = inToken && spend ? toUnits(spend, inToken.decimals) : null;
+  const checks = asset ? tradeChecks({ asset, side, amount: spend, unitPriceUsd: side === "buy" ? 1 : px }) : { error: null };
+  const insufficient = !!(chainState && units && !gteUnits(chainState.balance, units));
+  const needsApproval = chainState && units ? !gteUnits(chainState.allowance, units) : null;
+  const approveCost = chainState ? ethers.BigNumber.from(chainState.gasPrice).mul(APPROVE_GAS) : null;
+  const lowGas = !!(needsApproval && approveCost && ethers.BigNumber.from(chainState.native).lt(approveCost));
+  const err = inToken ? amountError({ ruleError: checks.error, insufficient, spendSymbol: inToken.symbol, lowGas, nativeSymbol: info.native }) : null;
 
-  // Refresh balances / allowance after an order finishes.
-  const currentFinal = current ? isFinal(current.stage) : false;
+  // ---- auto quote (debounced, stale answers dropped, refreshed before expiry) ----
+  const quoteKey = units && !checks.error && asset && pay ? `${chain}|${pay.symbol}|${side}|${units}` : "";
   useEffect(() => {
-    if (!currentFinal || !asset || !inTokenAddr || !wallet) return;
-    payTokenState(asset.chain, wallet, inTokenAddr).then(setChainState).catch(() => {});
+    const id = ++reqId.current;
+    const sameInput = quoteKey && quoteKey === lastKey.current;
+    lastKey.current = quoteKey;
+    if (!sameInput) {
+      setResult(null);
+      setSendErr(null);
+    }
+    if (!quoteKey || !focused) {
+      setLoading(false);
+      return undefined;
+    }
+    setLoading(true);
+    const t = setTimeout(
+      async () => {
+        const r = await getRwaQuote({ side, asset, payToken: pay, amountUnits: units, wallet });
+        if (id !== reqId.current) return; // a newer input/refresh replaced this one
+        setResult(r);
+        setQuotedAt(Date.now());
+        setLoading(false);
+      },
+      sameInput ? 0 : QUOTE_DEBOUNCE_MS
+    );
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFinal]);
+  }, [quoteKey, nonce, focused]);
+
+  useEffect(() => {
+    if (!result || !result.ok || review || sending || !focused) return undefined;
+    const t = setTimeout(() => setNonce((n) => n + 1), Math.max(1000, QUOTE_REFRESH_MS - (Date.now() - quotedAt)));
+    return () => clearTimeout(t);
+  }, [result, quotedAt, review, sending, focused]);
+
+  // ---- orders ----
+  const tracked = currentId ? orders.find((o) => o.id === currentId) : null;
+  const progressRec = tracked || (liveRec && (!currentId || liveRec.id === currentId) ? liveRec : null);
+  const openOrder = orders.find((o) => !isFinal(o.stage) && (!o.expiresAt || Date.now() <= o.expiresAt));
+  const progressFinal = progressRec ? isFinal(progressRec.stage) : false;
+  useEffect(() => {
+    if (!progressFinal || !asset || !inAddr || !wallet) return;
+    payTokenState(asset.chain, wallet, inAddr).then(setChainState).catch(() => {});
+    loadRouteBalances().then(setRouteBal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progressFinal]);
 
   if (!group || !evmChains.length) {
     return (
@@ -148,65 +242,52 @@ const RwaTrade = () => {
       </View>
     );
   }
+  const title = `${side === "buy" ? "Buy" : "Sell"} ${group.symbol}`;
   if (!asset || !pay) {
     return (
       <View style={[styles.wrap, { backgroundColor: theme.bg }]}>
-        <RwaHeader title={`${side === "buy" ? "Buy" : "Sell"} ${group.symbol}`} theme={theme} onBack={() => navigation.goBack()} />
-        <ActivityIndicator color={theme.buttonColor} style={styles.loading} />
+        <RwaHeader title={title} theme={theme} onBack={() => navigation.goBack()} />
+        <ActivityIndicator color={theme.buttonColor} style={styles.loadingBig} />
       </View>
     );
   }
 
-  const info = CHAIN_INFO[asset.chain];
   const market = (group.issuer === "xstocks" && getCachedXStatus(group.symbol)) || assetMarketStatus(group);
-  const marketPx = getCachedPrice(llamaKey(asset));
+  const closed = closedText(market, new Date(), group.issuer !== "xstocks");
   const nativePx = getCachedPrice(info.nativePriceKey);
-  const units = toUnits(amount, inToken.decimals);
-  // Buy: stablecoin amount at face value ($1). Sell: asset tokens × price (quote's, else market).
-  const checks = tradeChecks({
-    asset,
-    side,
-    amount,
-    unitPriceUsd: side === "buy" ? 1 : result && result.ok && result.summary.fromUsd ? result.summary.fromUsd : marketPx ? marketPx.price : null,
-  });
-  const insufficient = chainState && units && !gteUnits(chainState.balance, units);
-  const needsApproval = chainState && units ? !gteUnits(chainState.allowance, units) : null;
-  const approveCost = chainState ? ethers.BigNumber.from(chainState.gasPrice).mul(APPROVE_GAS) : null;
-  const lowGas = needsApproval && approveCost && ethers.BigNumber.from(chainState.native).lt(approveCost);
-  const orderUsd = side === "buy" ? Number(amount) : marketPx && marketPx.price ? Number(amount) * marketPx.price : null;
+  const s = result && result.ok ? result.summary : null;
+  const outAmt = s && s.toAmount ? fromUnits(s.toAmount, outToken.decimals) : null;
+  const minAmt = s && s.minReceived ? fromUnits(s.minReceived, outToken.decimals) : null;
+  const feeAmt = s && s.tokenFee ? fromUnits(s.tokenFee, outToken.decimals) : null;
+  const fig = s ? quoteFigures({ side, amountIn: spend, out: outAmt, fee: feeAmt, marketPrice: px }) : null;
+  const payUsd = spendToUsd({ side, amount: spend, price: px });
+  const outUsd = outAmt ? (side === "buy" ? (px ? Number(outAmt) * px : null) : Number(outAmt)) : null;
+  const rate = s ? rateText({ side, symbol: asset.symbol, amountIn: spend, amountOut: outAmt }) : null;
+  const networkFee = needsApproval === null ? "—" : needsApproval ? `${approveCost ? nativeCostText(approveCost.toString(), info.native, nativePx && nativePx.price) : "—"} · for approval` : "None";
+  const balRaw = routeBal && routeBal[chain] ? routeBal[chain][side === "buy" ? pay.symbol : "asset"] : null;
+  const balTxt = chainState ? fmtAmount(fromUnits(chainState.balance, inToken.decimals), side === "buy" ? 2 : 6) : balRaw ? fmtAmount(fromUnits(balRaw, inToken.decimals), side === "buy" ? 2 : 6) : "…";
 
-  const getQuote = async () => {
-    Keyboard.dismiss();
-    if (!units || checks.error) return;
-    setBusy(true);
-    setResult(null);
-    const r = await getRwaQuote({ side, asset, payToken: pay, amountUnits: units, wallet });
-    setResult(r);
-    setQuotedAt(Date.now());
-    setBusy(false);
-  };
+  // One button: its label explains why it's disabled.
+  let btn = { label: "Continue", enabled: false };
+  if (openOrder) btn = { label: "Order in progress — view", enabled: true, action: "progress" };
+  else if (!RWA_TRADING_ENABLED) btn = { label: "Trading is off in this build", enabled: false };
+  else if (market.status === "halted") btn = { label: "Trading paused by the issuer", enabled: false };
+  else if (!market.open) btn = { label: `Market closed${closed && closed !== "Closed" ? ` · ${closed}` : ""}`, enabled: false };
+  else if (!units) btn = { label: "Enter an amount", enabled: false };
+  else if (err) btn = { label: "Continue", enabled: false };
+  else if (!s) btn = { label: loading ? "Fetching best quote…" : "Continue", enabled: false };
+  else btn = { label: "Continue", enabled: !sending };
 
-  const halted = market.status === "halted";
-  const openOrder = orders.find((o) => !isFinal(o.stage));
-  const canConfirm =
-    RWA_TRADING_ENABLED && result && result.ok && !checks.error && !insufficient && !lowGas && !halted && !openOrder && !sending;
-  const confirmBlock = !RWA_TRADING_ENABLED
-    ? "Buying is turned off in this build."
-    : halted
-    ? "Trading in this asset is paused by the issuer."
-    : insufficient
-    ? `Not enough ${inToken.symbol}.`
-    : lowGas
-    ? `Not enough ${info.native} for the network fee.`
-    : openOrder
-    ? "You have an order in progress. Wait until it finishes."
-    : null;
-
-  const openReview = () => {
+  const onButton = () => {
+    if (btn.action === "progress") {
+      setCurrentId(openOrder.id);
+      setProgress(true);
+      return;
+    }
     setSendErr(null);
     if (!quoteIsFresh(quotedAt)) {
-      setResult(null);
-      setSendErr("The quote expired. Get a new quote.");
+      setSendErr("Price updated — check it and tap Continue again.");
+      setNonce((n) => n + 1);
       return;
     }
     setReview(true);
@@ -215,180 +296,252 @@ const RwaTrade = () => {
   const confirm = async () => {
     if (!quoteIsFresh(quotedAt)) {
       setReview(false);
-      setResult(null);
-      setSendErr("The quote expired. Get a new quote.");
+      setSendErr("Price updated — check it and tap Continue again.");
+      setNonce((n) => n + 1);
       return;
     }
     setSending(true);
+    setLiveRec(null);
+    setCurrentId(null);
+    openProgressAfterReview.current = true;
+    setReview(false);
     const res = await executeOrder(
-      { wallet, asset, side, payToken: pay, amountUnits: units, amountText: amount, quote: result.quote, summary: result.summary, quotedAt, groupKey: group.key },
-      (rec) => setCurrentId(rec.id)
+      { wallet, asset, side, payToken: pay, amountUnits: units, amountText: spend, quote: result.quote, summary: s, quotedAt, groupKey: group.key },
+      (rec) => {
+        setLiveRec(rec);
+        setCurrentId(rec.id);
+      }
     );
     setSending(false);
-    setReview(false);
-    if (res && res.error) setSendErr(res.error);
-    else if (res && res.id) {
+    if (res && res.error) {
+      openProgressAfterReview.current = false;
+      setProgress(false);
+      setSendErr(res.error);
+    } else if (res && res.id) {
       setCurrentId(res.id);
-      setResult(null);
-      setAmount("");
+      setLiveRec(res);
+      if (res.stage !== "failed") {
+        setUsd("");
+        setMax(false);
+        setResult(null);
+      }
     }
   };
 
-  // "Get USDC/USDT": the app's existing Swap (same chain) — no new swap logic here.
-  const missingPay = side === "buy" && insufficient;
+  const reviewRows = s
+    ? [
+        { label: "You pay", value: `${payUsd != null ? `${fmtUsd(payUsd)} · ` : ""}${fmtAmount(spend, 6)} ${inToken.symbol}` },
+        { label: "You receive", value: `≈ ${fmtAmount(outAmt, 6)} ${outToken.symbol}${outUsd != null ? ` (${fmtUsd(outUsd)})` : ""}` },
+        { label: "Minimum received", value: minAmt ? `${fmtAmount(minAmt, 6)} ${outToken.symbol}` : "—" },
+        { label: "Network fee", value: networkFee },
+        { label: "Network", value: info.label },
+        { label: "Receiver", value: `Your wallet ${short(wallet)}` },
+      ]
+    : [];
 
-  const s = result && result.ok ? result.summary : null;
-  const outAmt = s && s.toAmount ? fromUnits(s.toAmount, outToken.decimals) : null;
-  const minAmt = s && s.minReceived ? fromUnits(s.minReceived, outToken.decimals) : null;
-  const feeAmt = s && s.tokenFee ? fromUnits(s.tokenFee, outToken.decimals) : null;
-  const fig = s ? quoteFigures({ side, amountIn: amount, out: outAmt, fee: feeAmt, marketPrice: marketPx && marketPx.price }) : null;
-  const feeUsd = feeAmt ? (side === "buy" ? Number(feeAmt) * (fig && fig.effectivePrice ? fig.effectivePrice : 0) : Number(feeAmt)) : 0;
+  const routeOptions = [];
+  evmChains.forEach((c) =>
+    (payByChain[c] || []).forEach((p) => {
+      const raw = routeBal && routeBal[c] ? routeBal[c][side === "buy" ? p.symbol : "asset"] : null;
+      const dec = side === "buy" ? p.decimals : group.byChain[c].decimals;
+      routeOptions.push({ chain: c, paySym: p.symbol, bal: raw ? fmtAmount(fromUnits(raw, dec), side === "buy" ? 2 : 6) : "0" });
+    })
+  );
 
   return (
     <View style={[styles.wrap, { backgroundColor: theme.bg }]}>
-      <RwaHeader title={`${side === "buy" ? "Buy" : "Sell"} ${group.symbol}`} theme={theme} onBack={() => navigation.goBack()} />
+      <RwaHeader title={title} theme={theme} onBack={() => navigation.goBack()} />
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
-        <DevBanner theme={theme} text="Dev build · real orders with real funds." />
-        <View style={styles.line}>
-          <Text style={[styles.net, { color: theme.inactiveTx }]}>Network</Text>
-          <StatusBadge status={market.status} label={market.label} theme={theme} />
-        </View>
-        {evmChains.length > 1 ? (
-          <Seg theme={theme} value={chain} onChange={setChain} options={evmChains.map((c) => ({ value: c, label: CHAIN_INFO[c].label }))} />
-        ) : (
-          <Text style={[styles.single, { color: theme.headingTx }]}>{info.label}</Text>
-        )}
-        {smallEthOrder(asset.chain, orderUsd) ? (
-          <Text style={[styles.hint, { color: theme.warn }]}>Ethereum costs more for small orders{evmChains.includes("BSC") ? " — BNB Chain is usually cheaper." : "."}</Text>
-        ) : null}
+        {__DEV__ ? <DevBanner theme={theme} text="Dev build · real orders with real funds." /> : null}
 
-        <Text style={[styles.label, { color: theme.inactiveTx }]}>{side === "buy" ? "Pay with" : "Receive"}</Text>
-        <Seg theme={theme} value={pay.symbol} onChange={setPaySym} options={payOptionsFor(asset).map((p) => ({ value: p.symbol, label: p.symbol }))} />
-        {group.issuer === "ondo" ? <Text style={[styles.hint, { color: theme.inactiveTx }]}>Ondo stocks are bought and sold with USDC only.</Text> : null}
-
-        <Text style={[styles.label, { color: theme.inactiveTx }]}>Amount ({inToken.symbol})</Text>
-        <View style={[styles.field, { backgroundColor: theme.cardBg }]}>
-          <TextInput
-            value={amount}
-            onChangeText={(t) => setAmount(cleanAmountInput(t, Math.min(inToken.decimals, 8)))}
-            placeholder="0.00"
-            placeholderTextColor={theme.inactiveTx}
-            keyboardType="decimal-pad"
-            style={[styles.input, { color: theme.headingTx }]}
-          />
-          <Text style={[styles.suffix, { color: theme.inactiveTx }]}>{inToken.symbol}</Text>
-        </View>
-        <Text style={[styles.hint, { color: theme.inactiveTx }]}>
-          Balance: {chainState ? `${fmtAmount(fromUnits(chainState.balance, inToken.decimals), 4)} ${inToken.symbol}` : chainErr ? "couldn't read" : "…"}
-        </Text>
-        {insufficient ? <Text style={[styles.warn, { color: theme.fail }]}>Not enough {inToken.symbol}. You can still check a quote.</Text> : null}
-        {missingPay ? (
-          <TouchableOpacity accessibilityRole="button" onPress={() => navigation.navigate("EthSwap")} style={styles.getBtn}>
-            <Text style={[styles.getTxt, { color: theme.buttonColor }]}>
-              Get {inToken.symbol} on {info.label} → Swap
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-        {checks.error ? <Text style={[styles.warn, { color: theme.fail }]}>{checks.error}</Text> : null}
-        {!market.open ? <Text style={[styles.warn, { color: theme.warn }]}>Market closed — the price may change a lot when it opens.</Text> : null}
-
-        <TouchableOpacity
-          accessibilityRole="button"
-          disabled={!units || busy || !!checks.error}
-          onPress={getQuote}
-          style={[styles.btn, { backgroundColor: theme.buttonColor, opacity: !units || busy || checks.error ? 0.45 : 1 }]}
-        >
-          {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.btnTxt}>Get quote</Text>}
-        </TouchableOpacity>
-
-        {result && !result.ok ? (
-          <View style={[styles.card, { backgroundColor: theme.cardBg }]}>
-            <Text style={[styles.errTitle, { color: theme.fail }]}>{result.error.text}</Text>
-            {__DEV__ ? (
-              <Text style={[styles.dev, { color: theme.inactiveTx }]}>
-                dev: HTTP {String(result.raw.status)} · {String(Array.isArray(result.raw.message) ? result.raw.message.join(" ") : result.raw.message).slice(0, 200)}
+        {/* You pay */}
+        <View style={[styles.box, { backgroundColor: theme.cardBg }]}>
+          <View style={styles.boxHead}>
+            <Text style={[styles.boxLabel, { color: theme.inactiveTx }]}>{side === "buy" ? "You pay" : "You sell"}</Text>
+            <TouchableOpacity accessibilityRole="button" onPress={() => setPicker(true)} style={styles.payWith} hitSlop={8}>
+              <Text style={[styles.payWithTxt, { color: theme.headingTx }]}>
+                {side === "buy" ? `${pay.symbol} · ${info.label}` : `Get ${pay.symbol} · ${info.label}`}
               </Text>
+              <Icon name="chevron-down" type="ionicon" size={14} color={theme.inactiveTx} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.amountRow}>
+            <Text style={[styles.dollar, { color: usd ? theme.headingTx : theme.inactiveTx }]}>$</Text>
+            <TextInput
+              value={usd}
+              onChangeText={(t) => {
+                setMax(false);
+                setUsd(cleanAmountInput(t, 2));
+              }}
+              placeholder="0"
+              placeholderTextColor={theme.inactiveTx}
+              keyboardType="decimal-pad"
+              style={[styles.amountInput, { color: theme.headingTx }]}
+              accessibilityLabel="Amount in US dollars"
+            />
+            <TouchableOpacity
+              accessibilityRole="button"
+              disabled={!chainState}
+              onPress={() => {
+                if (!chainState) return;
+                const all = fromUnits(chainState.balance, inToken.decimals);
+                const v = spendToUsd({ side, amount: all, price: px });
+                setMax(true);
+                setUsd(v != null ? String(Math.floor(v * 100) / 100) : "");
+              }}
+              style={[styles.maxBtn, { borderColor: theme.buttonColor }]}
+            >
+              <Text style={[styles.maxTxt, { color: theme.buttonColor }]}>Max</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.boxFoot}>
+            <Text style={[styles.sub, { color: theme.inactiveTx }]}>{spend ? `${fmtAmount(spend, 6)} ${inToken.symbol}` : " "}</Text>
+            <Text style={[styles.sub, { color: theme.inactiveTx }]}>
+              Balance {balTxt} {inToken.symbol}
+            </Text>
+          </View>
+        </View>
+        {err ? (
+          <View style={styles.errRow}>
+            <Text style={[styles.err, { color: theme.fail }]}>{err}</Text>
+            {insufficient && side === "buy" ? (
+              <TouchableOpacity accessibilityRole="button" onPress={() => navigation.navigate("EthSwap")}>
+                <Text style={[styles.errLink, { color: theme.buttonColor }]}>Get {inToken.symbol}</Text>
+              </TouchableOpacity>
             ) : null}
           </View>
         ) : null}
 
-        {s ? (
-          <View style={[styles.card, { backgroundColor: theme.cardBg }]}>
-            <Row theme={theme} label="You pay" value={`${fmtAmount(amount, 6)} ${inToken.symbol}`} />
-            <Row theme={theme} label="You get (estimate)" value={outAmt ? `${fmtAmount(outAmt, 6)} ${outToken.symbol}` : "—"} />
-            <Row theme={theme} label="You get at least" value={minAmt ? `${fmtAmount(minAmt, 6)} ${outToken.symbol}` : "—"} />
-            <Row
-              theme={theme}
-              label="Your price"
-              value={fig && fig.effectivePrice ? `${fmtUsd(fig.effectivePrice)} per ${asset.symbol}` : "—"}
-              sub={
-                marketPx && marketPx.price
-                  ? `Market ${fmtUsd(marketPx.price)}${fig && fig.vsMarketPct != null ? ` · ${fig.vsMarketPct >= 0 ? `${fig.vsMarketPct.toFixed(2)}% worse` : `${Math.abs(fig.vsMarketPct).toFixed(2)}% better`}` : ""}`
-                  : null
-              }
-              color={fig && fig.vsMarketPct != null && fig.vsMarketPct > 1 ? theme.warn : undefined}
-            />
-            <Row
-              theme={theme}
-              label="Swap fee"
-              value={feeAmt && Number(feeAmt) > 0 ? `${fmtAmount(feeAmt, 6)} ${outToken.symbol}` : "None"}
-              sub={feeAmt && Number(feeAmt) > 0 && fig && fig.feePct != null ? `${fig.feePct.toFixed(2)}% of order${feeUsd ? ` · ~$${feeUsd < 0.01 ? "0.01" : feeUsd.toFixed(2)}` : ""}` : null}
-              color={fig && fig.feePct != null && fig.feePct > 1 ? theme.warn : undefined}
-            />
-            <Row
-              theme={theme}
-              label="Approval"
-              value={needsApproval === null ? "—" : needsApproval ? "Approval needed for this amount" : "Not needed"}
-              sub={needsApproval && approveCost ? `Network fee ${nativeCostText(approveCost.toString(), info.native, nativePx && nativePx.price)}` : null}
-              color={needsApproval ? theme.warn : undefined}
-            />
-            {lowGas ? <Text style={[styles.warn, { color: theme.fail }]}>Not enough {info.native} for the approval fee.</Text> : null}
+        {/* You receive */}
+        <View style={[styles.box, { backgroundColor: theme.cardBg }]}>
+          <Text style={[styles.boxLabel, { color: theme.inactiveTx }]}>You receive</Text>
+          <View style={styles.recvRow}>
+            {side === "buy" ? <RwaLogo asset={group} size={28} theme={theme} /> : null}
+            {loading && !s ? (
+              <View style={styles.recvTxt}>
+                <Shimmer theme={theme} />
+                <Text style={[styles.sub, { color: theme.inactiveTx }]}>Fetching best quote…</Text>
+              </View>
+            ) : (
+              <View style={styles.recvTxt}>
+                <Text style={[styles.recvAmt, { color: s ? theme.headingTx : theme.inactiveTx }]} numberOfLines={1}>
+                  {s && outAmt ? `≈ ${fmtAmount(outAmt, 6)} ${outToken.symbol}` : `0 ${outToken.symbol}`}
+                </Text>
+                {s && outUsd != null ? <Text style={[styles.sub, { color: theme.inactiveTx }]}>{fmtUsd(outUsd)}</Text> : null}
+              </View>
+            )}
           </View>
+        </View>
+        {result && !result.ok ? (
+          <Text style={[styles.err, styles.errPad, { color: theme.fail }]}>
+            {result.error.text}
+            {__DEV__ ? `  (dev: HTTP ${String(result.raw.status)})` : ""}
+          </Text>
         ) : null}
 
         {s ? (
           <>
-            <TouchableOpacity
-              accessibilityRole="button"
-              disabled={!canConfirm}
-              onPress={openReview}
-              style={[styles.btn, { backgroundColor: side === "buy" ? theme.success : theme.fail, opacity: canConfirm ? 1 : 0.4 }]}
-            >
-              <Text style={styles.btnTxt}>Review {side === "buy" ? "buy" : "sell"}</Text>
+            <View style={styles.rateRow}>
+              <Text style={[styles.rate, { color: theme.inactiveTx }]}>{rate}</Text>
+              {loading ? <ActivityIndicator size="small" color={theme.inactiveTx} /> : null}
+            </View>
+            <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: details }} onPress={() => setDetails(!details)} style={styles.dHead}>
+              <Text style={[styles.dHeadTxt, { color: theme.inactiveTx }]}>Details</Text>
+              <Icon name={details ? "chevron-up" : "chevron-down"} type="ionicon" size={16} color={theme.inactiveTx} />
             </TouchableOpacity>
-            {confirmBlock ? <Text style={[styles.hint, styles.center, { color: theme.inactiveTx }]}>{confirmBlock}</Text> : null}
+            {details ? (
+              <View style={[styles.dBox, { backgroundColor: theme.cardBg }]}>
+                <Detail theme={theme} label="Minimum received" value={minAmt ? `${fmtAmount(minAmt, 6)} ${outToken.symbol}` : "—"} />
+                <Detail theme={theme} label="Network fee" value={networkFee} />
+                <Detail
+                  theme={theme}
+                  label="Provider fee"
+                  value={fig && fig.feePct != null && Number(feeAmt) > 0 ? `${fig.feePct.toFixed(2)}% · included in the price` : "None"}
+                />
+                <Detail
+                  theme={theme}
+                  label="Network"
+                  value={`${info.label}${smallEthOrder(chain, payUsd) ? " · costs more for small orders" : ""}`}
+                  color={smallEthOrder(chain, payUsd) ? theme.warn : undefined}
+                />
+                <Detail theme={theme} label="Provider" value="1inch" />
+              </View>
+            ) : null}
           </>
         ) : null}
-        {sendErr ? <Text style={[styles.warn, { color: theme.fail }]}>{sendErr}</Text> : null}
-        {current ? <OrderCard record={current} theme={theme} /> : openOrder ? <OrderCard record={openOrder} theme={theme} /> : null}
+
+        {sendErr ? <Text style={[styles.err, styles.errPad, { color: theme.fail }]}>{sendErr}</Text> : null}
       </ScrollView>
+
+      <View style={[styles.footer, { backgroundColor: theme.bg }]}>
+        <TouchableOpacity
+          accessibilityRole="button"
+          disabled={!btn.enabled}
+          onPress={onButton}
+          style={[styles.btn, { backgroundColor: theme.buttonColor, opacity: btn.enabled ? 1 : 0.45 }]}
+        >
+          {sending ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.btnTxt}>{btn.label}</Text>}
+        </TouchableOpacity>
+      </View>
+
+      <Modal isVisible={picker} onBackdropPress={() => setPicker(false)} onBackButtonPress={() => setPicker(false)} style={styles.modal} useNativeDriverForBackdrop>
+        <View style={[styles.sheet, { backgroundColor: theme.bg }]}>
+          <Text style={[styles.sheetTitle, { color: theme.headingTx }]}>{side === "buy" ? "Pay with" : "Receive"}</Text>
+          {routeOptions.map((o) => {
+            const sel = o.chain === chain && o.paySym === pay.symbol;
+            return (
+              <TouchableOpacity
+                key={`${o.chain}-${o.paySym}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: sel }}
+                onPress={() => {
+                  setRoute({ chain: o.chain, paySym: o.paySym });
+                  setMax(false);
+                  setPicker(false);
+                }}
+                style={[styles.opt, { backgroundColor: sel ? theme.cardBg : "transparent" }]}
+              >
+                <View style={styles.optMid}>
+                  <Text style={[styles.optTitle, { color: theme.headingTx }]}>{o.paySym}</Text>
+                  <Text style={[styles.sub, { color: theme.inactiveTx }]}>{CHAIN_INFO[o.chain].label}</Text>
+                </View>
+                <Text style={[styles.sub, { color: theme.inactiveTx }]}>
+                  {side === "buy" ? `${o.bal} ${o.paySym}` : `${o.bal} ${group.symbol}`}
+                </Text>
+                {sel ? <Icon name="checkmark" type="ionicon" size={18} color={theme.buttonColor} style={styles.optCheck} /> : null}
+              </TouchableOpacity>
+            );
+          })}
+          {group.issuer === "ondo" ? <Text style={[styles.sub, styles.optNote, { color: theme.inactiveTx }]}>Ondo stocks trade with USDC only.</Text> : null}
+        </View>
+      </Modal>
+
       <ReviewSheet
         visible={review}
         theme={theme}
-        busy={sending}
+        busy={false}
+        title={title}
         onCancel={() => setReview(false)}
         onConfirm={confirm}
-        confirmLabel={`Confirm ${side === "buy" ? "buy" : "sell"}`}
-        warning={!market.open ? "The market is closed: the order may not fill, or fill at a different price." : smallEthOrder(asset.chain, orderUsd) ? "Ethereum costs more for small orders." : null}
-        rows={
-          s
-            ? [
-                { label: "You pay", value: `${fmtAmount(amount, 6)} ${inToken.symbol}` },
-                { label: "You get at least", value: minAmt ? `${fmtAmount(minAmt, 6)} ${outToken.symbol}` : "—" },
-                { label: "Estimated", value: outAmt ? `${fmtAmount(outAmt, 6)} ${outToken.symbol}` : "—" },
-                { label: "Network", value: info.label },
-                { label: "Receiver", value: `Your wallet ${short(wallet)}` },
-                {
-                  label: "Approval",
-                  value: needsApproval
-                    ? `Exact ${fmtAmount(amount, 6)} ${inToken.symbol} · fee ${approveCost ? nativeCostText(approveCost.toString(), info.native, nativePx && nativePx.price) : ""}`
-                    : "Not needed",
-                  color: needsApproval ? theme.warn : undefined,
-                },
-                { label: "Swap fee", value: feeAmt && Number(feeAmt) > 0 ? `${fmtAmount(feeAmt, 6)} ${outToken.symbol}${fig && fig.feePct != null ? ` (${fig.feePct.toFixed(2)}%)` : ""}` : "None" },
-              ]
-            : []
-        }
+        onModalHide={() => {
+          if (openProgressAfterReview.current) {
+            openProgressAfterReview.current = false;
+            setProgress(true);
+          }
+        }}
+        confirmLabel="Confirm swap"
+        warning={smallEthOrder(chain, payUsd) ? "Ethereum network fees are high for small orders." : null}
+        rows={reviewRows}
+      />
+      <ProgressSheet
+        visible={progress && !!progressRec}
+        record={progressRec}
+        theme={theme}
+        onClose={() => setProgress(false)}
+        onViewBalance={() => {
+          setProgress(false);
+          navigation.navigate("RwaAsset", { key: group.key });
+        }}
       />
     </View>
   );
@@ -398,31 +551,45 @@ export default RwaTrade;
 
 const styles = StyleSheet.create({
   wrap: { flex: 1 },
-  scroll: { paddingBottom: 40 },
-  loading: { marginTop: 40 },
-  line: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginHorizontal: 12, marginBottom: 6 },
-  net: { fontSize: 12 },
-  single: { fontSize: 15, fontWeight: "700", marginHorizontal: 12 },
-  label: { fontSize: 12, marginHorizontal: 12, marginTop: 14, marginBottom: 6 },
-  seg: { flexDirection: "row", borderRadius: 12, padding: 4, marginHorizontal: 12 },
-  segBtn: { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 9 },
-  segTxt: { fontSize: 14, fontWeight: "600" },
-  hint: { fontSize: 12, marginHorizontal: 12, marginTop: 6 },
-  field: { flexDirection: "row", alignItems: "center", borderRadius: 12, paddingHorizontal: 12, height: 50, marginHorizontal: 12 },
-  input: { flex: 1, fontSize: 18, fontWeight: "600", paddingVertical: 0 },
-  suffix: { fontSize: 14, marginLeft: 6 },
-  warn: { fontSize: 13, marginHorizontal: 12, marginTop: 8 },
-  btn: { marginHorizontal: 12, marginTop: 16, minHeight: 50, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  btnTxt: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
-  card: { marginHorizontal: 12, marginTop: 14, borderRadius: 14, padding: 14 },
-  row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
-  rowLabel: { fontSize: 13, marginRight: 10 },
-  rowRight: { flexShrink: 1, alignItems: "flex-end" },
-  rowValue: { fontSize: 13, fontWeight: "600", textAlign: "right" },
-  rowSub: { fontSize: 11, marginTop: 2, textAlign: "right" },
-  errTitle: { fontSize: 14, fontWeight: "700" },
-  center: { textAlign: "center" },
-  getBtn: { marginHorizontal: 12, marginTop: 6, paddingVertical: 6 },
-  getTxt: { fontSize: 14, fontWeight: "700" },
-  dev: { fontSize: 11, marginTop: 6 },
+  scroll: { paddingBottom: 120 },
+  loadingBig: { marginTop: 40 },
+  box: { marginHorizontal: 16, marginTop: 10, borderRadius: 16, padding: 14 },
+  boxHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  boxLabel: { fontSize: 13 },
+  payWith: { flexDirection: "row", alignItems: "center" },
+  payWithTxt: { fontSize: 13, fontWeight: "700", marginRight: 4 },
+  amountRow: { flexDirection: "row", alignItems: "center", marginTop: 6 },
+  dollar: { fontSize: 32, fontWeight: "700", marginRight: 2 },
+  amountInput: { flex: 1, fontSize: 32, fontWeight: "700", paddingVertical: 0 },
+  maxBtn: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 5 },
+  maxTxt: { fontSize: 13, fontWeight: "700" },
+  boxFoot: { flexDirection: "row", justifyContent: "space-between", marginTop: 6 },
+  sub: { fontSize: 12 },
+  errRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginHorizontal: 20, marginTop: 6 },
+  err: { fontSize: 13, fontWeight: "600" },
+  errPad: { marginHorizontal: 20, marginTop: 6 },
+  errLink: { fontSize: 13, fontWeight: "700" },
+  recvRow: { flexDirection: "row", alignItems: "center", marginTop: 8, minHeight: 44 },
+  recvTxt: { flex: 1, marginLeft: 10 },
+  recvAmt: { fontSize: 22, fontWeight: "700" },
+  shimmer: { height: 20, borderRadius: 6, marginBottom: 6 },
+  rateRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginHorizontal: 20, marginTop: 12 },
+  rate: { fontSize: 13 },
+  dHead: { flexDirection: "row", alignItems: "center", marginHorizontal: 20, marginTop: 8, paddingVertical: 6 },
+  dHeadTxt: { fontSize: 13, fontWeight: "600", marginRight: 4 },
+  dBox: { marginHorizontal: 16, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 6 },
+  dRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
+  dLabel: { fontSize: 13, marginRight: 10 },
+  dValue: { fontSize: 13, fontWeight: "600", flexShrink: 1, textAlign: "right" },
+  footer: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 20 },
+  btn: { minHeight: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
+  btnTxt: { color: "#FFFFFF", fontSize: 16, fontWeight: "700", textAlign: "center" },
+  modal: { justifyContent: "flex-end", margin: 0 },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16, paddingBottom: 26 },
+  sheetTitle: { fontSize: 18, fontWeight: "800", marginBottom: 8, marginLeft: 4 },
+  opt: { flexDirection: "row", alignItems: "center", borderRadius: 12, padding: 12 },
+  optMid: { flex: 1 },
+  optTitle: { fontSize: 15, fontWeight: "700" },
+  optCheck: { marginLeft: 8 },
+  optNote: { marginTop: 8, marginLeft: 4 },
 });

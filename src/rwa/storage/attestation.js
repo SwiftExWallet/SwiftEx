@@ -1,7 +1,7 @@
 // One-time RWA attestation + disclosures acceptance, stored per wallet (no secrets).
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export const ATTESTATION_VERSION = 1; // bump to ask again when the text changes
+export const ATTESTATION_VERSION = 2; // bump to ask again when the text changes (2: shorter sheet, 2026-11-19)
 const keyFor = (wallet) => `rwa_attestation_${String(wallet || "").toLowerCase()}`;
 
 export const hasAttested = async (wallet) => {

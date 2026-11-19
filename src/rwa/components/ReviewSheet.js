@@ -4,10 +4,17 @@ import Modal from "react-native-modal";
 
 // Final review before an RWA order is signed: amount, token, chain, receiver (your own wallet),
 // minimum you get, fee, and whether an exact-amount approval (one network fee) is needed.
-const ReviewSheet = ({ visible, theme, rows, warning, busy, onConfirm, onCancel, confirmLabel }) => (
-  <Modal isVisible={visible} onBackdropPress={busy ? undefined : onCancel} onBackButtonPress={busy ? undefined : onCancel} style={styles.modal} useNativeDriverForBackdrop>
+const ReviewSheet = ({ visible, theme, rows, warning, busy, onConfirm, onCancel, confirmLabel, onModalHide }) => (
+  <Modal
+    isVisible={visible}
+    onBackdropPress={busy ? undefined : onCancel}
+    onBackButtonPress={busy ? undefined : onCancel}
+    onModalHide={onModalHide}
+    style={styles.modal}
+    useNativeDriverForBackdrop
+  >
     <View style={[styles.sheet, { backgroundColor: theme.bg }]}>
-      <Text accessibilityRole="header" style={[styles.title, { color: theme.headingTx }]}>Review order</Text>
+      <Text accessibilityRole="header" style={[styles.title, { color: theme.headingTx }]}>Review swap</Text>
       <View style={[styles.box, { backgroundColor: theme.cardBg }]}>
         {(rows || []).map((r) => (
           <View key={r.label} style={styles.row}>
@@ -18,7 +25,7 @@ const ReviewSheet = ({ visible, theme, rows, warning, busy, onConfirm, onCancel,
       </View>
       {warning ? <Text style={[styles.warn, { color: theme.warn }]}>{warning}</Text> : null}
       <Text style={[styles.note, { color: theme.inactiveTx }]}>
-        You'll sign the order in your wallet. If it isn't filled in time it expires and nothing is taken.
+        Fees are included in the price. If the swap isn't filled in time, nothing is taken.
       </Text>
       <TouchableOpacity accessibilityRole="button" disabled={busy} onPress={onConfirm} style={[styles.btn, { backgroundColor: theme.buttonColor, opacity: busy ? 0.6 : 1 }]}>
         {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.btnTxt}>{confirmLabel || "Confirm"}</Text>}
@@ -42,7 +49,7 @@ const styles = StyleSheet.create({
   value: { fontSize: 13, fontWeight: "600", flexShrink: 1, textAlign: "right" },
   warn: { fontSize: 13, marginTop: 10 },
   note: { fontSize: 12, lineHeight: 17, marginTop: 10 },
-  btn: { marginTop: 14, minHeight: 50, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  btn: { marginTop: 14, minHeight: 52, borderRadius: 26, alignItems: "center", justifyContent: "center" },
   btnTxt: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
   cancel: { alignItems: "center", paddingVertical: 12 },
   cancelTxt: { fontSize: 15, fontWeight: "600" },
