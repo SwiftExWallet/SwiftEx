@@ -81,6 +81,43 @@ export const positionBarText = (p, baseAsset, mark) => {
   return { side, pnl: `${v >= 0 ? "+" : "-"}$${formatNumber(Math.abs(v), 2)}${pctTxt}`, sign: Math.sign(v) };
 };
 
+const tpslName = (t) => (/STOP/.test(t || "") ? "Stop loss" : /TAKE_PROFIT/.test(t || "") ? "Take profit" : t);
+
+// Content of the order success sheet: { title, rows: [{ label, value }], note, warn, viewText }.
+//  isOrder: a resting limit order (else a filled order = a position).
+//  pos: the position read back from Aster (null if not readable), qty / price: the sent order,
+//  failed: TP/SL orders that failed ([{ type, text }]).
+export const orderResultContent = ({ isOrder, pos, direction, qty, price, baseAsset, tickSize, leverage, failed = [] }) => {
+  const long = direction === "LONG";
+  const rows = [];
+  let title;
+  if (isOrder) {
+    title = "Limit order placed";
+    rows.push({ label: "Order", value: `Limit ${long ? "buy" : "sell"} · ${long ? "Long" : "Short"}` });
+    rows.push({ label: "Size", value: `${qty} ${baseAsset}` });
+    rows.push({ label: "Limit price", value: `$${formatPrice(price, tickSize)}` });
+    rows.push({ label: "Status", value: "Waiting in Open orders" });
+  } else if (pos) {
+    const posLong = gt(pos.positionAmt, "0");
+    const lev = Number(pos.leverage) || Number(leverage) || null;
+    title = `${posLong ? "Long" : "Short"} opened`;
+    rows.push({ label: "Position", value: `${baseAsset} ${posLong ? "Long" : "Short"}${lev ? ` ${lev}x` : ""}` });
+    if (isPositive(pos.entryPrice)) rows.push({ label: "Entry price", value: `$${formatPrice(pos.entryPrice, tickSize)}` });
+    rows.push({ label: "Size", value: `${abs(pos.positionAmt)} ${baseAsset}` });
+    if (isPositive(pos.liquidationPrice)) rows.push({ label: "Liq. price", value: `$${formatPrice(pos.liquidationPrice, tickSize)}` });
+  } else {
+    title = `${long ? "Long" : "Short"} opened`;
+    rows.push({ label: "Position", value: `${baseAsset} ${long ? "Long" : "Short"}${leverage ? ` ${leverage}x` : ""}` });
+    rows.push({ label: "Size", value: `${qty} ${baseAsset}` });
+    rows.push({ label: "Price", value: "Filled at market" });
+  }
+  const warn = failed.length > 0;
+  const note = warn
+    ? `TP/SL not set:\n${failed.map((f) => `${tpslName(f.type)}: ${f.text}`).join("\n")}\nSet TP/SL again from your position.`
+    : null;
+  return { title, rows, note, warn, viewText: isOrder ? "View order" : "View position" };
+};
+
 // Home banner: "500+ markets · Long or short with leverage". Rounded down (to 50 under 500,
 // else to 100) so the copy never overstates; "500+" when the count isn't known yet.
 export const marketCountLabel = (n) => {

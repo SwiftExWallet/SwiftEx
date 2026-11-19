@@ -1,0 +1,85 @@
+{
+ "note": "Real buildFusionOrder response (public order fields only), BNB Chain, AAPLx buy 20 USDT, captured 2026-11-19 read-only (blocked before signing).",
+ "capturedAtMs": 1795076006063,
+ "chainId": 56,
+ "wallet": "0x6ad7a4c1f113f65af139831d7d78eaac6b9a4ea0",
+ "typedData": {
+  "primaryType": "Order",
+  "types": {
+   "EIP712Domain": [
+    {
+     "name": "name",
+     "type": "string"
+    },
+    {
+     "name": "version",
+     "type": "string"
+    },
+    {
+     "name": "chainId",
+     "type": "uint256"
+    },
+    {
+     "name": "verifyingContract",
+     "type": "address"
+    }
+   ],
+   "Order": [
+    {
+     "name": "salt",
+     "type": "uint256"
+    },
+    {
+     "name": "maker",
+     "type": "address"
+    },
+    {
+     "name": "receiver",
+     "type": "address"
+    },
+    {
+     "name": "makerAsset",
+     "type": "address"
+    },
+    {
+     "name": "takerAsset",
+     "type": "address"
+    },
+    {
+     "name": "makingAmount",
+     "type": "uint256"
+    },
+    {
+     "name": "takingAmount",
+     "type": "uint256"
+    },
+    {
+     "name": "makerTraits",
+     "type": "uint256"
+    }
+   ]
+  },
+  "domain": {
+   "name": "1inch Aggregation Router",
+   "version": "6",
+   "chainId": 56,
+   "verifyingContract": "0x111111125421ca6dc452d289314280a0f8842a65"
+  },
+  "message": {
+   "maker": "0x6ad7a4c1f113f65af139831d7d78eaac6b9a4ea0",
+   "makerAsset": "0x55d398326f99059ff775485246999027b3197955",
+   "takerAsset": "0x9d275685dc284c8eb1c79f6aba7a63dc75ec890a",
+   "makerTraits": "62419173104490761595518734106350460423627517418707570537070914741054702878720",
+   "salt": "19590951239649177434824071209345209621441718932036319423870540562197686354292",
+   "makingAmount": "20000000000000000000",
+   "takingAmount": "55470151784017657",
+   "receiver": "0x2ad5004c60e16e54d5007c80ce329adde5b51ef5"
+  }
+ },
+ "extension": "0x00000183000000d2000000d2000000d2000000d20000006900000000000000002ad5004c60e16e54d5007c80ce329adde5b51ef5000000000000006afeafd40000b400c4b700000000012c64062324dfe7924cb4f3257d000000000000000000006ea9a11ae13b29f5c555d18bd45f0b94f54a968faa848f727be12534f24895770895ad27ad6b0d952ad5004c60e16e54d5007c80ce329adde5b51ef5000000000000006afeafd40000b400c4b700000000012c64062324dfe7924cb4f3257d000000000000000000006ea9a11ae13b29f5c555d18bd45f0b94f54a968faa848f727be12534f24895770895ad27ad6b0d952ad5004c60e16e54d5007c80ce329adde5b51ef500000000000000000000000000000000000000000090cbe4bdd538d6e9b379bff5fe72c3d67a521de5000000012c646afeafa5062324dfe7924cb4f3257d00000000000000000000000000006ea9a11ae13b29f5c5550000d18bd45f0b94f54a968f0000aa848f727be12534f248000095770895ad27ad6b0d95000000000000000000000000000000000000000000000000000000c67c849e2b6fa100",
+ "orderHash": "0x2824be301e0cee85ca60f22d67a2cc6769f5839fa1b282b90f83efcec8fbb87b",
+ "minReceived": "55470151784017657",
+ "amountUnits": "20000000000000000000",
+ "tokenIn": "0x55d398326f99059fF775485246999027B3197955",
+ "tokenOut": "0x9d275685dc284c8eb1c79f6aba7a63dc75ec890a"
+}
