@@ -36,6 +36,7 @@ import AccessNativeStorage from "./AccessNativeStorage";
 import apiHelper from "../exchange/crypto-exchange-front-end-main/src/apiHelper";
 import AuthRequest from "../reusables/AuthRequest";
 import CustomInfoProvider from "../exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider";
+import { PPOST, proxyRequest } from "../exchange/crypto-exchange-front-end-main/src/api";
 
 const WALLET_ICONS = {
   BSC: Bnbimage,
@@ -133,15 +134,15 @@ const Wallet_selection_bottom = ({ onClose }) => {
         //   walletData.xrpAddress
         // );
         await AccessNativeStorage.updateActiveWallet(item.walletId)
-        // await apiHelper.post(REACT_APP_HOST + '/v1/wallet', {
-        //   "addresses": {
-        //     "eth": item?.address,
-        //     "xlm": item?.stellarPublicKey,
-        //     "bnb": item?.address,
-        //     "multi": item?.address
-        //   },
-        //   "isPrimary": true
-        // });
+        await proxyRequest('/v1/wallet', PPOST, {
+          "addresses": {
+            "multi": item?.address,
+            "xlm": item?.stellarPublicKey,
+          },
+          "isPrimary": true
+        }
+        );
+
         alert("success", `Wallet selected: ${item.name}`);
 
         // setTimeout(() => {

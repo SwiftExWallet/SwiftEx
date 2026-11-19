@@ -5,7 +5,6 @@ import { setUser, Extend, Collapse } from "../components/Redux/actions/auth";
 import Home2 from "./Home2";
 import Settings from "../../Settings";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import Market from "./Market";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import MyHeader from "./MyHeader";
 import Wallet from "./Wallet";
@@ -20,6 +19,8 @@ import Icon from "../icon";
 import { colors } from "../Screens/ThemeColorsConfig";
 import PerpsHome from "../perps/screens/PerpsHome";
 import { usePerpsAvailability } from "../perps/usePerpsAvailability";
+import EarnModule from "../earn/EarnModule";
+import { useEarnPositionCount } from "../earn/store";
 
 const Tab = createBottomTabNavigator();
 
@@ -30,8 +31,9 @@ const Dashboard = ({ navigation }) => {
   const dispatch = useDispatch();
   const [extended, setExtended] = useState(extend);
   const [token, setToken] = useState("");
-  // Perps on (and not blocked): Home | Wallet | Perps | SDEX. Otherwise the original tabs incl. Discover.
+  // Perps tab shows only when perps is on (and not blocked). Discover is not a tab; it opens from the home banner.
   const { perpsVisible } = usePerpsAvailability(Focused_screen);
+  const earnPositionCount = useEarnPositionCount();
 
   const updateState = () => {
     const data = store.getState();
@@ -142,6 +144,10 @@ const Dashboard = ({ navigation }) => {
                 />
               );
               break;
+            case "Earn":
+              iconName = focused?"analytics":"analytics-outline";
+              iconProvider = "ionicon";
+              break;
             default:
               iconName = "ios-home-sharp";
               iconProvider = "ionicon";
@@ -213,7 +219,7 @@ const Dashboard = ({ navigation }) => {
           unmountOnBlur: true,
         }}
       />
-      {perpsVisible ? (
+      {perpsVisible && (
         <Tab.Screen
           name="Perps"
           component={PerpsHome}
@@ -221,16 +227,18 @@ const Dashboard = ({ navigation }) => {
             headerShown: false,
           }}
         />
-      ) : (
-        <Tab.Screen
-          name="Discover"
-          component={Market}
-          options={{
-            headerShown: false,
-            unmountOnBlur: true,
-          }}
-        />
       )}
+      <Tab.Screen
+        name="Earn"
+        component={EarnModule}
+        options={{
+          tabBarBadge: earnPositionCount > 0 ? earnPositionCount : undefined,
+          tabBarBadgeStyle: { backgroundColor: colors.light.buttonColor, color: "#FFFFFF", fontSize: 11 },
+          headerShown: false,
+          tabBarHideOnKeyboard: true,
+          unmountOnBlur: true,
+        }}
+      />
         <Tab.Screen
           name="ExchangeHome"
           component={HomeView}

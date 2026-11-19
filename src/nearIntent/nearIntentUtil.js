@@ -15,7 +15,7 @@ import {
     Horizon,
     Memo,
     StrKey,
-} from "@stellar/stellar-sdk";
+} from "@stellar/stellar-sdk/axios";
 import { Buffer } from "buffer";
 import { PPOST, proxyRequest } from "../Dashboard/exchange/crypto-exchange-front-end-main/src/api";
 
@@ -942,10 +942,17 @@ function assertStellarSignerAvailable() {
     }
 }
 
-function assertValidSignedStellarTx(signedTx) {
-    if (!signedTx?.signature || !signedTx?.publicKey) {
+async function signStellarTx(tx, networkPassphrase) {
+    const network = networkPassphrase === Networks.TESTNET ? "testnet" : "public";
+    const signedTx =
+        typeof StellarSigner.signTransactionForNetwork === "function"
+            ? await StellarSigner.signTransactionForNetwork(tx.toXdr(), network)
+            : await StellarSigner.signTransaction(tx.toXdr());
+    const signedXDR = signedTx?.signedXDR;
+    if (!signedXDR || typeof signedXDR !== "string") {
         throw new Error("Stellar transaction signing failed or was cancelled by the user");
     }
+    return TransactionBuilder.fromXdr(signedXDR, networkPassphrase);
 }
 
 async function submitStellarTxWithSeqRetry(server, buildAndSign, { retries = 1 } = {}) {
@@ -1007,13 +1014,7 @@ async function sendTrustlineTx({
             .setTimeout(180)
             .build();
 
-        const txXDR = tx.toXdr();
-        const signedTx = await StellarSigner.signTransaction(txXDR);
-        assertValidSignedStellarTx(signedTx);
-
-        const signatureBuffer = Buffer.from(signedTx.signature, "base64");
-        tx.addSignature(signedTx.publicKey, signatureBuffer.toString("base64"));
-        return tx;
+        return signStellarTx(tx, networkPassphrase);
     };
 
     return submitStellarTxWithSeqRetry(server, submit);
@@ -1125,13 +1126,7 @@ async function sendDepositViaStellarSigner({
         if (memo) builder = builder.addMemo(memo);
         const tx = builder.setTimeout(180).build();
 
-        const txXDR = tx.toXdr();
-        const signedTx = await StellarSigner.signTransaction(txXDR);
-        assertValidSignedStellarTx(signedTx);
-
-        const signatureBuffer = Buffer.from(signedTx.signature, "base64");
-        tx.addSignature(signedTx.publicKey, signatureBuffer.toString("base64"));
-        return tx;
+        return signStellarTx(tx, networkPassphrase);
     };
 
     return submitStellarTxWithSeqRetry(server, submit);

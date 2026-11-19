@@ -12,7 +12,8 @@ import { Exchange_screen_header } from '../../../../reusables/ExchangeHeader';
 import { useCallback, useEffect, useState } from 'react';
 import { GetStellarAvilabelBalance, GetStellarUSDCAvilabelBalance, stellarWalletStatus } from '../../../../../utilities/StellarUtils';
 import { alert } from '../../../../reusables/Toasts';
-import { Keypair } from '@stellar/stellar-sdk';
+import { Keypair, Networks } from '@stellar/stellar-sdk';
+import { ENVIRONMENT, STELLAR_URL } from '../../../../constants';
 import Snackbar from 'react-native-snackbar';
 import { debounce } from 'lodash';
 import CustomInfoProvider from './CustomInfoProvider';
@@ -258,7 +259,9 @@ const ExportUSDC = () => {
             refundTo: state?.STELLAR_PUBLICK_KEY,
             recipientType: QuoteRequest.recipientType.DESTINATION_CHAIN,
             activeWalletAddress: state?.STELLAR_PUBLICK_KEY,
-            destinationSymbolAddress:selectedReciveAssetDetils.address
+            destinationSymbolAddress:selectedReciveAssetDetils.address,
+            horizonUrl: STELLAR_URL.URL,
+            networkPassphrase: ENVIRONMENT === "TESTNET" ? Networks.TESTNET : Networks.PUBLIC,
           });
           if (NearIntentSwapRes.success) {
             await LocalTxManager.saveTx(state && state.wallet && state.wallet.address, {

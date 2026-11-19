@@ -4,6 +4,7 @@ import { REACT_PROXY_HOST, REACT_APP_GOOGLE_VPID_KEY, REACT_APP_LOCAL_TOKEN, REA
 import DeviceInfo from 'react-native-device-info'
 import messaging from '@react-native-firebase/messaging'
 import { ethers } from 'ethers'
+import store from '../../../../components/Redux/Store'
 const SERVER_URL = REACT_PROXY_HOST
 const LOCAL_TOKEN = REACT_APP_LOCAL_TOKEN
 let TOKEN =''
@@ -222,18 +223,57 @@ export const createGuestUser=async(referralCode)=>{
 }
 }
 
+const WALLET_REGISTER_URL = '/v1/wallet';
+
+const isWalletNotAssociatedError = (error) => {
+  const status = error?.response?.status;
+  const message = String(error?.response?.data?.message || '').toLowerCase();
+  return status === 403 && message.includes('not associated with this device');
+};
+
+let walletRegisterPromise = null;
+
+const registerWalletWithDevice = () => {
+  if (walletRegisterPromise) return walletRegisterPromise;
+
+  walletRegisterPromise = (async () => {
+    try {
+      const state = store.getState();
+      const evmAddress = state?.wallet?.address;
+      const stellarAddress = state?.STELLAR_PUBLICK_KEY;
+      if (!evmAddress) return false;
+
+      const result = await proxyRequest(WALLET_REGISTER_URL, PPOST, {
+        "addresses": {
+          "multi": evmAddress,
+          "xlm": stellarAddress,
+        },
+        "isPrimary": true
+      });
+      return !!result?.res;
+    } finally {
+      walletRegisterPromise = null;
+    }
+  })();
+
+  return walletRegisterPromise;
+};
+
 export const proxyRequest = async (
   url,
   request,
   body = {},
-  walletAddress
+  walletAddress,
+  _retried = false
 ) => {
   try {
     const deviceToken = await getToken();
 
-    let resolvedWalletAddress = walletAddress || '';
+    const isWalletRegister = url === WALLET_REGISTER_URL;
 
-    if (!resolvedWalletAddress) {
+    let resolvedWalletAddress = isWalletRegister ? '' : walletAddress || '';
+
+    if (!resolvedWalletAddress && !isWalletRegister) {
       try {
         const parsedData = await AsyncStorageLib.getItem('wallet');
 
@@ -261,6 +301,17 @@ export const proxyRequest = async (
     const res = await request(opts)
     return { res }
   } catch (error) {
+    if (
+      !_retried &&
+      url !== WALLET_REGISTER_URL &&
+      isWalletNotAssociatedError(error)
+    ) {
+      const registered = await registerWalletWithDevice();
+      if (registered) {
+        return proxyRequest(url, request, body, walletAddress, true);
+      }
+    }
+
     console.error('proxyRequest error:', {
       url,
       message: error.message,

@@ -1,6 +1,9 @@
 // Feature switch for Perps. When PERPS_ENABLED is false the app must look and behave exactly as before.
+
+import { ENVIRONMENT } from "../Dashboard/constants";
+
 // Dev builds only until the pending native work is done (secure agent-key storage, withdraw signing).
-export const PERPS_ENABLED = __DEV__;
+export const PERPS_ENABLED = ENVIRONMENT!=="TESTNET";
 
 // ISO country codes (from AppStatusChecks.countryCode) where Perps is hidden.
 export const PERPS_BLOCKED_COUNTRIES = ['US', 'GB', 'HK'];

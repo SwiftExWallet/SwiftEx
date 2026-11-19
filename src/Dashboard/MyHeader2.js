@@ -523,9 +523,7 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
 
             </View>
             <InvestmentChart />
-            {PERPS_ENABLED && (
-              <>
-                {perpsVisible && (
+            {PERPS_ENABLED && perpsVisible && (
                   <PerpsBanner theme={theme} onPress={() => navigation.navigate("Perps")} />
                 )}
                 <HomeBanner
@@ -538,8 +536,6 @@ const MyHeader2 = ({ title, changeState, state, extended, setExtended }) => {
                 />
                 {/* Space so nothing hides behind the floating tab bar */}
                 <View style={{ height: hp(12) }} />
-              </>
-            )}
           </View>
         )}
 

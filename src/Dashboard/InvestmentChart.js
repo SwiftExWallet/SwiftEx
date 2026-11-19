@@ -20,7 +20,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { resolveStellarKey } from '../utilities/stellarKeyMap';
 import InfoComponent from './exchange/crypto-exchange-front-end-main/src/components/InfoComponent';
 import { useAssetManager } from '../utilities/TokenManageHook';
-import { PERPS_ENABLED } from '../perps/config';
 
 const COLLAPSED_ASSET_COUNT = 2;
 
@@ -351,8 +350,8 @@ function InvestmentChart() {
   );
 
   const allAssets = (ENVIRONMENT === "TESTNET"?(state && state.activeWalletPortFolio && state.activeWalletPortFolio.tokens || state && state.activeWalletPortFolio)?.filter(data => (data.active && data.contractAddress === "Native") || (data.contractAddress !== "Native" && data.active)):(state && state.activeWalletPortFolio && state.activeWalletPortFolio.tokens || state && state.activeWalletPortFolio)?.filter(data => (data.active && data.contractAddress === "Native") || (data.contractAddress !== "Native" && data.active && parseFloat(data.balance) > 0)) ?? tokenInfoList);
-  // Perps layout: home shows the top 2 assets, with a See all / Show less toggle.
-  const canCollapse = PERPS_ENABLED && Array.isArray(allAssets) && allAssets.length > COLLAPSED_ASSET_COUNT;
+  // Home shows the top 2 assets, with a See all / Show less toggle.
+  const canCollapse = Array.isArray(allAssets) && allAssets.length > COLLAPSED_ASSET_COUNT;
   const shownAssets = canCollapse && !assetsExpanded ? allAssets.slice(0, COLLAPSED_ASSET_COUNT) : allAssets;
 
   return (
@@ -382,7 +381,7 @@ function InvestmentChart() {
                 }}
               />
             }
-            contentContainerStyle={{ paddingBottom: PERPS_ENABLED ? 0 : hp(10) }}
+            contentContainerStyle={{ paddingBottom: 0 }}
             ListFooterComponent={
               canCollapse ? (
                 <TouchableOpacity

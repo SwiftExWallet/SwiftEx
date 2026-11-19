@@ -107,7 +107,7 @@ const NewWalletPrivateKey = ({
                 },
                 "isPrimary": true
               });
-              if (result.success) {
+              if (result.res) {
                 alert("success", "wallet synced!");
               } else {
                 alert("error", "unable to sync wallet.");
