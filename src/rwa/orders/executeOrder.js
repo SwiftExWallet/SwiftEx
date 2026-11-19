@@ -12,6 +12,7 @@ import { CHAIN_INFO } from "../config";
 import { buildQuoteRequest } from "../api/quote";
 import { tokenBalance } from "../api/balances";
 import { canStartOrder, expiryFor, quoteIsFresh } from "./orderState";
+import { verifyRwaFusionOrder } from "./fusionCheck";
 import { loadOrders, upsertOrder, renameOrder } from "./orderStore";
 
 let inFlight = false; // one order at a time in this app session (double-tap guard)
@@ -87,8 +88,23 @@ export const executeOrder = async (params, onUpdate = () => {}) => {
     if (built.err && (built.err.status || built.err.message)) return fail(`Couldn't prepare the order: ${errText(built.err, "server error")}`);
     const typedData = built.res && built.res.typedData;
     if (!typedData || !built.res.orderHash) return fail("Couldn't prepare the order: incomplete answer from the server.");
+    let checked;
     try {
-      assertFusionOrder(typedData, {
+      // 1) RWA-only stricter check: order hash, extension bound to the salt, and — when the order
+      //    pays 1inch's settlement contract — the decoded fee-taker data (final receiver = wallet,
+      //    fees <= 2%, net >= shown minimum, nothing unexpected). Throws (fail closed).
+      checked = verifyRwaFusionOrder(typedData, {
+        wallet,
+        chainId: info.chainId,
+        extension: built.res.extension,
+        orderHash: built.res.orderHash,
+        minTakingAmount: summary.minReceived,
+      });
+      // 2) Every check of the shared guard still runs. Only its "receiver == maker" rule is
+      //    satisfied by step 1 for settlement-receiver orders, so it sees the verified final receiver.
+      const forSharedGuard =
+        checked.receiverRule === "settlement" ? { ...typedData, message: { ...typedData.message, receiver: checked.finalReceiver } } : typedData;
+      assertFusionOrder(forSharedGuard, {
         wallet,
         fromToken: { address: req.tokenIn },
         toToken: { address: req.tokenOut },
@@ -138,7 +154,9 @@ export const executeOrder = async (params, onUpdate = () => {}) => {
         salt: message.salt,
         makingAmount: message.makingAmount,
         takingAmount: message.takingAmount,
-        receiver: wallet,
+        // The receiver that was signed (wallet, or the verified settlement contract). Sending a
+        // different value would change the order hash and invalidate the signature.
+        receiver: message.receiver,
       },
       quoteId: summary.quoteId,
       orderHash: built.res.orderHash,

@@ -75,13 +75,16 @@ describe("state machine", () => {
   });
 });
 
-describe("executeOrder (mocked backend/signer)", () => {
-  const W = "0x6ad7a4c1f113f65af139831d7d78eaac6b9a4ea0";
-  const asset = { id: "AAPLon-BSC", symbol: "AAPLon", chain: "BSC", address: "0x390a684ef9cade28a7ad0dfa61ab1eb3842618c4", decimals: 18 };
-  const usdc = { symbol: "USDC", address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", decimals: 18 };
-  const summary = { toAmount: "7000000000000000", minReceived: "6900000000000000", quoteId: "q", auctionSeconds: 180 };
-  const typedData = { primaryType: "Order", domain: {}, message: { maker: W, makerAsset: usdc.address, takerAsset: asset.address, makingAmount: "2000000000000000000", takingAmount: "6900000000000000", salt: "1", makerTraits: "0" } };
-  const params = (over = {}) => ({ wallet: W, asset, side: "buy", payToken: usdc, amountUnits: "2000000000000000000", amountText: "2", quote: {}, summary, quotedAt: Date.now(), groupKey: "ondo|AAPLon", ...over });
+
+describe("executeOrder (mocked backend/signer, real captured BNB order)", () => {
+  const fx = require("./fixtures/fusionOrderBsc.json");
+  const W = fx.wallet;
+  const SETTLEMENT = "0x2ad5004c60e16e54d5007c80ce329adde5b51ef5";
+  const asset = { id: "AAPLx-BSC", symbol: "AAPLx", chain: "BSC", address: fx.tokenOut, decimals: 18 };
+  const usdt = { symbol: "USDT", address: fx.tokenIn, decimals: 18 };
+  const summary = { toAmount: "55868000000000000", minReceived: fx.minReceived, quoteId: "q", auctionSeconds: 180 };
+  const built = (over = {}) => ({ res: { typedData: JSON.parse(JSON.stringify(fx.typedData)), orderHash: fx.orderHash, extension: fx.extension, ...over } });
+  const params = (over = {}) => ({ wallet: W, asset, side: "buy", payToken: usdt, amountUnits: fx.amountUnits, amountText: "20", quote: {}, summary, quotedAt: Date.now(), groupKey: "xstocks|AAPLx", ...over });
 
   beforeEach(() => {
     require("@react-native-async-storage/async-storage").default.__clear();
@@ -96,41 +99,64 @@ describe("executeOrder (mocked backend/signer)", () => {
     expect(api.proxyRequest).not.toHaveBeenCalled();
   });
 
-  test("guard failure: nothing signed, record failed", async () => {
-    api.proxyRequest.mockResolvedValueOnce({ res: { typedData, orderHash: "0xh", extension: "0x" } });
+  test("shared guard failure: nothing signed, record failed", async () => {
+    api.proxyRequest.mockResolvedValueOnce(built());
     assertFusionOrder.mockImplementationOnce(() => {
-      throw new Error("order pays someone else");
+      throw new Error("order sells a different token");
     });
-    const r = await executeOrder(params({ wallet: "0x1111111111111111111111111111111111111111" }));
+    const r = await executeOrder(params());
     expect(r.stage).toBe("failed");
     expect(r.error).toMatch(/nothing was signed/i);
+    expect(r.guardInfo.reason).toMatch(/different token/);
     expect(NativeModules.TransactionSigner.signTypedData).not.toHaveBeenCalled();
   });
 
-  test("happy path: build -> guard -> sign -> exact approve -> submit; stored by order hash; second order blocked", async () => {
-    api.proxyRequest
-      .mockResolvedValueOnce({ res: { typedData, orderHash: "0xorder", extension: "0xext" } })
-      .mockResolvedValueOnce({ res: { ok: true } });
+  test("RWA check failure (backend hash doesn't match the order): shared guard not even reached, nothing signed", async () => {
+    api.proxyRequest.mockResolvedValueOnce(built({ orderHash: "0x" + "22".repeat(32) }));
+    const r = await executeOrder(params());
+    expect(r.stage).toBe("failed");
+    expect(r.guardInfo.reason).toMatch(/hash doesn't match/);
+    expect(assertFusionOrder).not.toHaveBeenCalled();
+    expect(NativeModules.TransactionSigner.signTypedData).not.toHaveBeenCalled();
+  });
+
+  test("minimum shown higher than the order pays: refused", async () => {
+    api.proxyRequest.mockResolvedValueOnce(built());
+    const r = await executeOrder(params({ summary: { ...summary, minReceived: (BigInt(fx.minReceived) + 1n).toString() } }));
+    expect(r.stage).toBe("failed");
+    expect(NativeModules.TransactionSigner.signTypedData).not.toHaveBeenCalled();
+  });
+
+  test("happy path: verify -> shared guard -> sign -> exact approve -> submit with the SIGNED receiver; second order blocked", async () => {
+    api.proxyRequest.mockResolvedValueOnce(built()).mockResolvedValueOnce({ res: { ok: true } });
     NativeModules.TransactionSigner.signTypedData.mockResolvedValueOnce({ signature: "0xsig" });
     ensureFusionAllowance.mockResolvedValueOnce({ status: true, txHash: "0xapprove" });
     const stages = [];
     const r = await executeOrder(params(), (rec) => stages.push(rec.stage));
-    expect(r).toMatchObject({ id: "0xorder", orderHash: "0xorder", stage: "submitted", approveTx: "0xapprove" });
+    expect(r).toMatchObject({ id: fx.orderHash, orderHash: fx.orderHash, stage: "submitted", approveTx: "0xapprove" });
     expect(stages).toEqual(["preparing", "signing", "approving", "submitting", "submitted"]);
+    // shared guard ran with every other check; its receiver rule sees the verified final receiver (wallet)
+    expect(assertFusionOrder).toHaveBeenCalledTimes(1);
+    const [guardTd, guardOpts] = assertFusionOrder.mock.calls[0];
+    expect(guardTd.message.receiver).toBe(W);
+    expect(guardOpts).toMatchObject({ wallet: W, chainId: 56, crossChain: false, minTakingAmount: fx.minReceived });
+    // the order that is signed is the backend's original (receiver = settlement contract)
+    const signedJson = JSON.parse(NativeModules.TransactionSigner.signTypedData.mock.calls[0][2]);
+    expect(signedJson.message.receiver).toBe(SETTLEMENT);
     // exact amount approval, on the asset's chain
-    expect(ensureFusionAllowance).toHaveBeenCalledWith(usdc.address, W, "2000000000000000000", "BNB", 56);
-    // receiver = own wallet; signature passed through, never stored
+    expect(ensureFusionAllowance).toHaveBeenCalledWith(usdt.address, W, fx.amountUnits, "BNB", 56);
+    // submitted order = signed order (same receiver), so the hash/signature stay valid
     const submitBody = api.proxyRequest.mock.calls[1][2];
-    expect(submitBody.order.receiver).toBe(W);
+    expect(submitBody.order.receiver).toBe(SETTLEMENT);
+    expect(submitBody.extension).toBe(fx.extension);
     const saved = await store.loadOrders(W);
     expect(JSON.stringify(saved)).not.toMatch(/0xsig/);
-    // duplicate: an open order blocks a new one
     const again = await executeOrder(params());
     expect(again.code).toBe("duplicate");
   });
 
   test("signing cancelled: nothing sent", async () => {
-    api.proxyRequest.mockResolvedValueOnce({ res: { typedData, orderHash: "0xh2", extension: "0x" } });
+    api.proxyRequest.mockResolvedValueOnce(built());
     NativeModules.TransactionSigner.signTypedData.mockResolvedValueOnce({});
     const r = await executeOrder(params());
     expect(r.stage).toBe("failed");
