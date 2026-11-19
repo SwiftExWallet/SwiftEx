@@ -25,7 +25,9 @@ export const mapFusionStatus = (status) => {
   if (s === "partially-filled" || s === "pending") return { stage: "filling" };
   if (s === "expired") return { stage: "expired" };
   if (s === "cancelled" || s === "canceled") return { stage: "cancelled" };
-  if (s === "not-enough-balance-or-allowance") return { stage: "failed", reason: "balance" };
+  // Not final: 1inch reports this transiently (approval not mined yet) and also right AFTER a fill,
+  // when the exact-amount allowance has been used up. Expiry or the balance check decide.
+  if (s === "not-enough-balance-or-allowance") return { stage: null, reason: "balance" };
   if (s === "false-predicate" || s === "invalid-signature" || s === "wrong-permit") return { stage: "failed", reason: s };
   return null;
 };
@@ -60,11 +62,13 @@ export const applyUpdate = (record, update) => {
   const next = { ...record, checkedAt: now };
   const mapped = mapFusionStatus(update.status);
   if (mapped) {
-    next.stage = mapped.stage;
+    if (mapped.stage) next.stage = mapped.stage;
     if (mapped.reason) next.reason = mapped.reason;
   }
   if (update.fillTx) next.fillTx = update.fillTx;
-  if (!isFinal(next.stage) && update.outBalance != null && record.outBalanceBefore != null && record.minOut) {
+  // The wallet balance is the ground truth: if the tokens arrived, the order filled, whatever the
+  // status endpoint says (it can lag or report a post-fill allowance/balance state).
+  if (next.stage !== "filled" && update.outBalance != null && record.outBalanceBefore != null && record.minOut) {
     const before = big(record.outBalanceBefore);
     const nowBal = big(update.outBalance);
     const min = big(record.minOut);

@@ -35,7 +35,7 @@ describe("state machine", () => {
     expect(S.mapFusionStatus("filled").stage).toBe("filled");
     expect(S.mapFusionStatus("expired").stage).toBe("expired");
     expect(S.mapFusionStatus("cancelled").stage).toBe("cancelled");
-    expect(S.mapFusionStatus("not-enough-balance-or-allowance")).toEqual({ stage: "failed", reason: "balance" });
+    expect(S.mapFusionStatus("not-enough-balance-or-allowance")).toEqual({ stage: null, reason: "balance" });
     expect(S.mapFusionStatus("weird")).toBeNull();
   });
   test("status response read defensively (data.status / fills)", () => {
@@ -51,6 +51,16 @@ describe("state machine", () => {
   test("filled by balance when the status call fails (>= 95% of the minimum arrived)", () => {
     expect(S.applyUpdate(base, { status: null, outBalance: "1051", now: 2000 }).stage).toBe("filled");
     expect(S.applyUpdate(base, { status: null, outBalance: "1000", now: 2000 }).stage).toBe("submitted"); // only +900
+  });
+  test("live bug: status 'not-enough-balance-or-allowance' right after a fill (allowance used up) -> filled by balance, not failed", () => {
+    const r = S.applyUpdate(base, { status: "not-enough-balance-or-allowance", outBalance: "1100", now: 2000 });
+    expect(r).toMatchObject({ stage: "filled", filledBy: "balance" });
+    // without the tokens arriving it is not final (approval may still be mining); expiry decides
+    const w = S.applyUpdate(base, { status: "not-enough-balance-or-allowance", outBalance: "100", now: 2000 });
+    expect(w.stage).toBe("submitted");
+    expect(S.applyUpdate(w, { status: "not-enough-balance-or-allowance", outBalance: "100", now: base.expiresAt + 1 }).stage).toBe("expired");
+    // a lagging 'expired' status loses to tokens that actually arrived
+    expect(S.applyUpdate(base, { status: "expired", outBalance: "1100", now: 2000 }).stage).toBe("filled");
   });
   test("expires after the auction + margin; funds stay", () => {
     const e = S.applyUpdate(base, { status: "pending", now: base.expiresAt + 1 });
