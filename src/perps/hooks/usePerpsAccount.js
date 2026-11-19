@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchAccount, fetchOpenOrders, fetchPositions } from "../api/asterTrade";
 import { asterWs } from "../api/asterWs";
 import { isValid, toUnits } from "../utils/decimal";
+import { perpsEquity } from "../utils/accountTotals";
 
 const POLL_MS = 5000;
 const NO_DEPOSIT_CODE = -5050;
@@ -66,7 +67,7 @@ const refreshStore = () => {
     if (!acc.error && acc.data) {
       const d = acc.data;
       patch.account = {
-        equity: String(d.totalMarginBalance ?? "0"),
+        equity: perpsEquity(d), // all collateral assets, not only USDT (see accountTotals.js)
         available: String(d.availableBalance ?? "0"),
         walletBalance: String(d.totalWalletBalance ?? "0"),
         unrealizedPnl: String(d.totalUnrealizedProfit ?? "0"),
