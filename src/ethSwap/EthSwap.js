@@ -33,7 +33,7 @@ import CustomInfoProvider from '../Dashboard/exchange/crypto-exchange-front-end-
 import ToggleSwitch from 'toggle-switch-react-native';
 import { ensureFusionAllowance } from '../utilities/FusionAllowance';
 import { GetStellarUSDCAvilabelBalance } from '../utilities/StellarUtils';
-import { GetFusionSwapQuote, PerformeFusionPlusNativeSwap, PerformeFusionSwap } from '../utilities/SwapFusion';
+import { GetFusionSwapQuote, PerformeFusionPlusNativeSwap, PerformeFusionSwap, isFusionOrderAccepted } from '../utilities/SwapFusion';
 import { getSafeErrorMessage } from '../utilities/errorSanitizer';
 import { assertUniswapTxs, assertSwapFees, assertFusionOrder } from '../utilities/swapGuard';
 import { ENVIRONMENT } from '../Dashboard/constants';
@@ -984,6 +984,7 @@ const EthSwap = () => {
       }
 
       const { primaryType, types, domain, message } = respo.res.typedData;
+      const orderExtension = respo.res.extension;
       const amountWei = ethers.utils.parseUnits(amount, fromToken?.decimals);
       const shownPreset = providerQuoteInfo?.presets?.[providerQuoteInfo?.recommended_preset];
       try {
@@ -995,6 +996,7 @@ const EthSwap = () => {
           chainId: fromToken.chainId,
           crossChain: false,
           minTakingAmount: shownPreset?.auctionEndAmount,
+          extension: orderExtension,
         });
       } catch (guardError) {
         CustomInfoProvider.show('error', '!Opps', guardError.message);
@@ -1027,20 +1029,28 @@ const EthSwap = () => {
       const submitResult = await proxyRequest('/v1/swap/1inch/submitOrder', PPOST, {
         chain: fromToken.chain === 'BNB' ? 'BSC' : fromToken.chain,
         order: {
-          maker: respo.res.typedData.message.maker,
-          makerAsset: respo.res.typedData.message.makerAsset,
-          takerAsset: respo.res.typedData.message.takerAsset,
-          makerTraits: respo.res.typedData.message.makerTraits,
-          salt: respo.res.typedData.message.salt,
-          makingAmount: respo.res.typedData.message.makingAmount,
-          takingAmount: respo.res.typedData.message.takingAmount,
-          receiver: state?.wallet?.address,
+          maker: message.maker,
+          makerAsset: message.makerAsset,
+          takerAsset: message.takerAsset,
+          makerTraits: message.makerTraits,
+          salt: message.salt,
+          makingAmount: message.makingAmount,
+          takingAmount: message.takingAmount,
+          receiver: message.receiver,
         },
         quoteId: providerQuoteInfo.quoteId,
         orderHash: respo.res.orderHash,
-        extension: respo.res.extension,
+        extension: orderExtension,
         signature: result.signature,
       });
+
+      if (
+        submitResult.err &&
+        /allowance/i.test(String(submitResult.err.message || '')) &&
+        await isFusionOrderAccepted(fromToken.chain === 'BNB' ? 'BSC' : fromToken.chain, respo?.res?.orderHash)
+      ) {
+        submitResult.err = null;
+      }
 
       if (submitResult.err) {
         CustomInfoProvider.show(

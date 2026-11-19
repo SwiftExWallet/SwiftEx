@@ -1,5 +1,5 @@
 import { NativeModules, Platform } from 'react-native';
-import { PPOST, proxyRequest } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/api';
+import { PGET, PPOST, proxyRequest } from '../Dashboard/exchange/crypto-exchange-front-end-main/src/api';
 import { ethers } from 'ethers';
 import { CHAINS, isNativeTokenAddress, NativeESCROWAddress } from './TokenUtils';
 import CustomInfoProvider from '../Dashboard/exchange/crypto-exchange-front-end-main/src/components/CustomInfoProvider';
@@ -10,6 +10,26 @@ import { fustionEvmTxManager } from './evmTxManager';
 import { getSafeErrorMessage } from './errorSanitizer';
 import { ENVIRONMENT } from '../Dashboard/constants';
 import { assertFusionOrder, assertNativeOrderTx } from './swapGuard';
+
+const ACCEPTED_ORDER_STATUSES = ['filled', 'executed', 'completed', 'partially_filled', 'pending'];
+
+export const isFusionOrderAccepted = async (chain, orderHash, attempts = 3) => {
+    if (!orderHash) return false;
+    for (let i = 0; i < attempts; i++) {
+        try {
+            const { res, err } = await proxyRequest(
+                `/v1/swap/1inch/orderStatus?chain=${encodeURIComponent(chain)}&orderHash=${encodeURIComponent(orderHash)}&swapProvider=ONEINCH_FUSION`,
+                PGET
+            );
+            const status = String(res?.status ?? res?.data?.status ?? res?.order?.status ?? '').toLowerCase();
+            if (!err?.status && ACCEPTED_ORDER_STATUSES.includes(status)) return true;
+        } catch (e) {
+            console.info('[isFusionOrderAccepted] status check failed:', e?.message);
+        }
+        if (i < attempts - 1) await new Promise((r) => setTimeout(r, 2000));
+    }
+    return false;
+};
 
 export const GetFusionSwapQuote = async (fromBlockchain, fromTokenAddress, toBlockchain, toTokenAddress, amount, walletAddress, fromSymbol, toSymbol) => {
     try {

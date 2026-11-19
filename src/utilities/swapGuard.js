@@ -7,6 +7,7 @@
 // A swap that targets anything else is REFUSED (fail closed).
 import { ethers } from 'ethers';
 import { parseQuantity, assertReasonableFee } from './signingReview';
+import { assertFusionFeeOrder } from './fusionCheck';
 
 const lc = (a) => String(a ?? '').toLowerCase();
 const ZERO = '0x0000000000000000000000000000000000000000';
@@ -29,6 +30,20 @@ const UNISWAP_ROUTERS = {
 // Contracts that receive native-coin deposits for 1inch Fusion+ native orders, by chainId.
 // EMPTY until the backend team confirms the addresses: native Fusion+ swaps are refused until then.
 export const NATIVE_ORDER_CONTRACTS = {};
+
+// Wrapped native token that 1inch Fusion orders buy when the user asks for the native coin
+// (from @1inch/fusion-sdk CHAIN_TO_WRAPPER).
+export const WRAPPED_NATIVE = {
+  1: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
+  10: '0x4200000000000000000000000000000000000006',
+  56: '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c',
+  137: '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270',
+  8453: '0x4200000000000000000000000000000000000006',
+  42161: '0x82af49447d8a07e3bd95bd0d56f35241523fbab1',
+  43114: '0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7',
+};
+const UNWRAP_WETH_FLAG = 1n << 247n;
+const isNativePlaceholder = (a) => [ZERO, '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'].includes(lc(a));
 
 const routersFor = (chainId) => (UNISWAP_ROUTERS[Number(chainId)] || []);
 const trustedSpenders = (chainId) => [...routersFor(chainId), PERMIT2, ONEINCH_LOP];
@@ -97,9 +112,11 @@ export const assertSwapFees = async (rawTxs, rpcUrl) => {
 /**
  * Validate a 1inch (Fusion / Fusion+) order before signing it.
  * minTakingAmount: the minimum the user was shown on the confirm screen (same-chain only).
+ * extension: the order extension hex that will be submitted with the order (needed when
+ *   1inch adds a fee and the receiver is its settlement contract).
  */
 export const assertFusionOrder = (typedData, {
-  wallet, fromToken, toToken, amountWei, chainId, crossChain, minTakingAmount, skipContractCheck,
+  wallet, fromToken, toToken, amountWei, chainId, crossChain, minTakingAmount, skipContractCheck, extension,
 }) => {
   if (!typedData?.message || !typedData?.domain) fail('malformed order');
   const { domain, message: m, primaryType } = typedData;
@@ -112,10 +129,23 @@ export const assertFusionOrder = (typedData, {
     fail('order sells a different amount than you entered');
   }
   if (!crossChain) {
-    if (lc(m.takerAsset) !== lc(toToken.address)) fail('order buys a different token');
-    if (m.receiver && lc(m.receiver) !== ZERO && lc(m.receiver) !== lc(wallet)) fail('order pays someone else');
+    // Buying the native coin: 1inch orders buy the wrapped token and must set UNWRAP_WETH
+    // so the user receives the coin itself.
+    const buysNative = isNativePlaceholder(toToken.address);
+    if (buysNative) {
+      const wrapped = WRAPPED_NATIVE[Number(chainId)];
+      if (!wrapped || lc(m.takerAsset) !== wrapped) fail('order buys a different token');
+      if (!(BigInt(String(m.makerTraits)) & UNWRAP_WETH_FLAG)) fail('order would pay a wrapped token instead of the coin');
+    } else if (lc(m.takerAsset) !== lc(toToken.address)) {
+      fail('order buys a different token');
+    }
     if (minTakingAmount != null && ethers.BigNumber.from(m.takingAmount).lt(ethers.BigNumber.from(minTakingAmount))) {
       fail('order returns less than the quoted minimum');
+    }
+    if (m.receiver && lc(m.receiver) !== ZERO && lc(m.receiver) !== lc(wallet)) {
+      // Fee-bearing order: receiver is 1inch's settlement contract, which forwards to the
+      // recipient in the extension. Accepted only under the rules in fusionCheck.js.
+      assertFusionFeeOrder(m, extension, { wallet, chainId, minTakingAmount, unwrapNative: buysNative });
     }
   }
 };
